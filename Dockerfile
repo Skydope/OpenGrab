@@ -8,6 +8,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
+COPY static/ static/
 
 # Entrypoint: yt-dlp rompe seguido cuando YouTube cambia el player.
 # Por eso, salvo que pinees, se actualiza al arrancar. La versión baked en la

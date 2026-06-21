@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ytgrab</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/alpine.min.js" defer></script>
+</head>
+<body>
+<div class="wrap" x-data="app" x-init="init()">
+
+  <header>
+    <span class="logo">yt<b>grab</b></span>
+    <span class="tag"><span class="dot"></span>self-hosted · yt-dlp</span>
+  </header>
+
+  <!-- Auth card -->
+  <div class="card auth-card" x-show="!authenticated" x-cloak>
+    <label class="fld" for="token">Token de acceso</label>
+    <div class="row">
+      <input id="token" type="password" placeholder="Ingresa el token configurado en YTGRAB_TOKEN"
+             autocomplete="off" spellcheck="false" x-model="token"
+             @keydown.enter="doAuth">
+      <button class="go" @click="doAuth" :disabled="authLoading">
+        <span x-show="!authLoading">Conectar</span>
+        <span x-show="authLoading">…</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main card -->
+  <div class="card" x-show="authenticated" x-cloak>
+    <label class="fld" for="url">URL de YouTube</label>
+    <div class="row">
+      <input id="url" type="text" placeholder="https://www.youtube.com/watch?v=…"
+             autocomplete="off" spellcheck="false" x-model="url"
+             @keydown.enter="inspect">
+      <button class="go" @click="inspect" :disabled="inspecting">
+        <span x-show="!inspecting">Analizar</span>
+        <span x-show="inspecting">…</span>
+      </button>
+    </div>
+
+    <!-- Video metadata -->
+    <div class="meta" x-show="meta" x-transition>
+      <img class="thumb" :src="thumbnail" alt="">
+      <div class="info">
+        <p class="t" x-text="title">—</p>
+        <p class="s" x-text="subtitle">—</p>
+      </div>
+    </div>
+
+    <!-- Quality chips -->
+    <div class="quality">
+      <template x-for="q in qualities" :key="q.id">
+        <span class="chip" :data-q="q.id"
+              :aria-pressed="quality === q.id"
+              @click="quality = q.id"
+              x-text="q.label"></span>
+      </template>
+    </div>
+
+    <!-- Playlist panel -->
+    <div x-show="isPlaylist" x-transition style="margin-top:14px">
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px">
+        <span style="font-family:var(--mono); font-size:13px; color:var(--muted)" x-text="playlistCount + ' videos'"></span>
+        <button style="font-size:12px; padding:6px 12px" @click="downloadPlaylist">Descargar playlist</button>
+      </div>
+      <div style="max-height:300px; overflow:auto; border:1px solid var(--line); border-radius:8px">
+        <template x-for="(v, i) in playlistVideos" :key="v.url">
+          <div class="pl-video">
+            <input type="checkbox" x-model="playlistChecked" :value="i">
+            <span class="pl-title" :title="v.title" x-text="v.title"></span>
+            <span class="pl-dur" x-text="v.duration ? fmtDuration(v.duration) : ''"></span>
+          </div>
+        </template>
+        <span x-show="playlistLoading" style="font-size:12px;color:var(--muted);padding:12px;display:block">Cargando playlist…</span>
+      </div>
+    </div>
+
+    <div style="margin-top:18px">
+      <button @click="download" :disabled="!meta || downloading" style="width:100%">Descargar</button>
+    </div>
+
+    <!-- Terminal output -->
+    <div class="term" :class="{show: terminal.length > 0}">
+      <div class="bar-head">
+        <span class="tl"><i style="background:#E5484D"></i><i style="background:#E8A02C"></i><i style="background:#5BC97E"></i></span>
+        <span>yt-dlp</span>
+      </div>
+      <div class="progress" :class="{done: progressDone}">
+        <i :style="'width:' + progress + '%'"></i>
+      </div>
+      <div class="lines" x-ref="lines" x-effect="if($refs.lines) $refs.lines.scrollTop = $refs.lines.scrollHeight">
+        <template x-for="(line, idx) in terminal" :key="idx">
+          <p class="l" :class="line.cls" :data-live="line.live ? '1' : null">
+            <span class="pfx" x-text="line.pfx"></span>
+            <span class="body" x-text="line.text"></span>
+          </p>
+        </template>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div class="err-box" :class="{show: errorMsg}" x-text="errorMsg"></div>
+
+    <!-- Download link -->
+    <div class="actions" :class="{show: downloadUrl}">
+      <a class="dl" :href="downloadUrl" :download="downloadFilename">Guardar archivo</a>
+    </div>
+  </div>
+
+  <footer>
+    Corre en tu red. El servidor descarga con <code>yt-dlp</code> + <code>ffmpeg</code> y te entrega el <code>.mp4</code>.<br>
+    Usalo solo con contenido propio, con licencia que lo permita, o bajo fair use.
+  </footer>
+
+  <!-- History -->
+  <div style="margin-top:14px" x-show="authenticated" x-cloak>
+    <div style="font-family:var(--mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; cursor:pointer"
+         @click="toggleHistory"
+         x-text="historyOpen ? 'historial ▾' : 'historial ▸'"></div>
+    <div x-show="historyOpen">
+      <span x-show="!historyLoaded" style="font-size:12px;color:var(--muted)">Cargando…</span>
+      <span x-show="historyLoaded && !history.length" style="font-size:12px;color:var(--muted)">Sin descargas todavia.</span>
+      <template x-for="e in history" :key="e.job_id">
+        <div class="h-entry">
+          <span class="h-title" :title="e.title" x-text="e.title"></span>
+          <span class="h-meta" x-text="e.quality"></span>
+          <span class="h-size" x-show="e.size" x-text="(e.size/1048576).toFixed(1) + ' MB'"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('app', () => ({
+    // ── Auth ──────────────────────────────────
+    AUTH_REQUIRED: "__AUTH_REQUIRED__" === "true",
+    token: "",
+    authLoading: false,
+    authenticated: false,
+
+    async init() {
+      if (!this.AUTH_REQUIRED) { this.authenticated = true; return; }
+      try {
+        const r = await fetch("/api/info?url=http://x");
+        this.authenticated = r.status !== 401;
+      } catch (e) {
+        this.authenticated = false;
+      }
+    },
+
+    async doAuth() {
+      if (!this.token.trim()) return;
+      this.authLoading = true;
+      const r = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: this.token.trim() }),
+      });
+      if (r.ok) {
+        this.authenticated = true;
+      } else {
+        this.errorMsg = "Token invalido.";
+      }
+      this.authLoading = false;
+    },
+
+    // ── Quality ───────────────────────────────
+    quality: "best",
+    qualities: [
+      { id: "best",  label: "best mp4" },
+      { id: "1080p", label: "1080p" },
+      { id: "720p",  label: "720p" },
+      { id: "480p",  label: "480p" },
+      { id: "audio", label: "solo audio · mp3" },
+    ],
+
+    // ── URL / inspect ─────────────────────────
+    url: "",
+    inspecting: false,
+    meta: false,
+    thumbnail: "",
+    title: "—",
+    subtitle: "—",
+
+    // ── Playlist ──────────────────────────────
+    isPlaylist: false,
+    playlistCount: 0,
+    playlistVideos: [],
+    playlistChecked: [],
+    playlistLoading: false,
+
+    // ── Download ──────────────────────────────
+    downloading: false,
+    terminal: [],
+    progress: 0,
+    progressDone: false,
+    downloadUrl: "",
+    downloadFilename: "",
+
+    // ── Error ─────────────────────────────────
+    errorMsg: "",
+
+    // ── History ───────────────────────────────
+    historyOpen: false,
+    historyLoaded: false,
+    history: [],
+
+    // ── Inspect ───────────────────────────────
+    async inspect() {
+      if (!this.url.trim()) { this.errorMsg = "Pega una URL primero."; return; }
+      this.resetUI();
+      this.inspecting = true;
+      try {
+        const r = await fetch("/api/info?url=" + encodeURIComponent(this.url.trim()));
+        if (!r.ok) {
+          let msg = "Error al analizar.";
+          try { msg = (await r.json()).detail || msg; } catch (e) {}
+          throw new Error(msg);
+        }
+        const data = await r.json();
+        this.meta = true;
+        this.thumbnail = data.thumbnail || "";
+        this.title = data.title || "—";
+        const views = data.view_count
+          ? " · " + Intl.NumberFormat("es-AR").format(data.view_count) + " views"
+          : "";
+        this.subtitle = (data.channel || "") + " · " + (data.duration_str || "") + views;
+
+        if (/[?&]list=/.test(this.url)) {
+          this.isPlaylist = true;
+          this.loadPlaylist();
+        } else {
+          this.isPlaylist = false;
+        }
+      } catch (err) {
+        this.meta = false;
+        this.errorMsg = err.message;
+      } finally {
+        this.inspecting = false;
+      }
+    },
+
+    // ── Playlist ──────────────────────────────
+    async loadPlaylist() {
+      this.playlistLoading = true;
+      this.playlistChecked = [];
+      try {
+        const r = await fetch("/api/playlist?url=" + encodeURIComponent(this.url.trim()));
+        if (!r.ok) {
+          let msg = "Error al cargar playlist.";
+          try { msg = (await r.json()).detail || msg; } catch (e) {}
+          throw new Error(msg);
+        }
+        const data = await r.json();
+        this.playlistVideos = data.videos || [];
+        this.playlistCount = data.count || 0;
+        this.playlistChecked = this.playlistVideos.map((_, i) => i);
+      } catch (err) {
+        this.playlistVideos = [];
+        this.errorMsg = err.message;
+      } finally {
+        this.playlistLoading = false;
+      }
+    },
+
+    async downloadPlaylist() {
+      const selected = this.playlistChecked.map(i => this.playlistVideos[i]).filter(Boolean);
+      if (!selected.length) { this.errorMsg = "Selecciona al menos un video."; return; }
+      this.resetUI();
+      this.downloading = true;
+      this.addLine("$", "playlist: " + selected.length + " videos");
+      let ok = 0, fail = 0;
+      for (const v of selected) {
+        this.addLine("$", "iniciando: " + v.title);
+        try {
+          const r = await fetch("/api/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: v.url, quality: this.quality }),
+          });
+          if (!r.ok) throw new Error((await r.json()).detail || "No se pudo crear el job.");
+          const { job_id } = await r.json();
+          await this.waitJob(job_id, v.title);
+          ok++;
+        } catch (err) {
+          this.addLine("✗", err.message, "err");
+          fail++;
+        }
+      }
+      this.addLine(ok > 0 ? "✓" : "✗", "completado: " + ok + " ok, " + fail + " fallidos", ok > 0 ? "ok" : "err");
+      this.downloading = false;
+    },
+
+    // ── Download ──────────────────────────────
+    async download() {
+      if (!this.url.trim()) return;
+      this.resetUI();
+      this.downloading = true;
+      this.addLine("$", "yt-dlp -f " + this.quality + " " + this.url.trim());
+
+      let jobId;
+      try {
+        const r = await fetch("/api/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: this.url.trim(), quality: this.quality }),
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || "No se pudo crear el job.");
+        ({ job_id: jobId } = await r.json());
+      } catch (err) {
+        this.errorMsg = err.message;
+        this.downloading = false;
+        return;
+      }
+
+      const ev = new EventSource("/api/jobs/" + jobId + "/events");
+      let lastStatus = "";
+      let lastLiveIdx = -1;
+
+      ev.onmessage = (m) => {
+        const s = JSON.parse(m.data);
+        this.progress = s.percent != null ? s.percent : this.progress;
+
+        if (s.status !== lastStatus) {
+          lastStatus = s.status;
+          if (s.status === "downloading") this.addLine("›", "descargando streams…");
+          if (s.status === "processing") this.addLine("›", s.note || "procesando…");
+        }
+
+        if (s.status === "downloading" && s.speed) {
+          const txt = "downloading  " + (s.percent || 0).toFixed(1) + "%   " +
+                      (s.speed || "") + (s.eta ? "   ETA " + s.eta : "");
+          if (lastLiveIdx >= 0) {
+            this.terminal[lastLiveIdx] = { pfx: "›", text: txt, cls: "", live: true };
+            this.terminal = [...this.terminal];
+          } else {
+            const idx = this.terminal.length;
+            this.terminal = [...this.terminal, { pfx: "›", text: txt, cls: "", live: true }];
+            lastLiveIdx = idx;
+          }
+        } else {
+          lastLiveIdx = -1;
+        }
+
+        if (s.status === "done") {
+          this.progress = 100;
+          this.progressDone = true;
+          this.addLine("✓", "listo → " + s.filename, "ok");
+          this.downloadUrl = "/api/jobs/" + jobId + "/file";
+          this.downloadFilename = s.filename || "";
+          this.downloading = false;
+          ev.close();
+        }
+        if (s.status === "error") {
+          this.addLine("✗", "error: " + (s.error || "desconocido"), "err");
+          this.errorMsg = s.error || "Fallo la descarga.";
+          this.downloading = false;
+          ev.close();
+        }
+      };
+
+      ev.onerror = () => {
+        this.addLine("✗", "conexion de eventos cerrada", "err");
+        this.downloading = false;
+        ev.close();
+      };
+    },
+
+    async waitJob(jobId, title) {
+      return new Promise((resolve) => {
+        const ev = new EventSource("/api/jobs/" + jobId + "/events");
+        let lastLiveIdx = -1;
+        ev.onmessage = (m) => {
+          const s = JSON.parse(m.data);
+          if (s.status === "downloading" && s.speed) {
+            const txt = "  " + (s.percent || 0).toFixed(1) + "%  " + (s.speed || "") + (s.eta ? "  ETA " + s.eta : "");
+            if (lastLiveIdx >= 0) {
+              this.terminal[lastLiveIdx] = { pfx: "›", text: txt, cls: "", live: true };
+              this.terminal = [...this.terminal];
+            } else {
+              const idx = this.terminal.length;
+              this.terminal = [...this.terminal, { pfx: "›", text: txt, cls: "", live: true }];
+              lastLiveIdx = idx;
+            }
+          }
+          if (s.status === "done") { this.addLine("✓", "ok: " + title, "ok"); ev.close(); resolve(); }
+          if (s.status === "error") { this.addLine("✗", "error: " + (s.error || "desconocido"), "err"); ev.close(); resolve(); }
+        };
+        ev.onerror = () => { ev.close(); resolve(); };
+      });
+    },
+
+    // ── UI helpers ────────────────────────────
+    addLine(pfx, text, cls = "") {
+      this.terminal = [...this.terminal, { pfx, text, cls }];
+    },
+
+    resetUI() {
+      this.terminal = [];
+      this.progress = 0;
+      this.progressDone = false;
+      this.downloadUrl = "";
+      this.downloadFilename = "";
+      this.errorMsg = "";
+      this.isPlaylist = false;
+      this.playlistVideos = [];
+    },
+
+    // ── History ───────────────────────────────
+    async toggleHistory() {
+      this.historyOpen = !this.historyOpen;
+      if (this.historyOpen && !this.historyLoaded) {
+        try {
+          const r = await fetch("/api/history?limit=15");
+          this.history = await r.json();
+        } catch (e) {
+          this.history = [];
+        }
+        this.historyLoaded = true;
+      }
+    },
+
+    // ── Duration formatter ────────────────────
+    fmtDuration(secs) {
+      if (!secs) return "";
+      const d = new Date(secs * 1000).toISOString();
+      return d.substring(11, 19).replace(/^00:/, "");
+    },
+  }));
+});
+</script>
+</body>
+</html>
