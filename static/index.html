@@ -207,7 +207,7 @@ document.addEventListener('alpine:init', () => {
       this.initTheme();
       if (!this.AUTH_REQUIRED) { this.authenticated = true; return; }
       try {
-        const r = await fetch("/api/info?url=http://x");
+        const r = await fetch("/api/history?limit=1");
         this.authenticated = r.status !== 401;
       } catch (e) {
         this.authenticated = false;
@@ -360,11 +360,20 @@ document.addEventListener('alpine:init', () => {
         count++;
         this.addLine("$", "[" + count + "/" + selected.length + "] iniciando: " + v.title);
         try {
-          const r = await fetch("/api/jobs", {
+          let r = await fetch("/api/jobs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url: v.url, quality: this.quality }),
           });
+          if (r.status === 429) {
+            this.addLine("›", "limite de velocidad, esperando 20s…");
+            await new Promise(resolve => setTimeout(resolve, 20000));
+            r = await fetch("/api/jobs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: v.url, quality: this.quality }),
+            });
+          }
           if (!r.ok) throw new Error((await r.json()).detail || "No se pudo crear el job.");
           const { job_id } = await r.json();
           await this.waitJob(job_id, v.title);

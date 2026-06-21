@@ -1,14 +1,35 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
+
+def _int_env(key: str, default: int, min_val: int | None = None) -> int:
+    raw = os.environ.get(key, str(default))
+    try:
+        val = int(raw)
+    except ValueError:
+        print(
+            f"[opengrab] WARNING: {key}={raw!r} invalido, usando {default}",
+            file=sys.stderr,
+        )
+        return default
+    if min_val is not None and val < min_val:
+        print(
+            f"[opengrab] WARNING: {key}={val} menor que minimo {min_val}, usando {min_val}",
+            file=sys.stderr,
+        )
+        return min_val
+    return val
+
+
 HOST = os.environ.get("OPENGRAB_HOST", "127.0.0.1")
-PORT = int(os.environ.get("OPENGRAB_PORT", "8800"))
+PORT = _int_env("OPENGRAB_PORT", 8800, min_val=1)
 OUT_DIR = Path(os.environ.get("OPENGRAB_DIR", "./downloads")).resolve()
 TOKEN = os.environ.get("OPENGRAB_TOKEN", "").strip()
-MAX_JOBS = int(os.environ.get("OPENGRAB_MAX_JOBS", "2"))
-MAX_SIZE_MB = max(0, int(os.environ.get("OPENGRAB_MAX_SIZE_MB", "0")))
+MAX_JOBS = _int_env("OPENGRAB_MAX_JOBS", 2, min_val=1)
+MAX_SIZE_MB = _int_env("OPENGRAB_MAX_SIZE_MB", 0, min_val=0)
 HISTORY_FILE = OUT_DIR / ".opengrab_history.json"
 HISTORY_MAX = 500
 

@@ -1,9 +1,10 @@
-def test_health(client):
+def test_health(client, app_state):
     r = client.get("/health")
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "ok"
     assert "jobs_active" in data
+    assert isinstance(data["jobs_active"], int)
 
 
 def test_index_returns_html(client):
@@ -73,16 +74,13 @@ def test_static_alpine(client):
     assert "javascript" in r.headers["content-type"]
 
 
-def test_api_jobs_file_serves_and_cleans(client):
-    """File should be served and workdir cleaned after streaming."""
+def test_api_jobs_file_serves_and_cleans(client, app_state):
     import tempfile
     from pathlib import Path
 
-    from config import OUT_DIR
-    from download import JOBS
     from models import Job
 
-    workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=OUT_DIR))
+    workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=app_state.out_dir))
     test_file = workdir / "test.mp4"
     test_file.write_bytes(b"fake video content")
 
@@ -92,7 +90,7 @@ def test_api_jobs_file_serves_and_cleans(client):
     job.filename = "test.mp4"
     job.mime = "video/mp4"
     job.workdir = str(workdir)
-    JOBS["test123"] = job
+    app_state.jobs["test123"] = job
 
     r = client.get("/api/jobs/test123/file")
     assert r.status_code == 200
@@ -104,44 +102,61 @@ def test_api_jobs_file_serves_and_cleans(client):
     assert job.filepath == ""
 
 
-def test_api_jobs_file_not_done(client):
-    """Should return 409 if job is not done yet."""
-    from download import JOBS
+def test_api_jobs_file_not_done(client, app_state):
     from models import Job
 
     job = Job(id="pending", created=1000000.0)
     job.status = "downloading"
-    JOBS["pending"] = job
+    app_state.jobs["pending"] = job
 
     r = client.get("/api/jobs/pending/file")
     assert r.status_code == 409
 
 
-def test_api_jobs_file_missing(client):
-    """Should return 410 if underlying file no longer exists."""
+def test_api_jobs_file_missing(client, app_state):
     from pathlib import Path
 
-    from config import OUT_DIR
-    from download import JOBS
     from models import Job
 
-    workdir = Path(OUT_DIR) / "nonexistent_workdir"
+    workdir = app_state.out_dir / "nonexistent_workdir"
 
     job = Job(id="missing", created=1000000.0)
     job.status = "done"
     job.filepath = str(workdir / "ghost.mp4")
     job.filename = "ghost.mp4"
     job.workdir = str(workdir)
-    JOBS["missing"] = job
+    app_state.jobs["missing"] = job
 
     r = client.get("/api/jobs/missing/file")
     assert r.status_code == 410
 
 
 def test_security_headers(client):
-    """Security headers should be present on responses."""
     r = client.get("/health")
     assert r.headers.get("x-content-type-options") == "nosniff"
     assert r.headers.get("x-frame-options") == "SAMEORIGIN"
     assert r.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
     assert "camera=()" in r.headers.get("permissions-policy", "")
+
+
+def test_content_disposition_escape(client, app_state):
+    from models import Job
+
+    workdir = app_state.out_dir / "escape_test"
+    workdir.mkdir()
+    test_file = workdir / "video.mp4"
+    test_file.write_bytes(b"content")
+
+    job = Job(id="escape123", created=1000000.0)
+    job.status = "done"
+    job.filepath = str(test_file)
+    job.filename = 'video"quote.mp4'
+    job.mime = "video/mp4"
+    job.workdir = str(workdir)
+    app_state.jobs["escape123"] = job
+
+    r = client.get("/api/jobs/escape123/file")
+    assert r.status_code == 200
+    cd = r.headers.get("content-disposition", "")
+    assert '\\"' in cd
+    assert 'video\\"quote.mp4' in cd

@@ -1,6 +1,6 @@
 :root{
     --ink:#0E1116; --panel:#171B22; --panel-2:#1C212B; --line:#262C36;
-    --text:#D7DCE3; --muted:#8A93A0; --faint:#5C6670;
+    --text:#D7DCE3; --muted:#959EAA; --faint:#8B95A1;
     --amber:#E8A02C; --ok:#5BC97E; --danger:#E5484D;
     --mono:ui-monospace,"JetBrains Mono","SFMono-Regular",Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -19,7 +19,7 @@
     --hover-row:rgba(0,0,0,.03);
   }
   @media (prefers-color-scheme:light){
-    :root:not([data-theme]){color-scheme:light}
+    :root:not([data-theme]){color-scheme:light dark}
   }
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -139,7 +139,6 @@
   .err-box.show{display:block}
 
   .auth-card{display:none}
-  .auth-card.show{display:block}
 
   .pl-video{display:flex; align-items:center; gap:10px; padding:8px 12px;
             border-bottom:1px solid var(--line); font-size:13px}
@@ -189,7 +188,8 @@
   a.dl:focus-visible, .theme-btn:focus-visible, .copy-btn:focus-visible {
     outline: 2px solid var(--amber); outline-offset: 2px;
   }
-  input:focus-visible{outline: 2px solid var(--amber); outline-offset: 1px}
+  input[type=text]:focus-visible,input[type=password]:focus-visible{outline: 2px solid var(--amber); outline-offset: 1px}
+  input[type=checkbox]:focus-visible{outline: 2px solid var(--amber); outline-offset: 1px}
 
   /* Utility classes replacing inline styles */
   .mt-14{margin-top:14px}

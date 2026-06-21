@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json as _json
 import logging
 import re
-import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -11,13 +9,11 @@ from typing import Any, Dict
 
 import yt_dlp
 
-from config import FORMATS, HISTORY_FILE, HISTORY_MAX, MAX_SIZE_MB, OUT_DIR
+from config import FORMATS, MAX_SIZE_MB
 from models import Job
+from state import AppState
 
 log = logging.getLogger("opengrab")
-
-JOBS: Dict[str, Job] = {}
-HISTORY: list = []
 
 # --------------------------------------------------------------------------- #
 # URL validation helpers
@@ -44,49 +40,9 @@ def _safe_name(name: str) -> str:
 
 
 def _sanitize_url(url: str) -> str:
-    """Trunca query params en URLs para evitar leaks en logs."""
     clean = re.sub(r"([?&]token=)[^&]+", r"\1***", url)
+    clean = clean.replace("\n", "").replace("\r", "")
     return clean[:200]
-
-
-# --------------------------------------------------------------------------- #
-# History persistence
-# --------------------------------------------------------------------------- #
-def _load_history() -> list:
-    try:
-        return _json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-    except (OSError, _json.JSONDecodeError):
-        return []
-
-
-def _save_history(entries: list) -> None:
-    entries = entries[-HISTORY_MAX:]
-    try:
-        HISTORY_FILE.write_text(
-            _json.dumps(entries, indent=2, default=str), encoding="utf-8"
-        )
-    except OSError:
-        pass
-
-
-# --------------------------------------------------------------------------- #
-# Filesystem housekeeping
-# --------------------------------------------------------------------------- #
-def _cleanup_old_workdirs() -> None:
-    """Borra workdirs temporales de yt-dlp que hayan quedado de ejecuciones
-    anteriores (más de 24 h)."""
-    cutoff = time.time() - 86400
-    count = 0
-    for d in OUT_DIR.glob("opengrab_*"):
-        if d.is_dir():
-            try:
-                if d.stat().st_mtime < cutoff:
-                    shutil.rmtree(d)
-                    count += 1
-            except OSError:
-                pass
-    if count:
-        log.info("limpiados %d workdirs viejos", count)
 
 
 # --------------------------------------------------------------------------- #
@@ -139,9 +95,9 @@ def _fetch_playlist(url: str) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Download job (runs in thread pool)
 # --------------------------------------------------------------------------- #
-def _run_download(job_id: str, url: str, quality: str, loop) -> None:
-    job = JOBS[job_id]
-    workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=OUT_DIR))
+def _run_download(state: AppState, job_id: str, url: str, quality: str, loop) -> None:
+    job = state.jobs[job_id]
+    workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
     job.workdir = str(workdir)
 
     def hook(d: Dict[str, Any]) -> None:
@@ -160,7 +116,11 @@ def _run_download(job_id: str, url: str, quality: str, loop) -> None:
         elif status == "finished":
             job.status = "processing"
             job.percent = 100.0
-            job.note = "Muxeando / remuxeando a mp4…"
+            job.note = (
+                "Extrayendo audio y convirtiendo a mp3…"
+                if quality == "audio"
+                else "Muxeando / remuxeando a mp4…"
+            )
             loop.call_soon_threadsafe(job.event.set)
 
     is_audio = quality == "audio"
@@ -198,6 +158,9 @@ def _run_download(job_id: str, url: str, quality: str, loop) -> None:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
+        if info is None:
+            raise RuntimeError("yt-dlp no devolvió información.")
+
         produced = sorted(
             workdir.glob("*"),
             key=lambda p: p.stat().st_mtime,
@@ -217,7 +180,7 @@ def _run_download(job_id: str, url: str, quality: str, loop) -> None:
         job.mime = "audio/mpeg" if is_audio else "video/mp4"
         job.title = title
         log.info("job %s: completado → %s", job_id, f"{title}.{ext}")
-        HISTORY.append({
+        state.add_history_entry({
             "url": url,
             "title": title,
             "quality": quality,
@@ -226,7 +189,6 @@ def _run_download(job_id: str, url: str, quality: str, loop) -> None:
             "job_id": job_id,
             "completed": int(time.time()),
         })
-        _save_history(HISTORY)
         loop.call_soon_threadsafe(job.event.set)
     except Exception as exc:
         job.status = "error"

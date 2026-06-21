@@ -10,7 +10,7 @@ RUN useradd --create-home --no-log-init opengrab \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py config.py models.py download.py routes.py ./
+COPY *.py ./
 COPY static/ static/
 
 # Entrypoint: yt-dlp rompe seguido cuando YouTube cambia el player.
@@ -19,6 +19,7 @@ COPY static/ static/
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -e' \
+  'trap "exit 0" TERM INT' \
   'if [ "${OPENGRAB_AUTOUPDATE:-1}" = "1" ]; then' \
   '  echo "[opengrab] actualizando yt-dlp..."' \
   '  pip install --no-cache-dir -q -U yt-dlp || echo "[opengrab] update fallo, uso version baked"' \
