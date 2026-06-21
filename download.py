@@ -34,6 +34,19 @@ def _looks_like_supported(url: str) -> bool:
     return bool(_SUPPORTED_RE.match(url.strip()))
 
 
+def _enforce_size(path: Path, max_mb: int) -> None:
+    """Borra y falla si el archivo final supera el limite por-archivo.
+    Cubre el caso donde filesize_approx subestimo o el filtro no aplico (audio)."""
+    if max_mb and path.stat().st_size > max_mb * 1024 * 1024:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise RuntimeError(
+            f"El archivo supera el limite de {max_mb} MB (OPENGRAB_MAX_SIZE_MB)."
+        )
+
+
 def _safe_name(name: str) -> str:
     name = re.sub(r"[\x00-\x1f\x7f]", "", name)
     name = re.sub(r"[^\w \t.\-()\[\]]", "", name, flags=re.UNICODE).strip()
@@ -180,6 +193,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop) ->
 
         if not final.exists():
             raise RuntimeError(f"Archivo no encontrado: {final}")
+
+        _enforce_size(final, MAX_SIZE_MB)
 
         title = _safe_name(info.get("title", "video"))
         ext = final.suffix.lstrip(".")

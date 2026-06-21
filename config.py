@@ -41,6 +41,7 @@ else:
     TOKEN_WAS_GENERATED = False
 MAX_JOBS = _int_env("OPENGRAB_MAX_JOBS", 2, min_val=1)
 MAX_SIZE_MB = _int_env("OPENGRAB_MAX_SIZE_MB", 0, min_val=0)
+MAX_TOTAL_MB = _int_env("OPENGRAB_MAX_TOTAL_MB", 0, min_val=0)
 TRUST_XFF = os.environ.get("OPENGRAB_TRUST_XFF", "").strip() == "1"
 HISTORY_FILE = OUT_DIR / ".opengrab_history.json"
 HISTORY_MAX = 500

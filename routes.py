@@ -15,7 +15,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from slowapi import Limiter
 
-from config import FORMATS, HISTORY_MAX, MAX_JOBS, TOKEN, TRUST_XFF, _STATIC_DIR
+from config import (
+    FORMATS,
+    HISTORY_MAX,
+    MAX_JOBS,
+    MAX_TOTAL_MB,
+    TOKEN,
+    TRUST_XFF,
+    _STATIC_DIR,
+)
 from download import (
     _fetch_info,
     _fetch_playlist,
@@ -194,6 +202,12 @@ async def api_create_job(
         raise HTTPException(
             429,
             f"Limite de {MAX_JOBS} descarga(s) simultanea(s). Espera que termine una.",
+        )
+    if MAX_TOTAL_MB and state.current_usage_bytes() >= MAX_TOTAL_MB * 1024 * 1024:
+        raise HTTPException(
+            507,
+            f"Almacenamiento lleno (limite {MAX_TOTAL_MB} MB). "
+            "Borra descargas anteriores antes de seguir.",
         )
 
     job_id = uuid.uuid4().hex[:12]

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-06-21
+
+### Changed
+
+- **yt-dlp pinned to an exact version** (`==2026.6.9`) in `requirements.txt` for reproducible image builds, replacing the unpinned `>=2025.1` floor
+- **`OPENGRAB_AUTOUPDATE` now defaults to `0` (off)** — pulling the latest yt-dlp from PyPI unpinned on every start is a supply-chain risk; the secure/reproducible path is now the default. Opt in with `=1` when you need the newest fix immediately
+- Dependabot checks pip daily (grouped for yt-dlp) so the pin stays current via reviewed PRs instead of runtime pulls
+
+### Added
+
+- `OPENGRAB_YTDLP_VERSION` — when auto-update is enabled, install this exact version instead of latest (reproducible updates on your terms)
+- `OPENGRAB_MAX_TOTAL_MB` — disk budget for the download directory; new jobs are refused with HTTP 507 once current usage exceeds it
+- Hard per-file size enforcement after download: if the final file exceeds `OPENGRAB_MAX_SIZE_MB` it is deleted and the job fails, covering the cases where yt-dlp's `filesize_approx` filter underestimated or did not apply (audio)
+- `AppState.current_usage_bytes()` storage accounting helper
+- Tests: total-disk-budget refusal (507), per-file size enforcement, usage accounting, config defaults
+
 ## [1.2.1] — 2026-06-21
 
 ### Security

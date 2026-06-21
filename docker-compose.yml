@@ -13,7 +13,12 @@ services:
       - OPENGRAB_TOKEN=${OPENGRAB_TOKEN:-}
       - OPENGRAB_MAX_JOBS=${OPENGRAB_MAX_JOBS:-2}
       - OPENGRAB_MAX_SIZE_MB=${OPENGRAB_MAX_SIZE_MB:-0}
-      - OPENGRAB_AUTOUPDATE=${OPENGRAB_AUTOUPDATE:-1}
+      # Budget total de disco (MB). 0 = sin limite. Protege /downloads de llenarse.
+      - OPENGRAB_MAX_TOTAL_MB=${OPENGRAB_MAX_TOTAL_MB:-0}
+      # Auto-update de yt-dlp en cada arranque. Off por default (supply-chain).
+      # Si lo activas, podes fijar version con OPENGRAB_YTDLP_VERSION.
+      - OPENGRAB_AUTOUPDATE=${OPENGRAB_AUTOUPDATE:-0}
+      - OPENGRAB_YTDLP_VERSION=${OPENGRAB_YTDLP_VERSION:-}
       # Activar solo si OpenGrab está detrás de un reverse proxy (nginx, traefik)
       # que seteás vos. Con TRUST_XFF=1, el rate limiting usa la IP real del
       # cliente del header X-Forwarded-For. Sin proxy de confianza, dejalo en 0

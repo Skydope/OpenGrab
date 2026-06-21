@@ -13,16 +13,23 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 COPY static/ static/
 
-# Entrypoint: yt-dlp rompe seguido cuando YouTube cambia el player.
-# Por eso, salvo que pinees, se actualiza al arrancar. La version baked en la
-# imagen es el piso si el update falla o no hay red.
+# Entrypoint. yt-dlp se pinea exacto en requirements.txt (imagen reproducible).
+# El auto-update en runtime esta DESACTIVADO por default (OPENGRAB_AUTOUPDATE=0)
+# por supply-chain: jalar la ultima version de PyPI sin pin en cada arranque es
+# un riesgo. Si lo activas (=1), podes fijar la version con OPENGRAB_YTDLP_VERSION;
+# si la dejas vacia, instala la ultima. La version baked es el piso si falla.
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -e' \
   'trap "exit 0" TERM INT' \
-  'if [ "${OPENGRAB_AUTOUPDATE:-1}" = "1" ]; then' \
-  '  echo "[opengrab] actualizando yt-dlp..."' \
-  '  pip install --no-cache-dir -q -U --user yt-dlp || echo "[opengrab] update fallo, uso version baked"' \
+  'if [ "${OPENGRAB_AUTOUPDATE:-0}" = "1" ]; then' \
+  '  if [ -n "${OPENGRAB_YTDLP_VERSION:-}" ]; then' \
+  '    echo "[opengrab] instalando yt-dlp==${OPENGRAB_YTDLP_VERSION}..."' \
+  '    pip install --no-cache-dir -q --user "yt-dlp==${OPENGRAB_YTDLP_VERSION}" || echo "[opengrab] update fallo, uso version baked"' \
+  '  else' \
+  '    echo "[opengrab] actualizando yt-dlp a la ultima version..."' \
+  '    pip install --no-cache-dir -q -U --user yt-dlp || echo "[opengrab] update fallo, uso version baked"' \
+  '  fi' \
   'fi' \
   'exec python app.py' \
   > /entrypoint.sh && chmod +x /entrypoint.sh
@@ -32,7 +39,7 @@ USER opengrab
 ENV OPENGRAB_HOST=0.0.0.0 \
     OPENGRAB_PORT=8800 \
     OPENGRAB_DIR=/downloads \
-    OPENGRAB_AUTOUPDATE=1 \
+    OPENGRAB_AUTOUPDATE=0 \
     HOME=/tmp
 
 EXPOSE 8800

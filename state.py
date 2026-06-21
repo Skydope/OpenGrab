@@ -63,6 +63,19 @@ class AppState:
         )
 
     # ------------------------------------------------------------------ #
+    # Storage accounting
+    # ------------------------------------------------------------------ #
+    def current_usage_bytes(self) -> int:
+        total = 0
+        for p in self.out_dir.rglob("*"):
+            try:
+                if p.is_file():
+                    total += p.stat().st_size
+            except OSError:
+                pass
+        return total
+
+    # ------------------------------------------------------------------ #
     # Filesystem housekeeping
     # ------------------------------------------------------------------ #
     def cleanup_old_workdirs(self) -> None:

@@ -58,7 +58,7 @@ Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (the actively maintai
 - **Download history** persisted to a local JSON file
 - Optional **token authentication** to restrict access (`OPENGRAB_TOKEN`)
 - Configurable limits: max concurrent jobs, max file size
-- **Auto-updating yt-dlp** on container start — YouTube changes its player often; this keeps things working
+- **Pinned yt-dlp** in the image for reproducible builds; kept fresh via Dependabot. Optional opt-in auto-update on container start (`OPENGRAB_AUTOUPDATE=1`) for when you need the latest fix immediately
 - Production-ready **nginx reverse proxy** config with TLS, SSE-friendly settings, and security headers
 
 ---
