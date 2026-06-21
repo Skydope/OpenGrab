@@ -183,15 +183,20 @@ class Job(BaseModel):
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-_YT_RE = re.compile(
-    r"^https?://(www\.|m\.|music\.)?"
-    r"(youtube\.com/(watch\?|shorts/|live/|playlist\?|embed/)|youtu\.be/)",
+_SUPPORTED_RE = re.compile(
+    r"^https?://("
+    r"(www\.|m\.|music\.)?(youtube\.com/(watch\?|shorts/|live/|playlist\?|embed/)|youtu\.be/)|"
+    r"(www\.)?vimeo\.com/\d+|"
+    r"(www\.)?(x\.com|twitter\.com)/\w+/status/\d+|"
+    r"(www\.)?tiktok\.com/@?[\w.]+/video/\d+|"
+    r"(www\.)?instagram\.com/(p|reel|tv)/[\w-]+"
+    r")",
     re.IGNORECASE,
 )
 
 
-def _looks_like_youtube(url: str) -> bool:
-    return bool(_YT_RE.match(url.strip()))
+def _looks_like_supported(url: str) -> bool:
+    return bool(_SUPPORTED_RE.match(url.strip()))
 
 
 def _safe_name(name: str) -> str:
@@ -351,14 +356,33 @@ async def api_logout(response: Response):
 @limiter.limit("10/minute")
 async def api_info(request: Request, url: str, _: None = Depends(require_auth)):
     url = url.strip()
-    if not _looks_like_youtube(url):
-        raise HTTPException(400, "Eso no parece una URL de YouTube.")
+    if not _looks_like_supported(url):
+        raise HTTPException(400, "URL no soportada. Probá con YouTube, Vimeo, TikTok, X o Instagram.")
     try:
         info = await asyncio.to_thread(_fetch_info, url)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"No se pudo leer el video: {exc}")
 
     dur = info.get("duration") or 0
+    raw_formats = info.get("formats") or []
+    formats: list = []
+    for f in raw_formats:
+        if f.get("vcodec") == "none" and f.get("acodec") == "none":
+            continue
+        fmt = {
+            "format_id": f.get("format_id", ""),
+            "ext": f.get("ext", ""),
+            "resolution": f.get("resolution") or "",
+            "filesize": f.get("filesize") or f.get("filesize_approx"),
+            "vcodec": f.get("vcodec") or "",
+            "acodec": f.get("acodec") or "",
+            "tbr": f.get("tbr"),
+            "format_note": f.get("format_note") or "",
+        }
+        formats.append(fmt)
+    # Limit to most relevant (prefer ones with filesize, cap at 20)
+    formats.sort(key=lambda x: (0 if x["filesize"] else 1, -(x["tbr"] or 0)))
+    formats = formats[:20]
     return JSONResponse({
         "title": info.get("title", "—"),
         "channel": info.get("uploader") or info.get("channel") or "—",
@@ -366,14 +390,15 @@ async def api_info(request: Request, url: str, _: None = Depends(require_auth)):
         "duration_str": time.strftime("%H:%M:%S", time.gmtime(dur)) if dur else "—",
         "thumbnail": info.get("thumbnail"),
         "view_count": info.get("view_count"),
+        "formats": formats,
     })
 
 
 @app.get("/api/playlist")
 async def api_playlist(url: str, _: None = Depends(require_auth)):
     url = url.strip()
-    if not _looks_like_youtube(url):
-        raise HTTPException(400, "Eso no parece una URL de YouTube.")
+    if not _looks_like_supported(url):
+        raise HTTPException(400, "URL no soportada. Probá con YouTube, Vimeo, TikTok, X o Instagram.")
     try:
         info = await asyncio.to_thread(_fetch_playlist, url)
     except Exception as exc:
@@ -385,8 +410,8 @@ async def api_playlist(url: str, _: None = Depends(require_auth)):
 @limiter.limit("5/minute")
 async def api_create_job(request: Request, req: JobReq, _: None = Depends(require_auth)):
     url = req.url.strip()
-    if not _looks_like_youtube(url):
-        raise HTTPException(400, "Eso no parece una URL de YouTube.")
+    if not _looks_like_supported(url):
+        raise HTTPException(400, "URL no soportada. Probá con YouTube, Vimeo, TikTok, X o Instagram.")
     if req.quality not in FORMATS:
         raise HTTPException(400, "Calidad inválida.")
     active = sum(1 for j in JOBS.values() if j.status in
@@ -471,6 +496,7 @@ async def health():
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html = _INDEX_HTML.replace("__AUTH_REQUIRED__", "true" if TOKEN else "false")
+    html = html.replace("__FORMATS_JSON__", _json.dumps(FORMATS))
     return HTMLResponse(html)
 
 

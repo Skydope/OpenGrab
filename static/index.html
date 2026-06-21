@@ -13,6 +13,8 @@
   <header>
     <span class="logo">yt<b>grab</b></span>
     <span class="tag"><span class="dot"></span>self-hosted · yt-dlp</span>
+    <button class="theme-btn" @click="toggleTheme" :aria-label="theme==='dark'?'Tema claro':'Tema oscuro'"
+            x-text="theme==='dark'?'☀️':'🌙'"></button>
   </header>
 
   <!-- Auth card -->
@@ -31,11 +33,14 @@
 
   <!-- Main card -->
   <div class="card" x-show="authenticated" x-cloak>
-    <label class="fld" for="url">URL de YouTube</label>
+    <label class="fld" for="url">URL del video</label>
     <div class="row">
-      <input id="url" type="text" placeholder="https://www.youtube.com/watch?v=…"
+      <input id="url" type="text" placeholder="https://…"
              autocomplete="off" spellcheck="false" x-model="url"
              @keydown.enter="inspect">
+      <button class="copy-btn" @click="copyCommand" :disabled="!url"
+              :class="{copied: cmdCopied}" x-text="cmdCopied ? '✓' : '📋'"
+              title="Copiar comando yt-dlp"></button>
       <button class="go" @click="inspect" :disabled="inspecting">
         <span x-show="!inspecting">Analizar</span>
         <span x-show="inspecting">…</span>
@@ -59,6 +64,25 @@
               @click="quality = q.id"
               x-text="q.label"></span>
       </template>
+    </div>
+
+    <!-- Format preview -->
+    <div x-show="formats.length" style="margin-top:14px">
+      <div style="font-family:var(--mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; cursor:pointer"
+           @click="showFormats = !showFormats"
+           x-text="showFormats ? 'formatos ▾' : 'formatos ▸ (' + formats.length + ')'"></div>
+      <table class="fmt-table" x-show="showFormats">
+        <thead><tr><th>Calidad</th><th>Codec</th><th class="fsize">Tamaño</th></tr></thead>
+        <tbody>
+          <template x-for="f in formats" :key="f.format_id">
+            <tr @click="quality = f.format_id" :class="{sel: quality === f.format_id}">
+              <td x-text="f.format_note || f.resolution || f.format_id"></td>
+              <td x-text="(f.vcodec||'?') + ' / ' + (f.acodec||'?')"></td>
+              <td class="fsize" x-text="f.filesize ? (f.filesize/1048576).toFixed(1)+' MB' : '—'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
     </div>
 
     <!-- Playlist panel -->
@@ -86,7 +110,7 @@
     <!-- Terminal output -->
     <div class="term" :class="{show: terminal.length > 0}">
       <div class="bar-head">
-        <span class="tl"><i style="background:#E5484D"></i><i style="background:#E8A02C"></i><i style="background:#5BC97E"></i></span>
+        <span class="tl"><i></i><i></i><i></i></span>
         <span>yt-dlp</span>
       </div>
       <div class="progress" :class="{done: progressDone}">
@@ -141,11 +165,30 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('app', () => ({
     // ── Auth ──────────────────────────────────
     AUTH_REQUIRED: "__AUTH_REQUIRED__" === "true",
+    FORMATS: __FORMATS_JSON__,
     token: "",
     authLoading: false,
     authenticated: false,
 
+    // ── Theme ─────────────────────────────────
+    theme: "dark",
+
+    initTheme() {
+      const saved = localStorage.getItem("ytgrab-theme");
+      if (saved) { this.theme = saved; }
+      this.applyTheme();
+    },
+    toggleTheme() {
+      this.theme = this.theme === "dark" ? "light" : "dark";
+      localStorage.setItem("ytgrab-theme", this.theme);
+      this.applyTheme();
+    },
+    applyTheme() {
+      document.documentElement.setAttribute("data-theme", this.theme);
+    },
+
     async init() {
+      this.initTheme();
       if (!this.AUTH_REQUIRED) { this.authenticated = true; return; }
       try {
         const r = await fetch("/api/info?url=http://x");
@@ -180,6 +223,8 @@ document.addEventListener('alpine:init', () => {
       { id: "480p",  label: "480p" },
       { id: "audio", label: "solo audio · mp3" },
     ],
+    formats: [],
+    showFormats: false,
 
     // ── URL / inspect ─────────────────────────
     url: "",
@@ -188,6 +233,7 @@ document.addEventListener('alpine:init', () => {
     thumbnail: "",
     title: "—",
     subtitle: "—",
+    cmdCopied: false,
 
     // ── Playlist ──────────────────────────────
     isPlaylist: false,
@@ -232,6 +278,8 @@ document.addEventListener('alpine:init', () => {
           ? " · " + Intl.NumberFormat("es-AR").format(data.view_count) + " views"
           : "";
         this.subtitle = (data.channel || "") + " · " + (data.duration_str || "") + views;
+        this.formats = data.formats || [];
+        this.showFormats = false;
 
         if (/[?&]list=/.test(this.url)) {
           this.isPlaylist = true;
@@ -245,6 +293,21 @@ document.addEventListener('alpine:init', () => {
       } finally {
         this.inspecting = false;
       }
+    },
+
+    async copyCommand() {
+      const fmt = this.FORMATS[this.quality] || this.FORMATS.best;
+      const cmd = 'yt-dlp -f "' + fmt + '" --merge-output-format mp4 "' + this.url.trim() + '"';
+      try {
+        await navigator.clipboard.writeText(cmd);
+      } catch (e) {
+        const ta = document.createElement("textarea");
+        ta.value = cmd; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta);
+      }
+      this.cmdCopied = true;
+      setTimeout(() => { this.cmdCopied = false; }, 2000);
     },
 
     // ── Playlist ──────────────────────────────
@@ -411,6 +474,8 @@ document.addEventListener('alpine:init', () => {
       this.errorMsg = "";
       this.isPlaylist = false;
       this.playlistVideos = [];
+      this.formats = [];
+      this.showFormats = false;
     },
 
     // ── History ───────────────────────────────
