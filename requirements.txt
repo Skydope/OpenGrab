@@ -1,0 +1,5 @@
+# yt-dlp es el floor reproducible; el entrypoint lo actualiza al arrancar
+# (YTGRAB_AUTOUPDATE=1). Pineá una versión conocida si querés reproducibilidad estricta.
+fastapi>=0.110
+uvicorn>=0.27
+yt-dlp>=2025.1

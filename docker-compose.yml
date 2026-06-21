@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  ytgrab:
+    build: .
+    container_name: ytgrab
+    ports:
+      - "${YTGRAB_PORT:-8800}:8800"
+    volumes:
+      - ./downloads:/downloads
+    environment:
+      - YTGRAB_HOST=0.0.0.0
+      - YTGRAB_PORT=8800
+      - YTGRAB_DIR=/downloads
+      - YTGRAB_TOKEN=${YTGRAB_TOKEN:-}
+      - YTGRAB_MAX_JOBS=${YTGRAB_MAX_JOBS:-2}
+      - YTGRAB_MAX_SIZE_MB=${YTGRAB_MAX_SIZE_MB:-0}
+      - YTGRAB_AUTOUPDATE=${YTGRAB_AUTOUPDATE:-1}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8800/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
