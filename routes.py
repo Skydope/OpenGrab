@@ -273,12 +273,9 @@ async def api_job_file(
     media_type = job.mime or "application/octet-stream"
 
     async def file_iterator():
-        try:
-            with open(file_path, "rb") as f:
-                while chunk := f.read(65536):
-                    yield chunk
-        finally:
-            pass
+        with open(file_path, "rb") as f:
+            while chunk := f.read(65536):
+                yield chunk
 
     return StreamingResponse(
         file_iterator(),
