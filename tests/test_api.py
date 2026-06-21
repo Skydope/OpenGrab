@@ -98,8 +98,8 @@ def test_api_jobs_file_serves_and_cleans(client, app_state):
     assert r.headers["content-type"] == "video/mp4"
     assert "attachment" in r.headers.get("content-disposition", "")
 
-    assert not workdir.exists()
     assert job.filepath == ""
+    assert workdir.exists()
 
 
 def test_api_jobs_file_not_done(client, app_state):

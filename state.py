@@ -82,24 +82,28 @@ class AppState:
     # ------------------------------------------------------------------ #
     # Background eviction
     # ------------------------------------------------------------------ #
+    def evict_once(self, cutoff_age: float = 3600) -> int:
+        cutoff = time.time() - cutoff_age
+        to_delete = [
+            jid
+            for jid, j in self.jobs.items()
+            if j.status in ("done", "error") and j.created < cutoff
+        ]
+        for jid in to_delete:
+            job = self.jobs[jid]
+            if job.workdir:
+                wd = Path(job.workdir)
+                if wd.exists():
+                    try:
+                        shutil.rmtree(wd, ignore_errors=True)
+                    except OSError:
+                        pass
+            del self.jobs[jid]
+        if to_delete:
+            log.info("evacuados %d jobs viejos de memoria", len(to_delete))
+        return len(to_delete)
+
     async def evict_loop(self) -> None:
         while True:
             await asyncio.sleep(300)
-            cutoff = time.time() - 3600
-            to_delete = [
-                jid
-                for jid, j in self.jobs.items()
-                if j.status in ("done", "error") and j.created < cutoff
-            ]
-            for jid in to_delete:
-                job = self.jobs[jid]
-                if job.workdir:
-                    wd = Path(job.workdir)
-                    if wd.exists():
-                        try:
-                            shutil.rmtree(wd, ignore_errors=True)
-                        except OSError:
-                            pass
-                del self.jobs[jid]
-            if to_delete:
-                log.info("evacuados %d jobs viejos de memoria", len(to_delete))
+            self.evict_once()

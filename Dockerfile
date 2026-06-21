@@ -22,7 +22,7 @@ RUN printf '%s\n' \
   'trap "exit 0" TERM INT' \
   'if [ "${OPENGRAB_AUTOUPDATE:-1}" = "1" ]; then' \
   '  echo "[opengrab] actualizando yt-dlp..."' \
-  '  pip install --no-cache-dir -q -U yt-dlp || echo "[opengrab] update fallo, uso version baked"' \
+  '  pip install --no-cache-dir -q -U --user yt-dlp || echo "[opengrab] update fallo, uso version baked"' \
   'fi' \
   'exec python app.py' \
   > /entrypoint.sh && chmod +x /entrypoint.sh

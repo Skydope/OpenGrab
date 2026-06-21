@@ -34,8 +34,6 @@ def test_rate_limiting_jobs(client, app_state, monkeypatch):
 
 
 def test_eviction_removes_old_jobs(client, app_state):
-    import asyncio
-
     from models import Job
 
     old_job = Job(id="old-job", created=0.0)
@@ -46,18 +44,8 @@ def test_eviction_removes_old_jobs(client, app_state):
     recent_job.status = "downloading"
     app_state.jobs["recent-job"] = recent_job
 
-    async def trigger_eviction():
-        cutoff = time.time() - 3600
-        to_delete = [
-            jid
-            for jid, j in app_state.jobs.items()
-            if j.status in ("done", "error") and j.created < cutoff
-        ]
-        for jid in to_delete:
-            del app_state.jobs[jid]
-
-    asyncio.run(trigger_eviction())
-
+    count = app_state.evict_once()
+    assert count == 1
     assert "old-job" not in app_state.jobs
     assert "recent-job" in app_state.jobs
 

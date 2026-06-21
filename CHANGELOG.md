@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-06-21
+
+### Added
+
+- Interactive CLI installer (`install.py`) with recommended and advanced modes
+- `pyproject.toml` with dev dependencies and pytest-asyncio configuration
+- `state.py`: AppState class replacing global mutable state with dependency injection
+- Rate limiting key function using `X-Forwarded-For` for correct per-client limits behind nginx
+- 39 pytest tests (up from 29), including rate limiting, eviction, and SSE generator tests
+
+### Changed
+
+- Download filepath now uses yt-dlp's `requested_downloads` canonical path instead of glob+mtime
+- Token comparison uses `secrets.compare_digest` for timing-attack resistance
+- Docker auto-update uses `pip install --user` to work under non-root user
+- Workdir cleanup deferred to eviction loop (1h) instead of immediate deletion on file download
+- `.env.example` defaults to `127.0.0.1` (localhost) with security warning comments
+- Cookie `secure` flag reads `X-Forwarded-Proto` for correct behavior behind reverse proxy
+- Color contrast improved to meet WCAG AA (4.5:1) for dark and light themes
+- Nginx config updated to ECDHE-only ciphers and Cross-Origin headers
+
+### Fixed
+
+- Config env vars (`PORT`, `MAX_JOBS`, `MAX_SIZE_MB`) no longer crash on invalid values
+- `MAX_JOBS=0` no longer permanently blocks all job creation
+- `_sanitize_url` now strips newlines to prevent log injection
+- `extract_info` return value checked for `None` in download runner
+- Audio-only download note corrected from "mp4" to "mp3"
+- Content-Disposition header escapes double quotes in filenames
+- `filesize=0` no longer incorrectly deprioritized in format sorting
+- `view_count` defaults to 0 instead of `None` (prevented frontend "NaN")
+- Rate-limited responses now include security headers
+- SSE generator extracted to testable `_job_events_stream` function
+- Auth check on page load uses `/api/history` instead of hitting yt-dlp
+- Playlist batch download retries on rate limit (429) with 20s delay
+- `asyncio.create_task` references now tracked to prevent garbage collection
+- `threading.Lock` protects concurrent history file writes from thread pool
+
 ## [1.0.0] — 2026-06-21
 
 ### Added

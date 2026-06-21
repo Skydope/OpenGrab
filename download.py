@@ -161,15 +161,24 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop) ->
         if info is None:
             raise RuntimeError("yt-dlp no devolvió información.")
 
-        produced = sorted(
-            workdir.glob("*"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        produced = [p for p in produced if p.is_file()]
-        if not produced:
-            raise RuntimeError("No se generó ningún archivo.")
-        final = produced[0]
+        final = None
+        requested = info.get("requested_downloads") or []
+        if requested and requested[0].get("filepath"):
+            final = Path(requested[0]["filepath"])
+
+        if final is None:
+            produced = sorted(
+                workdir.glob("*"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            produced = [p for p in produced if p.is_file()]
+            if not produced:
+                raise RuntimeError("No se generó ningún archivo.")
+            final = produced[0]
+
+        if not final.exists():
+            raise RuntimeError(f"Archivo no encontrado: {final}")
 
         title = _safe_name(info.get("title", "video"))
         ext = final.suffix.lstrip(".")

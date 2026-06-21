@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import logging
+import secrets
 import shutil
 import time
 import uuid
@@ -12,7 +13,6 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from config import FORMATS, HISTORY_MAX, MAX_JOBS, TOKEN, _STATIC_DIR
 from download import (
@@ -27,9 +27,20 @@ from state import AppState
 
 log = logging.getLogger("opengrab")
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
+def _client_key(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+limiter = Limiter(key_func=_client_key, default_limits=["30/minute"])
 
 router = APIRouter()
+
+_running_tasks: set[asyncio.Task] = set()
 
 
 # --------------------------------------------------------------------------- #
@@ -43,11 +54,11 @@ def require_auth(request: Request) -> None:
     if not TOKEN:
         return
     auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer ") and auth[7:] == TOKEN:
+    if auth.startswith("Bearer ") and secrets.compare_digest(auth[7:], TOKEN):
         return
-    if request.query_params.get("token") == TOKEN:
+    if secrets.compare_digest(request.query_params.get("token", ""), TOKEN):
         return
-    if request.cookies.get("opengrab_token") == TOKEN:
+    if secrets.compare_digest(request.cookies.get("opengrab_token", ""), TOKEN):
         return
     raise HTTPException(
         401, "Token requerido. Usa Authorization: Bearer <token> o ?token=..."
@@ -185,9 +196,11 @@ async def api_create_job(
     state.jobs[job_id] = Job(id=job_id, created=time.time())
     log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
     loop = asyncio.get_running_loop()
-    asyncio.create_task(
+    task = asyncio.create_task(
         asyncio.to_thread(_run_download, state, job_id, url, req.quality, loop)
     )
+    _running_tasks.add(task)
+    task.add_done_callback(_running_tasks.discard)
     return {"job_id": job_id}
 
 
@@ -266,11 +279,6 @@ async def api_job_file(
                 while chunk := f.read(65536):
                     yield chunk
         finally:
-            if workdir and Path(workdir).exists():
-                try:
-                    shutil.rmtree(workdir, ignore_errors=True)
-                except OSError:
-                    pass
             job.filepath = ""
 
     return StreamingResponse(
