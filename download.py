@@ -35,7 +35,8 @@ def _looks_like_supported(url: str) -> bool:
 
 
 def _safe_name(name: str) -> str:
-    name = re.sub(r"[^\w\s.\-()\[\]]", "", name, flags=re.UNICODE).strip()
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+    name = re.sub(r"[^\w \t.\-()\[\]]", "", name, flags=re.UNICODE).strip()
     return (name or "video")[:120]
 
 

@@ -1,6 +1,6 @@
-def test_require_auth_no_token(client):
+def test_require_auth_no_token(client_no_auth):
     """With no OPENGRAB_TOKEN set, all requests should pass."""
-    r = client.get("/api/info?url=http://x")
+    r = client_no_auth.get("/api/info?url=http://x")
     assert r.status_code != 401
 
 

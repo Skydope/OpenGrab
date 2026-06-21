@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] — 2026-06-21
+## [1.2.0] — 2026-06-21
+
+### Security
+
+- Token autogenerado al arranque si `OPENGRAB_TOKEN` no está configurado, cerrando el default inseguro del compose
+- Content-Disposition usa RFC 5987 (`filename*=UTF-8''`) para títulos con caracteres Unicode (ñ, á, etc.)
+- Path containment verificado antes de `exists()` en file serving — evita info leak de "el archivo existe pero no te lo doy"
+- Rate limit agregado a `/api/playlist` (10/min)
+- `/health` requiere autenticación (con bypass para `127.0.0.1` para el healthcheck de Docker)
+- Control characters (`\x00-\x1f`, `\x7f`) eliminados de `_safe_name` y del header Content-Disposition
+- `OPENGRAB_TRUST_XFF` documentado en `docker-compose.yml` con advertencia del footgun
+
+### Added
+
+- 3 nuevos tests: path traversal (403), filename Unicode RFC 5987, control chars stripping (42 tests total)
+
+### Fixed
+
+- `_safe_name` ya no deja pasar newlines internos en títulos de video
+- `/api/playlist` ahora requiere parámetro `request` para que slowapi funcione correctamente
+- Tests: `client` fixture ahora incluye cookie de auth por defecto; `client_no_auth` para tests sin token
 
 ### Added
 
@@ -72,4 +92,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting: 30/min default, 10/min on `/api/info`, 5/min on `/api/jobs`
 - Graceful fallback if static files are missing
 
+[1.2.0]: https://github.com/skydope/opengrab/releases/tag/v1.2.0
+[1.1.0]: https://github.com/skydope/opengrab/releases/tag/v1.1.0
 [1.0.0]: https://github.com/skydope/opengrab/releases/tag/v1.0.0

@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from config import HOST, HISTORY_FILE, OUT_DIR, PORT, _STATIC_DIR
+from config import HOST, HISTORY_FILE, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
 from routes import limiter, router
 from state import AppState
 
@@ -99,6 +99,10 @@ app.include_router(router)
 
 def main() -> None:
     log.info("OpenGrab -> http://%s:%d (salida: %s)", HOST, PORT, OUT_DIR)
+    if TOKEN_WAS_GENERATED:
+        log.info("Auth: token autogenerado = %s", TOKEN)
+    else:
+        log.info("Auth: usando token de OPENGRAB_TOKEN")
     uvicorn.run(app, host=HOST, port=PORT, log_level="info", access_log=False)
 
 

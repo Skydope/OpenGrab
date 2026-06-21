@@ -17,7 +17,7 @@ def test_index_returns_html(client):
 def test_index_injects_auth_flag(client):
     r = client.get("/")
     assert "__AUTH_REQUIRED__" not in r.text
-    assert '"false"' in r.text or "false" in r.text
+    assert '"true"' in r.text or "true" in r.text
 
 
 def test_api_info_invalid_url(client):
@@ -160,3 +160,63 @@ def test_content_disposition_escape(client, app_state):
     cd = r.headers.get("content-disposition", "")
     assert '\\"' in cd
     assert 'video\\"quote.mp4' in cd
+
+
+def test_file_serving_path_traversal_blocked(client, app_state):
+    from models import Job
+
+    job = Job(id="traverse", created=1000000.0)
+    job.status = "done"
+    job.filepath = "/etc/passwd"
+    job.filename = "passwd"
+    job.mime = "text/plain"
+    app_state.jobs["traverse"] = job
+
+    r = client.get("/api/jobs/traverse/file")
+    assert r.status_code == 403
+
+
+def test_content_disposition_unicode_filename(client, app_state):
+    from models import Job
+
+    workdir = app_state.out_dir / "unicode_test"
+    workdir.mkdir()
+    test_file = workdir / "video.mp4"
+    test_file.write_bytes(b"content")
+
+    job = Job(id="unicode123", created=1000000.0)
+    job.status = "done"
+    job.filepath = str(test_file)
+    job.filename = "video con caño.mp4"
+    job.mime = "video/mp4"
+    job.workdir = str(workdir)
+    app_state.jobs["unicode123"] = job
+
+    r = client.get("/api/jobs/unicode123/file")
+    assert r.status_code == 200
+    cd = r.headers.get("content-disposition", "")
+    assert "filename*=UTF-8''" in cd
+    assert "C3%B1o" in cd
+
+
+def test_content_disposition_control_chars_stripped(client, app_state):
+    from models import Job
+
+    workdir = app_state.out_dir / "newline_test"
+    workdir.mkdir()
+    test_file = workdir / "video.mp4"
+    test_file.write_bytes(b"content")
+
+    job = Job(id="ctrl123", created=1000000.0)
+    job.status = "done"
+    job.filepath = str(test_file)
+    job.filename = "video\ncon\nsaltos.mp4"
+    job.mime = "video/mp4"
+    job.workdir = str(workdir)
+    app_state.jobs["ctrl123"] = job
+
+    r = client.get("/api/jobs/ctrl123/file")
+    assert r.status_code == 200
+    cd = r.headers.get("content-disposition", "")
+    assert "\n" not in cd
+    assert "video" in cd

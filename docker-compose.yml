@@ -14,5 +14,9 @@ services:
       - OPENGRAB_MAX_JOBS=${OPENGRAB_MAX_JOBS:-2}
       - OPENGRAB_MAX_SIZE_MB=${OPENGRAB_MAX_SIZE_MB:-0}
       - OPENGRAB_AUTOUPDATE=${OPENGRAB_AUTOUPDATE:-1}
+      # Activar solo si OpenGrab está detrás de un reverse proxy (nginx, traefik)
+      # que seteás vos. Con TRUST_XFF=1, el rate limiting usa la IP real del
+      # cliente del header X-Forwarded-For. Sin proxy de confianza, dejalo en 0
+      # porque cualquiera puede spoofear el header y saltar los límites.
       - OPENGRAB_TRUST_XFF=${OPENGRAB_TRUST_XFF:-0}
     restart: unless-stopped

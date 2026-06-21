@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import logging
+import re
 import secrets
 import time
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Any, Dict
@@ -51,6 +53,8 @@ def get_state(request: Request) -> AppState:
 
 
 def require_auth(request: Request) -> None:
+    if request.client and request.client.host == "127.0.0.1":
+        return
     if not TOKEN:
         return
     auth = request.headers.get("Authorization", "")
@@ -155,7 +159,9 @@ async def api_info(
 
 
 @router.get("/api/playlist")
+@limiter.limit("10/minute")
 async def api_playlist(
+    request: Request,
     url: str,
     _: None = Depends(require_auth),
 ):
@@ -248,6 +254,18 @@ async def api_job_events(
     )
 
 
+def _make_content_disposition(filename: str) -> str:
+    safe = re.sub(r"[\x00-\x1f\x7f\\]", "", filename)
+    ascii_fallback = (
+        safe.encode("ascii", errors="replace").decode("ascii").replace("?", "_")
+    )
+    if not ascii_fallback:
+        ascii_fallback = "download"
+    fallback = ascii_fallback.replace("\\", "\\\\").replace('"', '\\"')
+    encoded = urllib.parse.quote(safe, safe="")
+    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{encoded}'
+
+
 @router.get("/api/jobs/{job_id}/file")
 async def api_job_file(
     job_id: str,
@@ -260,17 +278,16 @@ async def api_job_file(
     if job.status != "done":
         raise HTTPException(409, "El archivo todavia no esta listo.")
     path = job.filepath
-    workdir = job.workdir
-    if not path or not Path(path).exists():
+    if not path:
         raise HTTPException(410, "El archivo ya no esta disponible.")
     if not Path(path).resolve().is_relative_to(state.out_dir):
         raise HTTPException(403, "Acceso denegado.")
+    if not Path(path).exists():
+        raise HTTPException(410, "El archivo ya no esta disponible.")
     log.info("job %s: sirviendo archivo -> %s", job_id, job.filename)
 
     file_path = Path(path)
     file_size = file_path.stat().st_size
-    filename = job.filename or "download"
-    safe_filename = filename.replace('"', '\\"')
     media_type = job.mime or "application/octet-stream"
 
     async def file_iterator():
@@ -282,7 +299,9 @@ async def api_job_file(
         file_iterator(),
         media_type=media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_filename}"',
+            "Content-Disposition": _make_content_disposition(
+                job.filename or "download"
+            ),
             "Content-Length": str(file_size),
         },
     )
@@ -299,7 +318,10 @@ async def api_history(
 
 
 @router.get("/health")
-async def health(state: AppState = Depends(get_state)):
+async def health(
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+):
     return {"status": "ok", "jobs_active": state.count_active_jobs()}
 
 

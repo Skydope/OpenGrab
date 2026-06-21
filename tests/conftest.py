@@ -17,7 +17,7 @@ def clean_env(monkeypatch):
     monkeypatch.setenv(
         "OPENGRAB_DIR", os.path.join(os.path.dirname(__file__), "_test_downloads")
     )
-    monkeypatch.setenv("OPENGRAB_TOKEN", "")
+    monkeypatch.setenv("OPENGRAB_TOKEN", "test-token")
     monkeypatch.setenv("OPENGRAB_MAX_JOBS", "1")
     monkeypatch.setenv("OPENGRAB_AUTOUPDATE", "0")
 
@@ -38,6 +38,14 @@ def _make_client(**extra_env):
 
 @pytest.fixture
 def client():
+    with _make_client() as c:
+        c.cookies.set("opengrab_token", "test-token")
+        yield c
+
+
+@pytest.fixture
+def client_no_auth(monkeypatch):
+    monkeypatch.setenv("OPENGRAB_TOKEN", "")
     with _make_client() as c:
         yield c
 
