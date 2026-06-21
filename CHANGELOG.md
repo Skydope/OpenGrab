@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-06-21
+
+### Changed
+
+- **`asyncio.Event` moved from `Job` model to `AppState.job_events`** — `Job` is now a pure Pydantic model without `arbitrary_types_allowed`
+- **`_running_tasks` moved from module-level global to `AppState.running_tasks`** — last piece of mutable global state eliminated
+- **Logo updated** from "ytgrab" to "OpenGrab" in the web UI
+- **README badge** bumped to 1.4.0; installer section removed; file tree and test count updated
+
+### Removed
+
+- `install.py` — deprecated interactive installer; superseded by README + docker-compose
+
+### Added
+
+- 8 tests for `_run_download` in new `tests/test_download.py` (61 tests total): video success, audio success, fallback glob, extract_info None, no files, file not found, size enforcement, hook percent
+
+### Fixed
+
+- Dead CSS rule `.meta.hide` removed from `style.css`
+
 ## [1.3.0] — 2026-06-21
 
 ### Changed

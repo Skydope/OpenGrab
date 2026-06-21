@@ -1,14 +1,12 @@
 def test_job_model():
     from models import Job
-    import asyncio
 
     job = Job(id="abc123", created=12345.0)
     assert job.id == "abc123"
     assert job.status == "queued"
     assert job.percent == 0.0
     assert job.speed == ""
-    assert job.event is not None
-    assert isinstance(job.event, asyncio.Event)
+    assert not hasattr(job, "event")
 
 
 def test_job_model_dump_excludes_event():

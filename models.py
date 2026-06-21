@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class AuthReq(BaseModel):
@@ -15,8 +13,6 @@ class JobReq(BaseModel):
 
 
 class Job(BaseModel):
-    model_config = {"arbitrary_types_allowed": True}
-
     id: str
     status: str = "queued"
     percent: float = 0.0
@@ -32,4 +28,3 @@ class Job(BaseModel):
     downloaded: int = 0
     total: int = 0
     title: str = ""
-    event: asyncio.Event = Field(default_factory=asyncio.Event, exclude=True)

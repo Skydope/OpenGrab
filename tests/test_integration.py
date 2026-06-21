@@ -67,6 +67,7 @@ async def test_job_events_stream_lifecycle():
     job = Job(id="sse-test", created=time.time())
     job.status = "starting"
     state.jobs["sse-test"] = job
+    state.job_events["sse-test"] = asyncio.Event()
 
     events = []
 
@@ -80,12 +81,12 @@ async def test_job_events_stream_lifecycle():
     await asyncio.sleep(0.1)
     job.status = "downloading"
     job.percent = 42.0
-    job.event.set()
+    state.job_events["sse-test"].set()
 
     await asyncio.sleep(0.1)
     job.status = "done"
     job.filename = "video.mp4"
-    job.event.set()
+    state.job_events["sse-test"].set()
 
     await task
 
@@ -113,6 +114,7 @@ async def test_job_events_stream_error():
     job = Job(id="sse-err", created=time.time())
     job.status = "starting"
     state.jobs["sse-err"] = job
+    state.job_events["sse-err"] = asyncio.Event()
 
     events = []
 
@@ -126,7 +128,7 @@ async def test_job_events_stream_error():
     await asyncio.sleep(0.1)
     job.status = "error"
     job.error = "Something went wrong"
-    job.event.set()
+    state.job_events["sse-err"].set()
 
     await task
 

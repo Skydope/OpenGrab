@@ -113,8 +113,11 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop) ->
     job = state.jobs[job_id]
     workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
     job.workdir = str(workdir)
+    evt = state.job_events.get(job_id)
 
     def hook(d: Dict[str, Any]) -> None:
+        if evt is None:
+            return
         status = d.get("status")
         if status == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
@@ -126,7 +129,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop) ->
             job.eta = d.get("_eta_str", "").strip()
             job.downloaded = done
             job.total = total
-            loop.call_soon_threadsafe(job.event.set)
+            loop.call_soon_threadsafe(evt.set)
         elif status == "finished":
             job.status = "processing"
             job.percent = 100.0
@@ -135,7 +138,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop) ->
                 if quality == "audio"
                 else "Muxeando / remuxeando a mp4…"
             )
-            loop.call_soon_threadsafe(job.event.set)
+            loop.call_soon_threadsafe(evt.set)
 
     is_audio = quality == "audio"
     outtmpl = str(workdir / "%(title)s.%(ext)s")
@@ -214,11 +217,11 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop) ->
             "job_id": job_id,
             "completed": int(time.time()),
         })
-        loop.call_soon_threadsafe(job.event.set)
+        loop.call_soon_threadsafe(evt.set)
     except Exception as exc:
         job.status = "error"
         job.error = str(exc)
-        loop.call_soon_threadsafe(job.event.set)
+        loop.call_soon_threadsafe(evt.set)
         log.error("job %s: falló", job_id, exc_info=True)
     finally:
-        loop.call_soon_threadsafe(job.event.set)
+        loop.call_soon_threadsafe(evt.set)

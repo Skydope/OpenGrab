@@ -77,7 +77,6 @@
     display:flex; gap:14px; margin-top:18px; padding-top:18px;
     border-top:1px solid var(--line);
   }
-  .meta.hide{display:none}
   .thumb{width:120px; aspect-ratio:16/9; border-radius:6px; object-fit:cover;
          background:var(--ink); border:1px solid var(--line); flex:none}
   .meta .info{min-width:0}

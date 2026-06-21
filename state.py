@@ -24,6 +24,8 @@ class AppState:
         self.history_file = history_file
         self.history_max = history_max
         self.jobs: dict[str, Job] = {}
+        self.job_events: dict[str, asyncio.Event] = {}
+        self.running_tasks: set = set()
         self.history: list[dict] = []
         self._history_lock = threading.Lock()
 
@@ -112,6 +114,7 @@ class AppState:
                     except OSError:
                         pass
             del self.jobs[jid]
+            self.job_events.pop(jid, None)
         if to_delete:
             log.info("evacuados %d jobs viejos de memoria", len(to_delete))
         return len(to_delete)

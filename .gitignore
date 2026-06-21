@@ -6,6 +6,7 @@ downloads/
 .venv/
 *.tmp
 *.patch
+improve.md
 .DS_Store
 .pytest_cache/
 tests/_test_downloads/

@@ -50,8 +50,6 @@ limiter = Limiter(key_func=_client_key, default_limits=["30/minute"])
 
 router = APIRouter()
 
-_running_tasks: set[asyncio.Task] = set()
-
 
 # --------------------------------------------------------------------------- #
 # Dependencies
@@ -212,13 +210,14 @@ async def api_create_job(
 
     job_id = uuid.uuid4().hex[:12]
     state.jobs[job_id] = Job(id=job_id, created=time.time())
+    state.job_events[job_id] = asyncio.Event()
     log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
     loop = asyncio.get_running_loop()
     task = asyncio.create_task(
         asyncio.to_thread(_run_download, state, job_id, url, req.quality, loop)
     )
-    _running_tasks.add(task)
-    task.add_done_callback(_running_tasks.discard)
+    state.running_tasks.add(task)
+    task.add_done_callback(state.running_tasks.discard)
     return {"job_id": job_id}
 
 
@@ -228,7 +227,9 @@ async def _job_events_stream(state: AppState, job_id: str):
         job = state.jobs.get(job_id)
         if job is None:
             break
-        event = job.event
+        event = state.job_events.get(job_id)
+        if event is None:
+            break
         if event:
             try:
                 await asyncio.wait_for(event.wait(), timeout=2.0)
