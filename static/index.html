@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ytgrab</title>
+<title>OpenGrab</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/alpine.min.js" defer></script>
 </head>
@@ -21,7 +21,7 @@
   <div class="card auth-card" x-show="!authenticated" x-cloak>
     <label class="fld" for="token">Token de acceso</label>
     <div class="row">
-      <input id="token" type="password" placeholder="Ingresa el token configurado en YTGRAB_TOKEN"
+      <input id="token" type="password"               placeholder="Ingresa el token configurado en OPENGRAB_TOKEN"
              autocomplete="off" spellcheck="false" x-model="token"
              @keydown.enter="doAuth">
       <button class="go" @click="doAuth" :disabled="authLoading">
@@ -186,13 +186,17 @@ document.addEventListener('alpine:init', () => {
     theme: "dark",
 
     initTheme() {
-      const saved = localStorage.getItem("ytgrab-theme");
-      if (saved) { this.theme = saved; }
+      const saved = localStorage.getItem("opengrab-theme");
+      if (saved) {
+        this.theme = saved;
+      } else {
+        this.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
       this.applyTheme();
     },
     toggleTheme() {
       this.theme = this.theme === "dark" ? "light" : "dark";
-      localStorage.setItem("ytgrab-theme", this.theme);
+      localStorage.setItem("opengrab-theme", this.theme);
       this.applyTheme();
     },
     applyTheme() {

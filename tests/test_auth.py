@@ -1,5 +1,5 @@
 def test_require_auth_no_token(client):
-    """With no YTGRAB_TOKEN set, all requests should pass."""
+    """With no OPENGRAB_TOKEN set, all requests should pass."""
     r = client.get("/api/info?url=http://x")
     assert r.status_code != 401
 
@@ -43,7 +43,7 @@ def test_api_auth_endpoint_sets_cookie(client_with_token):
         json={"token": "test-token"},
     )
     assert r.status_code == 200
-    assert "ytgrab_token" in r.headers.get("set-cookie", "")
+    assert "opengrab_token" in r.headers.get("set-cookie", "")
 
 
 def test_api_auth_endpoint_rejects_bad_token(client_with_token):

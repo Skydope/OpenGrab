@@ -4,34 +4,34 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --no-log-init ytgrab \
-    && mkdir -p /downloads && chown ytgrab:ytgrab /downloads
+RUN useradd --create-home --no-log-init opengrab \
+    && mkdir -p /downloads && chown opengrab:opengrab /downloads
 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py .
+COPY app.py config.py models.py download.py routes.py ./
 COPY static/ static/
 
 # Entrypoint: yt-dlp rompe seguido cuando YouTube cambia el player.
-# Por eso, salvo que pinees, se actualiza al arrancar. La versión baked en la
+# Por eso, salvo que pinees, se actualiza al arrancar. La version baked en la
 # imagen es el piso si el update falla o no hay red.
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -e' \
-  'if [ "${YTGRAB_AUTOUPDATE:-1}" = "1" ]; then' \
-  '  echo "[ytgrab] actualizando yt-dlp..."' \
-  '  pip install --no-cache-dir -q -U yt-dlp || echo "[ytgrab] update fallo, uso version baked"' \
+  'if [ "${OPENGRAB_AUTOUPDATE:-1}" = "1" ]; then' \
+  '  echo "[opengrab] actualizando yt-dlp..."' \
+  '  pip install --no-cache-dir -q -U yt-dlp || echo "[opengrab] update fallo, uso version baked"' \
   'fi' \
   'exec python app.py' \
   > /entrypoint.sh && chmod +x /entrypoint.sh
 
-USER ytgrab
+USER opengrab
 
-ENV YTGRAB_HOST=0.0.0.0 \
-    YTGRAB_PORT=8800 \
-    YTGRAB_DIR=/downloads \
-    YTGRAB_AUTOUPDATE=1 \
+ENV OPENGRAB_HOST=0.0.0.0 \
+    OPENGRAB_PORT=8800 \
+    OPENGRAB_DIR=/downloads \
+    OPENGRAB_AUTOUPDATE=1 \
     HOME=/tmp
 
 EXPOSE 8800

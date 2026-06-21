@@ -1,5 +1,5 @@
 def test_looks_like_supported_valid():
-    from app import _looks_like_supported
+    from download import _looks_like_supported
 
     valid_urls = [
         # YouTube
@@ -32,7 +32,7 @@ def test_looks_like_supported_valid():
 
 
 def test_looks_like_supported_invalid():
-    from app import _looks_like_supported
+    from download import _looks_like_supported
 
     invalid_urls = [
         "https://example.com/watch?v=abc",
@@ -48,7 +48,7 @@ def test_looks_like_supported_invalid():
 
 
 def test_safe_name():
-    from app import _safe_name
+    from download import _safe_name
 
     assert _safe_name("Hello World") == "Hello World"
     assert _safe_name("video.mp4") == "video.mp4"
@@ -58,7 +58,7 @@ def test_safe_name():
 
 
 def test_looks_like_supported_strips():
-    from app import _looks_like_supported
+    from download import _looks_like_supported
 
     assert _looks_like_supported("  https://youtu.be/abc  ")
     assert not _looks_like_supported("  not-a-url  ")

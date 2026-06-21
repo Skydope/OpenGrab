@@ -1,19 +1,19 @@
 services:
-  ytgrab:
+  opengrab:
     build: .
-    container_name: ytgrab
+    container_name: opengrab
     ports:
-      - "${YTGRAB_PORT:-8800}:8800"
+      - "${OPENGRAB_PORT:-8800}:8800"
     volumes:
       - ./downloads:/downloads
     environment:
-      - YTGRAB_HOST=0.0.0.0
-      - YTGRAB_PORT=8800
-      - YTGRAB_DIR=/downloads
-      - YTGRAB_TOKEN=${YTGRAB_TOKEN:-}
-      - YTGRAB_MAX_JOBS=${YTGRAB_MAX_JOBS:-2}
-      - YTGRAB_MAX_SIZE_MB=${YTGRAB_MAX_SIZE_MB:-0}
-      - YTGRAB_AUTOUPDATE=${YTGRAB_AUTOUPDATE:-1}
+      - OPENGRAB_HOST=0.0.0.0
+      - OPENGRAB_PORT=8800
+      - OPENGRAB_DIR=/downloads
+      - OPENGRAB_TOKEN=${OPENGRAB_TOKEN:-}
+      - OPENGRAB_MAX_JOBS=${OPENGRAB_MAX_JOBS:-2}
+      - OPENGRAB_MAX_SIZE_MB=${OPENGRAB_MAX_SIZE_MB:-0}
+      - OPENGRAB_AUTOUPDATE=${OPENGRAB_AUTOUPDATE:-1}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8800/health"]

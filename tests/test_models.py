@@ -1,5 +1,5 @@
 def test_job_model():
-    from app import Job
+    from models import Job
     import asyncio
 
     job = Job(id="abc123", created=12345.0)
@@ -12,7 +12,7 @@ def test_job_model():
 
 
 def test_job_model_dump_excludes_event():
-    from app import Job
+    from models import Job
 
     job = Job(id="test")
     d = job.model_dump()
@@ -22,7 +22,7 @@ def test_job_model_dump_excludes_event():
 
 
 def test_job_model_attribute_access():
-    from app import Job
+    from models import Job
 
     job = Job(id="test")
     job.status = "downloading"
@@ -34,7 +34,7 @@ def test_job_model_attribute_access():
 
 
 def test_jobreq_model():
-    from app import JobReq
+    from models import JobReq
 
     req = JobReq(url="https://youtu.be/abc")
     assert req.url == "https://youtu.be/abc"
