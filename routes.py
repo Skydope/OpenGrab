@@ -4,7 +4,6 @@ import asyncio
 import json as _json
 import logging
 import secrets
-import shutil
 import time
 import uuid
 from pathlib import Path
@@ -279,7 +278,7 @@ async def api_job_file(
                 while chunk := f.read(65536):
                     yield chunk
         finally:
-            job.filepath = ""
+            pass
 
     return StreamingResponse(
         file_iterator(),
