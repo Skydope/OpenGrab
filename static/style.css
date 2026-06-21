@@ -11,7 +11,7 @@
   }
   :root[data-theme="light"]{
     --ink:#FFFFFF; --panel:#F8F9FA; --panel-2:#E9ECEF; --line:#DEE2E6;
-    --text:#212529; --muted:#6C757D; --faint:#ADB5BD;
+    --text:#212529; --muted:#495057; --faint:#6C757D;
     --ok:#2B8A3E; --danger:#C92A2A;
     --btn-go-text:#1a1206; --chip-active-bg:rgba(232,160,44,.12);
     --term-bg:#F1F3F5; --dl-text:#06210f;
@@ -183,4 +183,27 @@
     .thumb{width:100%}
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* Focus visible */
+  button:focus-visible, .chip:focus-visible, [role="button"]:focus-visible,
+  a.dl:focus-visible, .theme-btn:focus-visible, .copy-btn:focus-visible {
+    outline: 2px solid var(--amber); outline-offset: 2px;
+  }
+  input:focus-visible{outline: 2px solid var(--amber); outline-offset: 1px}
+
+  /* Utility classes replacing inline styles */
+  .mt-14{margin-top:14px}
+  .mt-18{margin-top:18px}
+  .toggle-label{font-family:var(--mono); font-size:11px; color:var(--faint);
+    text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; cursor:pointer}
+  .toggle-label-lg{font-family:var(--mono); font-size:11px; color:var(--faint);
+    text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; cursor:pointer}
+  .pl-header{display:flex; gap:8px; align-items:center; margin-bottom:10px}
+  .pl-count{font-family:var(--mono); font-size:13px; color:var(--muted)}
+  .pl-list{max-height:300px; overflow:auto; border:1px solid var(--line); border-radius:8px}
+  .btn-sm{font-size:12px; padding:6px 12px}
+  .btn-block{width:100%}
+  .loading-msg{font-size:12px; color:var(--muted); padding:12px; display:block}
+  .muted-sm{font-size:12px; color:var(--muted)}
+
 [x-cloak]{display:none!important}

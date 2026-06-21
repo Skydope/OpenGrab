@@ -4,6 +4,9 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
+RUN useradd --create-home --no-log-init ytgrab \
+    && mkdir -p /downloads && chown ytgrab:ytgrab /downloads
+
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -22,6 +25,8 @@ RUN printf '%s\n' \
   'fi' \
   'exec python app.py' \
   > /entrypoint.sh && chmod +x /entrypoint.sh
+
+USER ytgrab
 
 ENV YTGRAB_HOST=0.0.0.0 \
     YTGRAB_PORT=8800 \

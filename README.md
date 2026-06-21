@@ -71,7 +71,7 @@ Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (the actively maintai
 | Web framework | FastAPI + uvicorn | Async, type-driven |
 | Download engine | yt-dlp | Runs in thread pool (blocking I/O) |
 | Video processing | ffmpeg | System binary, muxing to MP4 |
-| Frontend | Vanilla HTML/CSS/JS | Inline, no dependencies |
+| Frontend | Alpine.js + vanilla CSS | Embedded, no CDN, dark/light theme |
 | Container | Docker + Compose | Single-image, healthcheck included |
 | Reverse proxy | nginx | Optional, with TLS and SSE support |
 
@@ -122,20 +122,22 @@ For playlists, step 3 will detect the URL and show the playlist panel. Select th
 ## Architecture
 
 ```
-app.py  (~1000 lines)
-├── Config            Environment, logging, cleanup
-├── Models            Pydantic request schemas
-├── Helpers           URL validation, metadata extraction, playlist parsing
-├── Download engine   yt-dlp wrapper with SSE progress hooks
-├── API (7 endpoints) REST + SSE routes with optional token auth
-└── UI                Inline HTML/CSS/JS served at /
+ytgrab/
+├── app.py              # Backend (~550 lines)
+├── static/
+│   ├── index.html      # Alpine.js declarative UI
+│   ├── style.css       # Dark/light theme
+│   └── alpine.min.js   # Embedded, no CDN
+├── tests/              # 29 pytest tests
+├── Dockerfile          # Non-root user, healthcheck
+└── docker-compose.yml
 ```
 
 **Key design decisions:**
-- **Single-file by design.** The entire app lives in `app.py` — no build steps, no package structure, no ORM. This is intentional for homelab simplicity.
-- **Blocking downloads run in a thread pool.** yt-dlp is synchronous, so each download is dispatched via `asyncio.to_thread()` to avoid blocking the event loop.
-- **SSE over WebSockets.** Progress updates use `asyncio.Event` with a 2-second timeout polling loop. Simpler than WebSockets, zero extra dependencies, works through any HTTP proxy.
-- **In-memory state.** Job state is a Python `dict`. Download history is a JSON file on disk. No database needed for a single-user tool.
+- **Async backend + thread pool.** FastAPI handles HTTP, yt-dlp runs in `asyncio.to_thread()` to avoid blocking the event loop.
+- **SSE over WebSockets.** Progress updates use `asyncio.Event` with a 2-second timeout polling loop. Simpler than WebSockets, zero extra dependencies.
+- **In-memory state.** Job state is a typed Pydantic model in a `dict`. Download history is a JSON file on disk. Old jobs are evicted after 1 hour.
+- **Offline-first frontend.** Alpine.js is embedded (~43KB), CSS uses variables for theming. No CDN calls, works entirely on LAN.
 
 ---
 
@@ -157,18 +159,23 @@ See [`.env.example`](.env.example) for a ready-to-copy template.
 
 ## API Reference
 
-All `/api/*` endpoints require authentication if `YTGRAB_TOKEN` is set. Pass it via `Authorization: Bearer <token>` header or `?token=<token>` query parameter.
+All `/api/*` endpoints require authentication if `YTGRAB_TOKEN` is set. Authenticate via:
+- `Authorization: Bearer <token>` header
+- `?token=<token>` query parameter
+- `ytgrab_token` HTTP-only cookie (set by `POST /api/auth`)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | Web UI |
-| `GET` | `/health` | Health check (returns `{"status":"ok","jobs_active":N}`) |
-| `GET` | `/api/info?url=...` | Fetch video metadata (title, channel, duration, thumbnail) |
-| `GET` | `/api/playlist?url=...` | Fetch playlist entries |
-| `POST` | `/api/jobs` | Create download job — body: `{"url":"...", "quality":"best"}` |
-| `GET` | `/api/jobs/{id}/events` | SSE progress stream for a job |
-| `GET` | `/api/jobs/{id}/file` | Download the completed file |
-| `GET` | `/api/history?limit=20` | Download history as JSON |
+| Method | Path | Rate Limit | Description |
+|--------|------|------------|-------------|
+| `GET` | `/` | — | Web UI |
+| `GET` | `/health` | — | Health check (returns `{"status":"ok","jobs_active":N}`) |
+| `POST` | `/api/auth` | — | Authenticate and receive cookie — body: `{"token":"..."}` |
+| `POST` | `/api/logout` | — | Clear auth cookie |
+| `GET` | `/api/info?url=...` | 10/min | Fetch video metadata + available formats |
+| `GET` | `/api/playlist?url=...` | — | Fetch playlist entries |
+| `POST` | `/api/jobs` | 5/min | Create download job — body: `{"url":"...", "quality":"best"}` |
+| `GET` | `/api/jobs/{id}/events` | — | SSE progress stream for a job |
+| `GET` | `/api/jobs/{id}/file` | — | Download the completed file |
+| `GET` | `/api/history?limit=20` | — | Download history as JSON |
 
 ### `POST /api/jobs`
 

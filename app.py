@@ -29,6 +29,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -63,14 +65,14 @@ def _cleanup_old_workdirs() -> None:
         log.info("limpiados %d workdirs viejos", count)
 
 
-_cleanup_old_workdirs()
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [ytgrab] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 log = logging.getLogger("ytgrab")
+
+_cleanup_old_workdirs()
 
 TOKEN = os.environ.get("YTGRAB_TOKEN", "").strip()
 MAX_JOBS = int(os.environ.get("YTGRAB_MAX_JOBS", "2"))
@@ -113,9 +115,38 @@ def require_auth(request: Request) -> None:
 
 
 _STATIC_DIR = Path(__file__).parent / "static"
-_INDEX_HTML = (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
+try:
+    _INDEX_HTML = (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
+except (FileNotFoundError, OSError):
+    _INDEX_HTML = "<!doctype html><html><body><h1>ytgrab</h1><p>static/index.html not found.</p></body></html>"
 
-app = FastAPI(title="ytgrab")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Tarea de fondo que elimina jobs completados/fallidos después de 1 hora."""
+
+    async def _evict():
+        while True:
+            await asyncio.sleep(300)
+            cutoff = time.time() - 3600
+            to_delete = [
+                jid for jid, j in JOBS.items()
+                if j.status in ("done", "error") and j.created < cutoff
+            ]
+            for jid in to_delete:
+                del JOBS[jid]
+            if to_delete:
+                log.info("evacuados %d jobs viejos de memoria", len(to_delete))
+
+    task = asyncio.create_task(_evict())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="ytgrab", lifespan=_lifespan)
 
 # Rate limiting
 from slowapi import Limiter
@@ -204,6 +235,12 @@ def _safe_name(name: str) -> str:
     return (name or "video")[:120]
 
 
+def _sanitize_url(url: str) -> str:
+    """Trunca query params en URLs para evitar leaks en logs."""
+    clean = re.sub(r"([?&]token=)[^&]+", r"\1***", url)
+    return clean[:200]
+
+
 def _fetch_info(url: str) -> Dict[str, Any]:
     opts = {
         "quiet": True,
@@ -244,7 +281,7 @@ def _fetch_playlist(url: str) -> Dict[str, Any]:
     return {"title": info.get("title", "—"), "count": len(videos), "videos": videos}
 
 
-def _run_download(job_id: str, url: str, quality: str) -> None:
+def _run_download(job_id: str, url: str, quality: str, loop: asyncio.AbstractEventLoop) -> None:
     job = JOBS[job_id]
     workdir = Path(tempfile.mkdtemp(prefix="ytgrab_", dir=OUT_DIR))
     job.workdir = str(workdir)
@@ -261,12 +298,12 @@ def _run_download(job_id: str, url: str, quality: str) -> None:
             job.eta = d.get("_eta_str", "").strip()
             job.downloaded = done
             job.total = total
-            job.event.set()
+            loop.call_soon_threadsafe(job.event.set)
         elif status == "finished":
             job.status = "processing"
             job.percent = 100.0
             job.note = "Muxeando / remuxeando a mp4…"
-            job.event.set()
+            loop.call_soon_threadsafe(job.event.set)
 
     is_audio = quality == "audio"
     outtmpl = str(workdir / "%(title)s.%(ext)s")
@@ -293,7 +330,7 @@ def _run_download(job_id: str, url: str, quality: str) -> None:
     try:
         job.status = "starting"
         job.percent = 0.0
-        log.info("job %s: iniciando descarga (%s, %s)", job_id, quality, url)
+        log.info("job %s: iniciando descarga (%s, %s)", job_id, quality, _sanitize_url(url))
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
@@ -322,19 +359,25 @@ def _run_download(job_id: str, url: str, quality: str) -> None:
             "job_id": job_id, "completed": int(time.time()),
         })
         _save_history(HISTORY)
-        job.event.set()
+        loop.call_soon_threadsafe(job.event.set)
     except Exception as exc:  # noqa: BLE001
         job.status = "error"
         job.error = str(exc)
-        job.event.set()
-        log.error("job %s: falló — %s", job_id, exc)
+        loop.call_soon_threadsafe(job.event.set)
+        log.error("job %s: falló", job_id, exc_info=True)
+    finally:
+        loop.call_soon_threadsafe(job.event.set)
+        try:
+            shutil.rmtree(workdir, ignore_errors=True)
+        except OSError:
+            pass
 
 
 # --------------------------------------------------------------------------- #
 # API
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth")
-async def api_auth(req: AuthReq, response: Response):
+async def api_auth(request: Request, req: AuthReq, response: Response):
     if not TOKEN:
         return {"ok": True}
     if req.token != TOKEN:
@@ -342,6 +385,7 @@ async def api_auth(req: AuthReq, response: Response):
     response.set_cookie(
         key="ytgrab_token", value=TOKEN,
         httponly=True, samesite="lax", max_age=86400 * 30, path="/",
+        secure=request.url.scheme == "https",
     )
     return {"ok": True}
 
@@ -421,9 +465,10 @@ async def api_create_job(request: Request, req: JobReq, _: None = Depends(requir
 
     job_id = uuid.uuid4().hex[:12]
     JOBS[job_id] = Job(id=job_id, created=time.time())
-    log.info("job %s: creado (%s, %s)", job_id, req.quality, req.url)
+    log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
     # Lanzar en thread aparte (yt-dlp es bloqueante).
-    asyncio.create_task(asyncio.to_thread(_run_download, job_id, url, req.quality))
+    loop = asyncio.get_running_loop()
+    asyncio.create_task(asyncio.to_thread(_run_download, job_id, url, req.quality, loop))
     return {"job_id": job_id}
 
 
@@ -475,6 +520,8 @@ async def api_job_file(job_id: str, _: None = Depends(require_auth)):
     path = job.filepath
     if not path or not Path(path).exists():
         raise HTTPException(410, "El archivo ya no está disponible.")
+    if not Path(path).resolve().is_relative_to(OUT_DIR):
+        raise HTTPException(403, "Acceso denegado.")
     log.info("job %s: sirviendo archivo → %s", job_id, job.filename)
     return FileResponse(path, media_type=job.mime or "application/octet-stream",
                         filename=job.filename or "download")
@@ -503,7 +550,7 @@ async def index():
 
 def main() -> None:
     log.info("ytgrab → http://%s:%d (salida: %s)", HOST, PORT, OUT_DIR)
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+    uvicorn.run(app, host=HOST, port=PORT, log_level="info", access_log=False)
 
 
 if __name__ == "__main__":

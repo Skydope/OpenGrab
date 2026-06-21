@@ -8,3 +8,10 @@ downloads/
 README.md
 nginx/
 docker-compose.yml
+tests/
+.pytest_cache/
+CHANGELOG.md
+LICENSE
+*.tmp
+.venv/
+.DS_Store

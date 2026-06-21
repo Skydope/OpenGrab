@@ -60,22 +60,31 @@
     <div class="quality">
       <template x-for="q in qualities" :key="q.id">
         <span class="chip" :data-q="q.id"
-              :aria-pressed="quality === q.id"
+              :aria-pressed="quality === q.id" role="radio" tabindex="0"
               @click="quality = q.id"
+              @keydown.enter.prevent="quality = q.id"
+              @keydown.space.prevent="quality = q.id"
               x-text="q.label"></span>
       </template>
     </div>
 
     <!-- Format preview -->
-    <div x-show="formats.length" style="margin-top:14px">
-      <div style="font-family:var(--mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; cursor:pointer"
+    <div x-show="formats.length" class="mt-14">
+      <div class="toggle-label"
+           role="button" tabindex="0" :aria-expanded="showFormats"
            @click="showFormats = !showFormats"
+           @keydown.enter.prevent="showFormats = !showFormats"
+           @keydown.space.prevent="showFormats = !showFormats"
            x-text="showFormats ? 'formatos ▾' : 'formatos ▸ (' + formats.length + ')'"></div>
       <table class="fmt-table" x-show="showFormats">
         <thead><tr><th>Calidad</th><th>Codec</th><th class="fsize">Tamaño</th></tr></thead>
         <tbody>
           <template x-for="f in formats" :key="f.format_id">
-            <tr @click="quality = f.format_id" :class="{sel: quality === f.format_id}">
+            <tr role="button" tabindex="0"
+                @click="quality = f.format_id"
+                @keydown.enter.prevent="quality = f.format_id"
+                @keydown.space.prevent="quality = f.format_id"
+                :class="{sel: quality === f.format_id}">
               <td x-text="f.format_note || f.resolution || f.format_id"></td>
               <td x-text="(f.vcodec||'?') + ' / ' + (f.acodec||'?')"></td>
               <td class="fsize" x-text="f.filesize ? (f.filesize/1048576).toFixed(1)+' MB' : '—'"></td>
@@ -86,12 +95,12 @@
     </div>
 
     <!-- Playlist panel -->
-    <div x-show="isPlaylist" x-transition style="margin-top:14px">
-      <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px">
-        <span style="font-family:var(--mono); font-size:13px; color:var(--muted)" x-text="playlistCount + ' videos'"></span>
-        <button style="font-size:12px; padding:6px 12px" @click="downloadPlaylist">Descargar playlist</button>
+    <div x-show="isPlaylist" x-transition class="mt-14">
+      <div class="pl-header">
+        <span class="pl-count" x-text="playlistCount + ' videos'"></span>
+        <button class="btn-sm" @click="downloadPlaylist">Descargar playlist</button>
       </div>
-      <div style="max-height:300px; overflow:auto; border:1px solid var(--line); border-radius:8px">
+      <div class="pl-list">
         <template x-for="(v, i) in playlistVideos" :key="v.url">
           <div class="pl-video">
             <input type="checkbox" x-model="playlistChecked" :value="i">
@@ -99,12 +108,12 @@
             <span class="pl-dur" x-text="v.duration ? fmtDuration(v.duration) : ''"></span>
           </div>
         </template>
-        <span x-show="playlistLoading" style="font-size:12px;color:var(--muted);padding:12px;display:block">Cargando playlist…</span>
+        <span x-show="playlistLoading" class="loading-msg">Cargando playlist…</span>
       </div>
     </div>
 
-    <div style="margin-top:18px">
-      <button @click="download" :disabled="!meta || downloading" style="width:100%">Descargar</button>
+    <div class="mt-18">
+      <button @click="download" :disabled="!meta || downloading" class="btn-block">Descargar</button>
     </div>
 
     <!-- Terminal output -->
@@ -116,7 +125,7 @@
       <div class="progress" :class="{done: progressDone}">
         <i :style="'width:' + progress + '%'"></i>
       </div>
-      <div class="lines" x-ref="lines" x-effect="if($refs.lines) $refs.lines.scrollTop = $refs.lines.scrollHeight">
+      <div class="lines" x-ref="lines" x-effect="if($refs.lines && terminal.length) $refs.lines.scrollTop = $refs.lines.scrollHeight">
         <template x-for="(line, idx) in terminal" :key="idx">
           <p class="l" :class="line.cls" :data-live="line.live ? '1' : null">
             <span class="pfx" x-text="line.pfx"></span>
@@ -141,13 +150,16 @@
   </footer>
 
   <!-- History -->
-  <div style="margin-top:14px" x-show="authenticated" x-cloak>
-    <div style="font-family:var(--mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; cursor:pointer"
+  <div class="mt-14" x-show="authenticated" x-cloak>
+    <div class="toggle-label-lg"
+         role="button" tabindex="0" :aria-expanded="historyOpen"
          @click="toggleHistory"
+         @keydown.enter.prevent="toggleHistory"
+         @keydown.space.prevent="toggleHistory"
          x-text="historyOpen ? 'historial ▾' : 'historial ▸'"></div>
     <div x-show="historyOpen">
-      <span x-show="!historyLoaded" style="font-size:12px;color:var(--muted)">Cargando…</span>
-      <span x-show="historyLoaded && !history.length" style="font-size:12px;color:var(--muted)">Sin descargas todavia.</span>
+      <span x-show="!historyLoaded" class="muted-sm">Cargando…</span>
+      <span x-show="historyLoaded && !history.length" class="muted-sm">Sin descargas todavía.</span>
       <template x-for="e in history" :key="e.job_id">
         <div class="h-entry">
           <span class="h-title" :title="e.title" x-text="e.title"></span>
@@ -296,7 +308,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     async copyCommand() {
-      const fmt = this.FORMATS[this.quality] || this.FORMATS.best;
+      const fmt = this.FORMATS[this.quality] || this.quality;
       const cmd = 'yt-dlp -f "' + fmt + '" --merge-output-format mp4 "' + this.url.trim() + '"';
       try {
         await navigator.clipboard.writeText(cmd);
@@ -339,9 +351,10 @@ document.addEventListener('alpine:init', () => {
       this.resetUI();
       this.downloading = true;
       this.addLine("$", "playlist: " + selected.length + " videos");
-      let ok = 0, fail = 0;
+      let ok = 0, fail = 0, count = 0;
       for (const v of selected) {
-        this.addLine("$", "iniciando: " + v.title);
+        count++;
+        this.addLine("$", "[" + count + "/" + selected.length + "] iniciando: " + v.title);
         try {
           const r = await fetch("/api/jobs", {
             method: "POST",
@@ -398,7 +411,7 @@ document.addEventListener('alpine:init', () => {
         }
 
         if (s.status === "downloading" && s.speed) {
-          const txt = "downloading  " + (s.percent || 0).toFixed(1) + "%   " +
+          const txt = (s.percent || 0).toFixed(1) + "%   " +
                       (s.speed || "") + (s.eta ? "   ETA " + s.eta : "");
           if (lastLiveIdx >= 0) {
             this.terminal[lastLiveIdx] = { pfx: "›", text: txt, cls: "", live: true };
@@ -429,7 +442,12 @@ document.addEventListener('alpine:init', () => {
         }
       };
 
+      let retries = 0;
       ev.onerror = () => {
+        if (retries < 5 && ev.readyState === EventSource.CONNECTING) {
+          retries++;
+          return;
+        }
         this.addLine("✗", "conexion de eventos cerrada", "err");
         this.downloading = false;
         ev.close();
@@ -440,6 +458,11 @@ document.addEventListener('alpine:init', () => {
       return new Promise((resolve) => {
         const ev = new EventSource("/api/jobs/" + jobId + "/events");
         let lastLiveIdx = -1;
+        let retries = 0;
+        const timeout = setTimeout(() => {
+          this.addLine("✗", "timeout: " + title, "err");
+          ev.close(); resolve();
+        }, 600000);
         ev.onmessage = (m) => {
           const s = JSON.parse(m.data);
           if (s.status === "downloading" && s.speed) {
@@ -453,10 +476,13 @@ document.addEventListener('alpine:init', () => {
               lastLiveIdx = idx;
             }
           }
-          if (s.status === "done") { this.addLine("✓", "ok: " + title, "ok"); ev.close(); resolve(); }
-          if (s.status === "error") { this.addLine("✗", "error: " + (s.error || "desconocido"), "err"); ev.close(); resolve(); }
+          if (s.status === "done") { clearTimeout(timeout); this.addLine("✓", "ok: " + title, "ok"); ev.close(); resolve(); }
+          if (s.status === "error") { clearTimeout(timeout); this.addLine("✗", "error: " + (s.error || "desconocido"), "err"); ev.close(); resolve(); }
         };
-        ev.onerror = () => { ev.close(); resolve(); };
+        ev.onerror = () => {
+          if (retries < 3 && ev.readyState === EventSource.CONNECTING) { retries++; return; }
+          clearTimeout(timeout); ev.close(); resolve();
+        };
       });
     },
 
