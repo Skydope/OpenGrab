@@ -19,3 +19,20 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+## Disclaimer
+
+This software is a tool for downloading content from various platforms
+using yt-dlp. It is intended for personal, self-hosted use only.
+
+The authors and contributors are NOT responsible for how you use this
+software. You are solely responsible for ensuring your use complies
+with the Terms of Service of the platforms you interact with, applicable
+copyright laws, and any other relevant regulations in your jurisdiction.
+
+By using this software, you acknowledge that:
+- You are hosting it on your own infrastructure
+- You are responsible for the content you download
+- The authors assume no liability for any misuse

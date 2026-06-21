@@ -19,6 +19,13 @@
 
 </div>
 
+> [!CAUTION]
+> **OpenGrab is a self-hosted tool for personal use.** The authors are not
+> responsible for how you use it. You are solely responsible for complying
+> with the Terms of Service of the platforms you interact with and applicable
+> copyright laws. Use only with content you own, is licensed for reuse, or
+> under fair use provisions.
+
 <details>
 <summary>Ver en Español</summary>
 
@@ -293,3 +300,10 @@ Las contribuciones son bienvenidas. Podés abrir issues o PRs en español. Segu�
 ### Licencia
 
 Distribuido bajo la [Licencia MIT](LICENSE).
+
+> [!CAUTION]
+> **OpenGrab es una herramienta auto-alojada para uso personal.** Los autores
+> no se hacen responsables del uso que le des. Es tu responsabilidad cumplir
+> con los Términos de Servicio de las plataformas y las leyes de copyright
+> aplicables. Usalo solo con contenido propio, con licencia que lo permita,
+> o bajo fair use.
