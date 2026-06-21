@@ -298,6 +298,7 @@ def _write_env(config: dict) -> None:
         "max_jobs": "OPENGRAB_MAX_JOBS",
         "max_size_mb": "OPENGRAB_MAX_SIZE_MB",
         "auto_update": "OPENGRAB_AUTOUPDATE",
+        "trust_xff": "OPENGRAB_TRUST_XFF",
     }
     lines = []
     for key, env_key in mapping.items():
@@ -383,6 +384,7 @@ def _show_summary(config: dict) -> None:
     auto = "si" if config.get("auto_update", 1) in ("1", 1, True) else "no"
     size = config.get("max_size_mb", "0")
     size_desc = "sin limite" if size in ("0", 0) else f"{size} MB"
+    trust_xff = "si" if config.get("trust_xff", 0) in ("1", 1, True) else "no"
 
     print()
     _top("RESUMEN DE CONFIGURACION")
@@ -395,6 +397,7 @@ def _show_summary(config: dict) -> None:
     _line(f"  Jobs simultaneos:  {config.get('max_jobs', 2)}")
     _line(f"  Tamano maximo:     {size_desc}")
     _line(f"  Auto-update:       {auto}")
+    _line(f"  Trust XFF:         {trust_xff}")
     _bot()
     print()
 
@@ -413,6 +416,7 @@ def _recommended_mode(reqs: dict) -> dict:
     _line(f"  Jobs simultaneos:  2")
     _line(f"  Tamano maximo:     sin limite")
     _line(f"  Auto-update:       si")
+    _info("Si usas nginx como proxy, recorda OPENGRAB_TRUST_XFF=1.")
     _bot()
     print()
 
@@ -441,6 +445,7 @@ def _recommended_mode(reqs: dict) -> dict:
         "max_jobs": 2,
         "max_size_mb": 0,
         "auto_update": 1,
+        "trust_xff": 0,
         "use_docker": True,
     }
     return config
@@ -492,6 +497,8 @@ def _advanced_mode(reqs: dict) -> dict:
         default=1,
     )
     host = "127.0.0.1" if host_choice == 1 else "0.0.0.0"
+    if host == "0.0.0.0":
+        _info("Si estas detras de nginx u otro proxy, recorda setear OPENGRAB_TRUST_XFF=1.")
     print()
 
     # Step 3: Port
@@ -590,6 +597,7 @@ def _advanced_mode(reqs: dict) -> dict:
         "max_jobs": max_jobs,
         "max_size_mb": max_size,
         "auto_update": auto_update,
+        "trust_xff": 0,
         "use_docker": use_docker,
     }
     return config

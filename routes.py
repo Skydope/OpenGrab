@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from slowapi import Limiter
 
-from config import FORMATS, HISTORY_MAX, MAX_JOBS, TOKEN, _STATIC_DIR
+from config import FORMATS, HISTORY_MAX, MAX_JOBS, TOKEN, TRUST_XFF, _STATIC_DIR
 from download import (
     _fetch_info,
     _fetch_playlist,
@@ -27,9 +27,10 @@ from state import AppState
 log = logging.getLogger("opengrab")
 
 def _client_key(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if TRUST_XFF:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
     if request.client:
         return request.client.host
     return "unknown"
