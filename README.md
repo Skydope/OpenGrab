@@ -2,7 +2,7 @@
 
   <a href="https://github.com/Skydope/OpenGrab">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="Logo-dark.png">
+      <source media="(prefers-color-scheme: dark)" srcset="Logo.png">
       <source media="(prefers-color-scheme: light)" srcset="Logo.png">
       <img src="Logo.png" alt="OpenGrab — self-hosted YouTube downloader" width="500" style="max-width:100%">
     </picture>
