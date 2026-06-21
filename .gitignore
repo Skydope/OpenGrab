@@ -6,6 +6,7 @@ downloads/
 .venv/
 *.tmp
 *.patch
+Gemini_Generated_Image_*
 improve.md
 .DS_Store
 .pytest_cache/
