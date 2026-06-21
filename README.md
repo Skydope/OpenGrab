@@ -1,11 +1,17 @@
 <div align="center">
 
-  # OpenGrab
+  <a href="https://github.com/Skydope/OpenGrab">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="Logo-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="Logo.png">
+      <img src="Logo.png" alt="OpenGrab — self-hosted YouTube downloader" width="500" style="max-width:100%">
+    </picture>
+  </a>
 
   > Self-hosted YouTube downloader — paste a URL, get an MP4. Wraps yt-dlp + ffmpeg behind a clean web UI.
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-1.4.0-green.svg)]()
+  [![Version](https://img.shields.io/badge/version-1.5.0-green.svg)]()
   [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
   [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker)](https://hub.docker.com)
 
