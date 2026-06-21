@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import cast
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -27,6 +29,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from config import HOST, HISTORY_FILE, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
 from routes import limiter, router
@@ -41,7 +44,7 @@ log = logging.getLogger("opengrab")
 
 
 @asynccontextmanager
-async def _lifespan(_app: FastAPI):
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     state = AppState(OUT_DIR, HISTORY_FILE)
     state.out_dir.mkdir(parents=True, exist_ok=True)
     state.cleanup_old_workdirs()
@@ -61,8 +64,8 @@ app = FastAPI(title="OpenGrab", lifespan=_lifespan)
 
 
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
+        response = cast(Response, await call_next(request))
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

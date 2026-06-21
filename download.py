@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import tempfile
@@ -7,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
-import yt_dlp
+import yt_dlp  # type: ignore[import-untyped]
 
 from config import FORMATS, MAX_SIZE_MB
 from models import Job
@@ -73,7 +74,7 @@ def _fetch_info(url: str) -> Dict[str, Any]:
         info = ydl.extract_info(url, download=False)
     if info is None:
         raise RuntimeError("yt-dlp no devolvió información.")
-    return info
+    return info  # type: ignore[no-any-return]
 
 
 def _fetch_playlist(url: str) -> Dict[str, Any]:
@@ -109,11 +110,13 @@ def _fetch_playlist(url: str) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Download job (runs in thread pool)
 # --------------------------------------------------------------------------- #
-def _run_download(state: AppState, job_id: str, url: str, quality: str, loop) -> None:
+def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: asyncio.AbstractEventLoop) -> None:
     job = state.jobs[job_id]
     workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
     job.workdir = str(workdir)
     evt = state.job_events.get(job_id)
+    if evt is None:
+        raise RuntimeError("job event no encontrado")
 
     def hook(d: Dict[str, Any]) -> None:
         if evt is None:

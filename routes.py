@@ -8,6 +8,7 @@ import secrets
 import time
 import urllib.parse
 import uuid
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from typing import Any, Dict
 
@@ -55,7 +56,7 @@ router = APIRouter()
 # Dependencies
 # --------------------------------------------------------------------------- #
 def get_state(request: Request) -> AppState:
-    return request.app.state.opengrab
+    return request.app.state.opengrab  # type: ignore[no-any-return]
 
 
 def require_auth(request: Request) -> None:
@@ -89,7 +90,7 @@ except (FileNotFoundError, OSError):
 # API endpoints
 # --------------------------------------------------------------------------- #
 @router.post("/api/auth")
-async def api_auth(request: Request, req: AuthReq, response: Response):
+async def api_auth(request: Request, req: AuthReq, response: Response) -> dict[str, bool]:
     if not TOKEN:
         return {"ok": True}
     if req.token != TOKEN:
@@ -108,7 +109,7 @@ async def api_auth(request: Request, req: AuthReq, response: Response):
 
 
 @router.post("/api/logout")
-async def api_logout(response: Response):
+async def api_logout(response: Response) -> dict[str, bool]:
     response.delete_cookie(key="opengrab_token", path="/")
     return {"ok": True}
 
@@ -119,7 +120,7 @@ async def api_info(
     request: Request,
     url: str,
     _: None = Depends(require_auth),
-):
+) -> JSONResponse:
     url = url.strip()
     if not _looks_like_supported(url):
         raise HTTPException(
@@ -131,8 +132,8 @@ async def api_info(
         raise HTTPException(502, f"No se pudo leer el video: {exc}")
 
     dur = info.get("duration") or 0
-    raw_formats: list = info.get("formats") or []
-    formats: list = []
+    raw_formats: list[dict[str, Any]] = info.get("formats") or []
+    formats: list[dict[str, Any]] = []
     for f in raw_formats:
         if f.get("vcodec") == "none" and f.get("acodec") == "none":
             continue
@@ -168,7 +169,7 @@ async def api_playlist(
     request: Request,
     url: str,
     _: None = Depends(require_auth),
-):
+) -> JSONResponse:
     url = url.strip()
     if not _looks_like_supported(url):
         raise HTTPException(
@@ -188,7 +189,7 @@ async def api_create_job(
     req: JobReq,
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
-):
+) -> dict[str, str]:
     url = req.url.strip()
     if not _looks_like_supported(url):
         raise HTTPException(
@@ -221,7 +222,7 @@ async def api_create_job(
     return {"job_id": job_id}
 
 
-async def _job_events_stream(state: AppState, job_id: str):
+async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str, None]:
     last = None
     while True:
         job = state.jobs.get(job_id)
@@ -257,7 +258,7 @@ async def api_job_events(
     job_id: str,
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
-):
+) -> StreamingResponse:
     if job_id not in state.jobs:
         raise HTTPException(404, "Job no encontrado.")
     return StreamingResponse(
@@ -284,7 +285,7 @@ async def api_job_file(
     job_id: str,
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
-):
+) -> StreamingResponse:
     job = state.jobs.get(job_id)
     if job is None:
         raise HTTPException(404, "Job no encontrado.")
@@ -303,7 +304,7 @@ async def api_job_file(
     file_size = file_path.stat().st_size
     media_type = job.mime or "application/octet-stream"
 
-    async def file_iterator():
+    async def file_iterator() -> AsyncGenerator[bytes, None]:
         with open(file_path, "rb") as f:
             while chunk := f.read(65536):
                 yield chunk
@@ -325,18 +326,18 @@ async def api_history(
     limit: int = 20,
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
-):
+) -> JSONResponse:
     entries = state.history[-max(1, min(limit, HISTORY_MAX)) :]
     return JSONResponse(list(reversed(entries)))
 
 
 @router.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @router.get("/")
-async def index():
+async def index() -> HTMLResponse:
     html = _INDEX_HTML.replace("__AUTH_REQUIRED__", "true" if TOKEN else "false")
     html = html.replace(
         "__FORMATS_JSON__", _json.dumps(FORMATS).replace("</", "<\\/")

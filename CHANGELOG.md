@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-06-21
+
+### Added
+
+- **mypy strict type checking** (`--strict`) with zero errors on all source files
+- CI typecheck job in `.github/workflows/test.yml`
+- `pydantic.mypy` plugin enabled for model validation
+
+### Changed
+
+- All route handlers and internal functions annotated with return types
+- Generic type arguments added to `dict`, `set`, `list` declarations
+- `import yt_dlp` annotated with `# type: ignore[import-untyped]`
+
 ## [1.4.0] — 2026-06-21
 
 ### Changed

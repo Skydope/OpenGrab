@@ -25,8 +25,8 @@ class AppState:
         self.history_max = history_max
         self.jobs: dict[str, Job] = {}
         self.job_events: dict[str, asyncio.Event] = {}
-        self.running_tasks: set = set()
-        self.history: list[dict] = []
+        self.running_tasks: set[asyncio.Task[None]] = set()
+        self.history: list[dict[str, object]] = []
         self._history_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
@@ -49,7 +49,7 @@ class AppState:
         except OSError:
             pass
 
-    def add_history_entry(self, entry: dict) -> None:
+    def add_history_entry(self, entry: dict[str, object]) -> None:
         with self._history_lock:
             self.history.append(entry)
             self._write_history()
