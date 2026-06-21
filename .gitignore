@@ -5,6 +5,7 @@ __pycache__/
 downloads/
 .venv/
 *.tmp
+*.patch
 .DS_Store
 .pytest_cache/
 tests/_test_downloads/
