@@ -3,8 +3,7 @@ def test_health(client, app_state):
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "ok"
-    assert "jobs_active" in data
-    assert isinstance(data["jobs_active"], int)
+    assert "jobs_active" not in data  # ya no se expone (info leak)
 
 
 def test_index_returns_html(client):
@@ -220,3 +219,9 @@ def test_content_disposition_control_chars_stripped(client, app_state):
     cd = r.headers.get("content-disposition", "")
     assert "\n" not in cd
     assert "video" in cd
+
+
+def test_health_public_no_jobs_active(client_no_auth):
+    r = client_no_auth.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}

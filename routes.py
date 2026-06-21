@@ -53,8 +53,6 @@ def get_state(request: Request) -> AppState:
 
 
 def require_auth(request: Request) -> None:
-    if request.client and request.client.host == "127.0.0.1":
-        return
     if not TOKEN:
         return
     auth = request.headers.get("Authorization", "")
@@ -318,11 +316,8 @@ async def api_history(
 
 
 @router.get("/health")
-async def health(
-    _: None = Depends(require_auth),
-    state: AppState = Depends(get_state),
-):
-    return {"status": "ok", "jobs_active": state.count_active_jobs()}
+async def health():
+    return {"status": "ok"}
 
 
 @router.get("/")

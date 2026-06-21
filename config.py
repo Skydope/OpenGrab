@@ -28,12 +28,16 @@ def _int_env(key: str, default: int, min_val: int | None = None) -> int:
 HOST = os.environ.get("OPENGRAB_HOST", "127.0.0.1")
 PORT = _int_env("OPENGRAB_PORT", 8800, min_val=1)
 OUT_DIR = Path(os.environ.get("OPENGRAB_DIR", "./downloads")).resolve()
-_raw_token = os.environ.get("OPENGRAB_TOKEN")
-if _raw_token is None:
+_raw_token = os.environ.get("OPENGRAB_TOKEN", "").strip()
+
+if os.environ.get("OPENGRAB_NO_AUTH", "").strip() == "1":
+    TOKEN = ""
+    TOKEN_WAS_GENERATED = False
+elif not _raw_token:
     TOKEN = secrets.token_urlsafe(16)
     TOKEN_WAS_GENERATED = True
 else:
-    TOKEN = _raw_token.strip()
+    TOKEN = _raw_token
     TOKEN_WAS_GENERATED = False
 MAX_JOBS = _int_env("OPENGRAB_MAX_JOBS", 2, min_val=1)
 MAX_SIZE_MB = _int_env("OPENGRAB_MAX_SIZE_MB", 0, min_val=0)

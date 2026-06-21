@@ -186,7 +186,7 @@ See [`.env.example`](.env.example) for a ready-to-copy template.
 
 ## API Reference
 
-All `/api/*` endpoints require authentication if `OPENGRAB_TOKEN` is set. Authenticate via:
+All `/api/*` endpoints require authentication unless `OPENGRAB_NO_AUTH=1`. If `OPENGRAB_TOKEN` is empty, a token is auto-generated at startup and printed to the logs. Authenticate via:
 - `Authorization: Bearer <token>` header
 - `?token=<token>` query parameter
 - `opengrab_token` HTTP-only cookie (set by `POST /api/auth`)

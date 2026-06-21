@@ -45,7 +45,8 @@ def client():
 
 @pytest.fixture
 def client_no_auth(monkeypatch):
-    monkeypatch.setenv("OPENGRAB_TOKEN", "")
+    monkeypatch.delenv("OPENGRAB_TOKEN", raising=False)
+    monkeypatch.setenv("OPENGRAB_NO_AUTH", "1")
     with _make_client() as c:
         yield c
 

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-06-21
+
+### Security
+
+- Token auto-generation now triggers when `OPENGRAB_TOKEN` is empty (not only when unset), closing the insecure default under `docker compose up` where Compose passes the variable as an empty string
+- Removed the `127.0.0.1` bypass in `require_auth`: behind a reverse proxy on the same host (`proxy_pass http://127.0.0.1:8800`) it disabled auth for all clients
+- `/health` is public again but no longer exposes `jobs_active` (info leak)
+- New `OPENGRAB_NO_AUTH=1` escape hatch to disable auth explicitly for local dev
+
+### Fixed
+
+- `client_no_auth` test fixture migrated to `OPENGRAB_NO_AUTH=1` (empty token no longer means "no auth")
+- `.env.example` and README updated: empty token now documents auto-generation, not "no auth"
+
+### Added
+
+- `test_token_autogen_on_empty`, `test_no_auth_escape_hatch`, `test_no_localhost_bypass` (unit test on `require_auth` with a crafted 127.0.0.1 client — catches the bypass regression), `test_health_public_no_jobs_active`
+
 ## [1.2.0] — 2026-06-21
 
 ### Security

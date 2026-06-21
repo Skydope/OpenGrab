@@ -65,3 +65,58 @@ def test_api_logout(client_with_token):
     """POST /api/logout should clear cookie."""
     r = client_with_token.post("/api/logout")
     assert r.status_code == 200
+
+
+def test_token_autogen_on_empty(monkeypatch):
+    """Con OPENGRAB_TOKEN ausente/vacío y sin NO_AUTH, debe autogenerarse."""
+    import sys
+    monkeypatch.delenv("OPENGRAB_TOKEN", raising=False)
+    monkeypatch.delenv("OPENGRAB_NO_AUTH", raising=False)
+    for m in list(sys.modules):
+        if m == "config":
+            del sys.modules[m]
+    import config
+    assert config.TOKEN_WAS_GENERATED is True
+    assert config.TOKEN != ""
+    assert len(config.TOKEN) >= 16
+
+
+def test_no_auth_escape_hatch(monkeypatch):
+    """OPENGRAB_NO_AUTH=1 desactiva auth explícitamente."""
+    import sys
+    monkeypatch.delenv("OPENGRAB_TOKEN", raising=False)
+    monkeypatch.setenv("OPENGRAB_NO_AUTH", "1")
+    for m in list(sys.modules):
+        if m == "config":
+            del sys.modules[m]
+    import config
+    assert config.TOKEN == ""
+    assert config.TOKEN_WAS_GENERATED is False
+
+
+def test_no_localhost_bypass():
+    """require_auth NO debe esquivar auth para client.host==127.0.0.1."""
+    import sys
+    for m in list(sys.modules):
+        if m in ("config", "routes"):
+            del sys.modules[m]
+    import os
+    os.environ["OPENGRAB_TOKEN"] = "real-token"
+    os.environ.pop("OPENGRAB_NO_AUTH", None)
+    import importlib, config, routes
+    importlib.reload(config); importlib.reload(routes)
+
+    from starlette.requests import Request
+    from fastapi import HTTPException
+
+    # Request crafteado DESDE 127.0.0.1, sin token
+    scope = {
+        "type": "http", "method": "GET", "path": "/api/info",
+        "headers": [], "query_string": b"", "client": ("127.0.0.1", 5555),
+    }
+    req = Request(scope)
+    try:
+        routes.require_auth(req)
+        assert False, "no debería pasar: 127.0.0.1 esquivó auth"
+    except HTTPException as e:
+        assert e.status_code == 401
