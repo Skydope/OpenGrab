@@ -5,7 +5,7 @@
   > Self-hosted YouTube downloader — paste a URL, get an MP4. Wraps yt-dlp + ffmpeg behind a clean web UI.
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)]()
+  [![Version](https://img.shields.io/badge/version-1.1.0-green.svg)]()
   [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
   [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker)](https://hub.docker.com)
 
@@ -30,8 +30,8 @@
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
+  - [Interactive Installer](#interactive-installer)
+  - [Manual Setup](#manual-setup)
 - [Usage](#usage)
 - [Architecture](#architecture)
 - [Environment Variables](#environment-variables)
@@ -79,26 +79,47 @@ Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (the actively maintai
 
 ## Getting Started
 
-### Prerequisites
+### Interactive Installer
 
-- **Docker** ≥ 24.x (recommended) — or —
+The fastest way to get OpenGrab running. An interactive CLI wizard that guides you through setup — no manual `.env` editing required.
+
+```bash
+git clone https://github.com/skydope/opengrab.git
+cd opengrab
+python install.py
+```
+
+You'll be offered two modes:
+
+- **Recommended** — ask for port and token only, everything else uses safe defaults. Docker build + start. Zero complexity.
+- **Advanced** — step-by-step: deployment type, host, port, download directory, token, max jobs, file size limit, auto-update. Includes bare-metal option.
+
+Both modes show a summary before proceeding, and you can choose to start immediately or just generate the `.env` file for later.
+
+> [!TIP]
+> The installer requires **Python 3.11+**. If you don't have Python, follow the [Manual Setup](#manual-setup) below instead.
+
+### Manual Setup
+
+Prefer to configure things yourself? Here's the direct approach.
+
+**Prerequisites**
+
+- **Docker** >= 24.x (recommended) — or —
 - **Python** 3.11+ with `pip`
 - **ffmpeg** on PATH (included in the Docker image; on bare metal: `apt install ffmpeg`, `brew install ffmpeg`, or `pacman -S ffmpeg`)
 
-### Installation
-
 ```bash
-# Clone the repository
 git clone https://github.com/skydope/opengrab.git
 cd opengrab
 
 # Copy and configure environment
 cp .env.example .env
-# → Edit .env if you want to set a token or change defaults
+# Edit .env if you want to set a token or change defaults
 
 # Start with Docker Compose
 docker compose up -d
-# → http://localhost:8800
+# http://localhost:8800
 ```
 
 > [!TIP]
@@ -123,16 +144,18 @@ For playlists, step 3 will detect the URL and show the playlist panel. Select th
 
 ```
 opengrab/
-├── app.py              # Entrypoint (~117 lines)
+├── install.py          # Interactive CLI setup wizard
+├── app.py              # Entrypoint (~100 lines)
 ├── config.py           # Environment config
+├── state.py            # AppState — jobs, history, locks
 ├── models.py           # Pydantic models
-├── download.py         # yt-dlp wrappers + job state
+├── download.py         # yt-dlp wrappers
 ├── routes.py           # API endpoints (APIRouter)
 ├── static/
 │   ├── index.html      # Alpine.js declarative UI
 │   ├── style.css       # Dark/light theme
 │   └── alpine.min.js   # Embedded, no CDN
-├── tests/              # 33 pytest tests
+├── tests/              # 39 pytest tests
 ├── Dockerfile          # Non-root user, healthcheck
 └── docker-compose.yml
 ```
@@ -252,7 +275,35 @@ OpenGrab es un descargador de YouTube que corrés en tu propio servidor. Abrís 
 
 Usa [yt-dlp](https://github.com/yt-dlp/yt-dlp) como motor de descarga y [ffmpeg](https://ffmpeg.org/) para el muxing. Todo el backend es una app FastAPI con frontend vanilla inline — sin npm, sin bundlers, sin CDN.
 
-### Instalación rápida
+### Instalación interactiva
+
+La forma mas rapida de poner OpenGrab en marcha. Un asistente CLI interactivo que te guia — sin editar `.env` a mano.
+
+```bash
+git clone https://github.com/skydope/opengrab.git
+cd opengrab
+python install.py
+```
+
+Te ofrece dos modos:
+
+- **Recomendado** — solo te pregunta puerto y token, todo lo demas usa defaults seguros. Docker build + start. Cero complicacion.
+- **Avanzado** — paso a paso: tipo de despliegue, host, puerto, directorio, token, trabajos simultaneos, limite de tamano, auto-update. Incluye opcion bare metal.
+
+Ambos modos muestran un resumen antes de proceder, y podes elegir iniciar ahora o solo generar el `.env` para arrancar despues.
+
+> [!TIP]
+> El instalador requiere **Python 3.11+**. Si no tenes Python, segui la [Instalacion manual](#instalación-manual) mas abajo.
+
+### Instalacion manual
+
+Si preferis configurar todo vos, este es el camino directo.
+
+**Requisitos previos**
+
+- **Docker** >= 24.x (recomendado) — o —
+- **Python** 3.11+ con `pip`
+- **ffmpeg** en el PATH (incluido en la imagen Docker; en bare metal: `apt install ffmpeg`, `brew install ffmpeg`, o `pacman -S ffmpeg`)
 
 ```bash
 git clone https://github.com/skydope/opengrab.git
@@ -261,6 +312,9 @@ cp .env.example .env
 docker compose up -d
 # → http://localhost:8800
 ```
+
+> [!TIP]
+> Para bare metal (sin Docker), corre `pip install -r requirements.txt` y despues `python app.py`. Asegurate de tener ffmpeg en el PATH.
 
 ### Uso básico
 
