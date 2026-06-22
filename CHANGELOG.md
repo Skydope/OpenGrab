@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (features — Balde A / polish)
+
+- Mensajes de error humanos: yt-dlp 403 / video privado / bloqueo regional / red / ffmpeg
+  se traducen a texto entendible (antes se mostraba el error técnico crudo)
+- Botón "Reintentar" en el error de descarga: re-dispara el job sin re-pegar la URL
+- Thumbnail en el historial (`add_history_entry` ahora guarda `thumbnail`; entradas
+  viejas sin el campo muestran sin imagen, sin romper)
+- Tests del mapeo de errores
+
+
 ### Added (binary track — M2/M3)
 
 - `POST /api/engine/update` + botón "Actualizar motor (yt-dlp)" en la UI (M3). El backend

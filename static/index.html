@@ -136,7 +136,11 @@
     </div>
 
     <!-- Error -->
-    <div class="err-box" :class="{show: errorMsg}" x-text="errorMsg"></div>
+    <div class="err-box" :class="{show: errorMsg}">
+      <span x-text="errorMsg"></span>
+      <button class="btn-sm retry-btn" x-show="canRetry" @click="download"
+              aria-label="Reintentar la descarga">Reintentar</button>
+    </div>
 
     <!-- Download link -->
     <div class="actions" :class="{show: downloadUrl}">
@@ -162,6 +166,7 @@
       <span x-show="historyLoaded && !history.length" class="muted-sm">Sin descargas todavía.</span>
       <template x-for="e in history" :key="e.job_id">
         <div class="h-entry">
+          <img class="h-thumb" x-show="e.thumbnail" :src="e.thumbnail" alt="" loading="lazy">
           <span class="h-title" :title="e.title" x-text="e.title"></span>
           <span class="h-meta" x-text="e.quality"></span>
           <span class="h-size" x-show="e.size" x-text="(e.size/1048576).toFixed(1) + ' MB'"></span>
@@ -278,6 +283,7 @@ document.addEventListener('alpine:init', () => {
 
     // ── Error ─────────────────────────────────
     errorMsg: "",
+    canRetry: false,
 
     // ── History ───────────────────────────────
     historyOpen: false,
@@ -433,6 +439,7 @@ document.addEventListener('alpine:init', () => {
         ({ job_id: jobId } = await r.json());
       } catch (err) {
         this.errorMsg = err.message;
+        this.canRetry = true;
         this.downloading = false;
         return;
       }
@@ -478,6 +485,7 @@ document.addEventListener('alpine:init', () => {
         if (s.status === "error") {
           this.addLine("✗", "error: " + (s.error || "desconocido"), "err");
           this.errorMsg = s.error || "Fallo la descarga.";
+          this.canRetry = true;
           this.downloading = false;
           ev.close();
         }
@@ -539,6 +547,7 @@ document.addEventListener('alpine:init', () => {
       this.downloadUrl = "";
       this.downloadFilename = "";
       this.errorMsg = "";
+      this.canRetry = false;
       this.isPlaylist = false;
       this.playlistVideos = [];
       this.formats = [];

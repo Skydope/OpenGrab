@@ -61,6 +61,41 @@ def _sanitize_url(url: str) -> str:
     return clean[:200]
 
 
+# (patrón en minúsculas → mensaje humano). El primero que matchee gana.
+_ERROR_MAP: list[tuple[str, str]] = [
+    ("403", "YouTube rechazó la solicitud. Probá 'Actualizar motor' o esperá unos minutos."),
+    ("404", "El video no existe o fue eliminado."),
+    ("private video", "El video es privado."),
+    ("members-only", "El video es solo para miembros del canal."),
+    ("sign in to confirm your age", "El video requiere verificación de edad."),
+    ("age", "El video requiere verificación de edad o inicio de sesión."),
+    ("sign in", "El video requiere iniciar sesión."),
+    ("not available in your country", "El video está bloqueado en tu región."),
+    ("geo", "El video está bloqueado en tu región."),
+    ("video unavailable", "El video no está disponible."),
+    ("is not available", "El video no está disponible."),
+    ("unsupported url", "URL no soportada por el motor de descarga."),
+    ("ffmpeg", "Falló el procesamiento (ffmpeg). Si es un build de escritorio, reinstalá."),
+    ("ffprobe", "Falló el procesamiento (ffmpeg). Si es un build de escritorio, reinstalá."),
+    ("timed out", "Problema de red: la conexión expiró. Reintentá."),
+    ("connection", "Problema de red. Revisá tu conexión y reintentá."),
+    ("urlopen error", "Problema de red. Revisá tu conexión y reintentá."),
+]
+
+
+def _friendly_error(exc: Exception) -> str:
+    """Traduce errores técnicos de yt-dlp a mensajes que un humano entiende.
+
+    Los mensajes internos ya en español (límite de tamaño, 'No se generó…') se devuelven
+    tal cual; lo desconocido cae al texto crudo recortado."""
+    raw = str(exc)
+    low = raw.lower()
+    for needle, msg in _ERROR_MAP:
+        if needle in low:
+            return msg
+    return raw[:300]
+
+
 # --------------------------------------------------------------------------- #
 # yt-dlp wrappers
 # --------------------------------------------------------------------------- #
@@ -225,13 +260,14 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
             "quality": quality,
             "filename": f"{title}.{ext}",
             "size": final.stat().st_size,
+            "thumbnail": info.get("thumbnail"),
             "job_id": job_id,
             "completed": int(time.time()),
         })
         loop.call_soon_threadsafe(evt.set)
     except Exception as exc:
         job.status = "error"
-        job.error = str(exc)
+        job.error = _friendly_error(exc)
         loop.call_soon_threadsafe(evt.set)
         log.error("job %s: falló", job_id, exc_info=True)
     finally:

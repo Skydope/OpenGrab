@@ -243,3 +243,37 @@ def test_run_download_hook_percent(dl_state, monkeypatch):
     assert job.total == 2000000
     assert job.speed == "10MiB/s"
     assert job.eta == "5s"
+
+
+# ----------------------- A.1: mapeo de errores --------------------------- #
+import download
+
+
+def test_friendly_error_maps_403():
+    msg = download._friendly_error(Exception("ERROR: unable to download: HTTP Error 403: Forbidden"))
+    assert "rechaz" in msg.lower()
+    assert "403" not in msg  # no filtra el error técnico crudo
+
+
+def test_friendly_error_private_video():
+    assert "privado" in download._friendly_error(Exception("ERROR: Private video")).lower()
+
+
+def test_friendly_error_geo():
+    assert "regi" in download._friendly_error(
+        Exception("This video is not available in your country")
+    ).lower()
+
+
+def test_friendly_error_network():
+    assert "red" in download._friendly_error(Exception("<urlopen error timed out>")).lower()
+
+
+def test_friendly_error_unknown_passthrough():
+    msg = download._friendly_error(Exception("boom interno raro 12345"))
+    assert "boom interno raro 12345" in msg
+
+
+def test_friendly_error_truncates_long_unknown():
+    msg = download._friendly_error(Exception("x" * 500))
+    assert len(msg) <= 300
