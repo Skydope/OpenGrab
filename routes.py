@@ -507,6 +507,17 @@ async def api_check_channel(
     return JSONResponse({"ok": True, "new_videos": len(videos), "videos": videos})
 
 
+@router.get("/api/debug/routes")
+async def api_debug_routes(request: Request) -> JSONResponse:
+    routes = []
+    for r in request.app.routes:
+        routes.append({
+            "path": getattr(r, "path", str(r)),
+            "methods": sorted(m for m in (getattr(r, "methods", None) or set())),
+        })
+    return JSONResponse(routes)
+
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
