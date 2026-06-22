@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Balde B — SQLite, PR-0, sin cablear todavía)
+
+- `db.py`: capa de acceso SQLite (conexión WAL + lock serializado, `check_same_thread=False`).
+  Tabla única `jobs` (cola + historial), `channels` y `downloaded_urls` para watch mode.
+  CRUD de jobs, transiciones, `mark_interrupted()` (devuelve workdirs para limpiar),
+  dedup (`record_download`/`is_downloaded`), `prune_history`, e import del `history.json` legacy.
+- `tests/test_db.py`: 17 tests en `:memory:`/temp (roundtrip, transiciones, history, dedup,
+  interrupted, migración sin thumbnail, retención, concurrencia).
+- Diseño completo en `sqlite-schema.md`. PR-0 no cambia comportamiento observable; el cableado
+  de `state`/`routes`/`download`/`app` va en PR-1.
+
+
 ### Added (binary track — M2/M3)
 
 - `POST /api/engine/update` + botón "Actualizar motor (yt-dlp)" en la UI (M3). El backend
