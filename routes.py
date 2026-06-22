@@ -28,13 +28,14 @@ from config import (
     _STATIC_DIR,
 )
 from download import (
+    _check_channel_watch,
     _fetch_info,
     _fetch_playlist,
     _looks_like_supported,
     _run_download,
     _sanitize_url,
 )
-from models import AuthReq, Job, JobReq
+from models import AuthReq, ChannelReq, Job, JobReq
 from state import AppState
 
 log = logging.getLogger("opengrab")
@@ -362,6 +363,79 @@ async def api_engine_update(
 
     result = await asyncio.to_thread(engine_update.check_and_update, True)
     return JSONResponse(result)
+
+
+# --------------------------------------------------------------------------- #
+# Channel management (watch mode)
+# --------------------------------------------------------------------------- #
+@router.get("/api/channels")
+async def api_list_channels(
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    channels = state.db.list_channels()
+    return JSONResponse(channels)
+
+
+@router.post("/api/channels")
+@limiter.limit("10/minute")
+async def api_create_channel(
+    request: Request,
+    req: ChannelReq,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    cid = state.db.insert_channel(req.url, req.quality, req.interval_minutes)
+    return JSONResponse({"id": cid, "url": req.url})
+
+
+@router.put("/api/channels/{channel_id}")
+@limiter.limit("10/minute")
+async def api_update_channel(
+    request: Request,
+    channel_id: int,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    ch = state.db.get_channel(channel_id)
+    if ch is None:
+        raise HTTPException(404, "Canal no encontrado.")
+    body = await request.json()
+    updatable = {"title", "quality", "interval_minutes", "enabled"}
+    fields = {k: v for k, v in body.items() if k in updatable}
+    if fields:
+        state.db.update_channel(channel_id, **fields)
+    return JSONResponse({"ok": True})
+
+
+@router.delete("/api/channels/{channel_id}")
+@limiter.limit("10/minute")
+async def api_delete_channel(
+    request: Request,
+    channel_id: int,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    if state.db.get_channel(channel_id) is None:
+        raise HTTPException(404, "Canal no encontrado.")
+    state.db.delete_channel(channel_id)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/api/channels/{channel_id}/check")
+@limiter.limit("5/minute")
+async def api_check_channel(
+    request: Request,
+    channel_id: int,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    ch = state.db.get_channel(channel_id)
+    if ch is None:
+        raise HTTPException(404, "Canal no encontrado.")
+    new_count = await asyncio.to_thread(_check_channel_watch, state, ch)
+    state.db.touch_channel(channel_id)
+    return JSONResponse({"ok": True, "new_videos": new_count})
 
 
 @router.get("/health")

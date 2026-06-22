@@ -6,6 +6,7 @@ import re
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict
 
@@ -135,12 +136,58 @@ def _fetch_playlist(url: str) -> Dict[str, Any]:
                 "title": e.get("title", "—"),
                 "url": vid_url,
                 "duration": e.get("duration"),
+                "extractor": e.get("ie_key"),
+                "video_id": e.get("id"),
             })
     return {
         "title": info.get("title", "—"),
         "count": len(videos),
         "videos": videos,
     }
+
+# --------------------------------------------------------------------------- #
+# Watch mode — channel check
+# --------------------------------------------------------------------------- #
+def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> int:
+    """Revisa un canal por videos nuevos y crea jobs de descarga.
+
+    Usa ``extract_flat=True`` (rápido, sin bajar nada) y filtra contra
+    ``downloaded_urls`` para no repetir. Crea un job por cada video nuevo
+    y registra el download en la tabla de dedup.
+    Devuelve la cantidad de videos nuevos encontrados.
+    """
+    url = channel["url"]
+    quality = channel["quality"]
+    channel_id = channel["id"]
+    try:
+        info = _fetch_playlist(url)
+    except Exception:
+        log.exception("watch: error al leer playlist %s", _sanitize_url(url))
+        return 0
+
+    new_count = 0
+    for v in info.get("videos", []):
+        extractor = v.get("extractor")
+        video_id = str(v.get("video_id", ""))
+        if not extractor or not video_id:
+            continue
+        if state.db.is_downloaded(extractor, video_id):
+            continue
+
+        job_id = uuid.uuid4().hex[:12]
+        state.db.insert_job(job_id, v["url"], quality)
+        state.jobs[job_id] = Job(id=job_id, created=time.time())
+        state.job_events[job_id] = asyncio.Event()
+        state.db.update_job(job_id, extractor=extractor, video_id=video_id)
+        state.db.record_download(extractor, video_id, job_id, channel_id=channel_id)
+
+        log.info(
+            "watch: nuevo video en %s → job %s (%s)",
+            _sanitize_url(url), job_id, v.get("title", "?"),
+        )
+        new_count += 1
+
+    return new_count
 
 
 # --------------------------------------------------------------------------- #

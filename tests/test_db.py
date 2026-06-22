@@ -175,3 +175,62 @@ def test_concurrent_inserts_serialized(tmp_path):
     assert not errors
     assert len(d.get_active_jobs()) == 80  # 4 threads × 20, sin corrupción
     d.close()
+
+
+# --------------------------- channels CRUD ------------------------------ #
+def test_insert_and_get_channel_roundtrip(db):
+    cid = db.insert_channel("https://youtube.com/@test", "720p", interval_minutes=120)
+    assert cid > 0
+    ch = db.get_channel(cid)
+    assert ch["url"] == "https://youtube.com/@test"
+    assert ch["quality"] == "720p"
+    assert ch["interval_minutes"] == 120
+    assert ch["enabled"] == 1
+
+
+def test_list_channels_filters_enabled(db):
+    c1 = db.insert_channel("https://a.com", "best")
+    c2 = db.insert_channel("https://b.com", "best")
+    db.update_channel(c2, enabled=0)
+    all_ch = db.list_channels(enabled_only=False)
+    assert len(all_ch) == 2
+    enabled = db.list_channels(enabled_only=True)
+    assert [c["id"] for c in enabled] == [c1]
+
+
+def test_update_channel_partial(db):
+    cid = db.insert_channel("https://x.com", "best")
+    db.update_channel(cid, title="My Channel", quality="audio")
+    ch = db.get_channel(cid)
+    assert ch["title"] == "My Channel"
+    assert ch["quality"] == "audio"
+    assert ch["interval_minutes"] == 60  # default intacto
+
+
+def test_update_channel_rejects_bad_column(db):
+    cid = db.insert_channel("https://x.com", "best")
+    with pytest.raises(ValueError):
+        db.update_channel(cid, fake_col=1)
+
+
+def test_delete_channel_removes_row(db):
+    cid = db.insert_channel("https://x.com", "best")
+    db.delete_channel(cid)
+    assert db.get_channel(cid) is None
+
+
+def test_touch_channel_updates_last_checked(db):
+    cid = db.insert_channel("https://x.com", "best")
+    before = db.get_channel(cid)
+    assert before["last_checked"] is None
+    db.touch_channel(cid)
+    after = db.get_channel(cid)
+    assert after["last_checked"] is not None
+    assert after["last_checked"] > 0
+
+
+def test_list_channels_ordered_by_created(db):
+    db.insert_channel("https://a.com", "best", created=100)
+    db.insert_channel("https://b.com", "best", created=200)
+    channels = db.list_channels()
+    assert [c["url"] for c in channels] == ["https://a.com", "https://b.com"]

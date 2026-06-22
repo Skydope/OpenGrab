@@ -12,6 +12,12 @@ class JobReq(BaseModel):
     quality: str = "best"
 
 
+class ChannelReq(BaseModel):
+    url: str
+    quality: str = "best"
+    interval_minutes: int = 60
+
+
 class Job(BaseModel):
     id: str
     status: str = "queued"

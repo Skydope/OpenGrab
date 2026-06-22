@@ -232,6 +232,69 @@ class Database:
         return row is not None
 
     # ------------------------------------------------------------------ #
+    # Channels CRUD
+    # ------------------------------------------------------------------ #
+    _CHANNEL_UPDATABLE = frozenset({"title", "quality", "interval_minutes", "enabled"})
+
+    def insert_channel(
+        self, url: str, quality: str = "best",
+        interval_minutes: int = 60, created: int | None = None,
+    ) -> int:
+        created = int(time.time()) if created is None else created
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO channels (url, quality, interval_minutes, created) "
+                "VALUES (?, ?, ?, ?)",
+                (url, quality, interval_minutes, created),
+            )
+            self._conn.commit()
+            return int(cur.lastrowid) if cur.lastrowid else -1
+
+    def update_channel(self, channel_id: int, **fields: Any) -> None:
+        bad = set(fields) - self._CHANNEL_UPDATABLE
+        if bad:
+            raise ValueError(f"columnas no actualizables: {sorted(bad)}")
+        if not fields:
+            return
+        cols = ", ".join(f"{k}=?" for k in fields)
+        with self._lock:
+            self._conn.execute(
+                f"UPDATE channels SET {cols} WHERE id=?",
+                (*fields.values(), channel_id),
+            )
+            self._conn.commit()
+
+    def delete_channel(self, channel_id: int) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM channels WHERE id=?", (channel_id,))
+            self._conn.commit()
+
+    def get_channel(self, channel_id: int) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM channels WHERE id=?", (channel_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_channels(self, enabled_only: bool = False) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM channels"
+        params: tuple[Any, ...] = ()
+        if enabled_only:
+            sql += " WHERE enabled=1"
+        sql += " ORDER BY created"
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def touch_channel(self, channel_id: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE channels SET last_checked=? WHERE id=?",
+                (int(time.time()), channel_id),
+            )
+            self._conn.commit()
+
+    # ------------------------------------------------------------------ #
     # Migración desde el history.json viejo
     # ------------------------------------------------------------------ #
     def import_history_json(self, entries: list[dict[str, Any]]) -> int:

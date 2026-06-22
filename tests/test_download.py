@@ -281,3 +281,67 @@ def test_friendly_error_unknown_passthrough():
 def test_friendly_error_truncates_long_unknown():
     msg = download._friendly_error(Exception("x" * 500))
     assert len(msg) <= 300
+
+
+# --------------------- watch mode: channel check ------------------------ #
+def test_check_channel_watch_finds_new_videos(dl_state, monkeypatch):
+    from download import _check_channel_watch
+
+    playlist = {
+        "title": "Test Channel",
+        "count": 2,
+        "videos": [
+            {"title": "V1", "url": "https://x.com/1", "extractor": "youtube", "video_id": "vid1"},
+            {"title": "V2", "url": "https://x.com/2", "extractor": "youtube", "video_id": "vid2"},
+        ],
+    }
+
+    def fake_playlist(url):
+        return playlist
+
+    monkeypatch.setattr("download._fetch_playlist", fake_playlist)
+    monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
+
+    cid = dl_state.db.insert_channel("https://x.com/@test", "best")
+    channel = {"id": cid, "url": "https://x.com/@test", "quality": "best"}
+    found = _check_channel_watch(dl_state, channel)
+    assert found == 2
+    assert dl_state.db.is_downloaded("youtube", "vid1")
+    assert dl_state.db.is_downloaded("youtube", "vid2")
+
+
+def test_check_channel_watch_skips_downloaded(dl_state, monkeypatch):
+    from download import _check_channel_watch
+
+    dl_state.db.insert_job("j1", "https://x.com/1", "best")
+    dl_state.db.record_download("youtube", "vid1", "j1")
+
+    playlist = {
+        "title": "TC",
+        "count": 2,
+        "videos": [
+            {"title": "V1", "url": "https://x.com/1", "extractor": "youtube", "video_id": "vid1"},
+            {"title": "V2", "url": "https://x.com/2", "extractor": "youtube", "video_id": "vid2"},
+        ],
+    }
+
+    monkeypatch.setattr("download._fetch_playlist", lambda url: playlist)
+    monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
+
+    cid = dl_state.db.insert_channel("https://x.com/@test", "best")
+    channel = {"id": cid, "url": "https://x.com/@test", "quality": "best"}
+    found = _check_channel_watch(dl_state, channel)
+    assert found == 1
+
+
+def test_check_channel_watch_handles_fetch_error(dl_state, monkeypatch):
+    from download import _check_channel_watch
+
+    def fail(url):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("download._fetch_playlist", fail)
+
+    channel = {"id": 1, "url": "https://x.com/@test", "quality": "best"}
+    found = _check_channel_watch(dl_state, channel)
+    assert found == 0

@@ -255,3 +255,73 @@ def test_engine_update_requires_auth(client_no_auth, monkeypatch):
     )
     r = client_no_auth.post("/api/engine/update")
     assert r.status_code == 200
+
+
+# --------------------------- channels CRUD ---------------------------------- #
+def test_api_list_channels_empty(client):
+    r = client.get("/api/channels")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
+def test_api_create_and_list_channel(client):
+    r = client.post("/api/channels", json={
+        "url": "https://youtube.com/@test",
+        "quality": "720p",
+        "interval_minutes": 120,
+    })
+    assert r.status_code == 200
+    assert r.json()["id"] > 0
+
+    r2 = client.get("/api/channels")
+    assert r2.status_code == 200
+    channels = r2.json()
+    assert len(channels) == 1
+    assert channels[0]["url"] == "https://youtube.com/@test"
+    assert channels[0]["quality"] == "720p"
+
+
+def test_api_update_channel(client):
+    r = client.post("/api/channels", json={"url": "https://x.com/@ch-up"})
+    cid = r.json()["id"]
+
+    r2 = client.put(f"/api/channels/{cid}", json={"title": "Renamed", "enabled": 0})
+    assert r2.status_code == 200
+
+    channels = client.get("/api/channels").json()
+    updated = next(c for c in channels if c["id"] == cid)
+    assert updated["title"] == "Renamed"
+    assert updated["enabled"] == 0
+
+
+def test_api_delete_channel(client):
+    r = client.post("/api/channels", json={"url": "https://x.com/@ch-del"})
+    cid = r.json()["id"]
+
+    r2 = client.delete(f"/api/channels/{cid}")
+    assert r2.status_code == 200
+
+    r3 = client.get("/api/channels")
+    ids = [c["id"] for c in r3.json()]
+    assert cid not in ids
+
+
+def test_api_delete_nonexistent_channel(client):
+    r = client.delete("/api/channels/99999")
+    assert r.status_code == 404
+
+
+def test_api_check_channel(client, monkeypatch):
+    from download import _check_channel_watch
+
+    def fake_check(state, channel):
+        return 3
+
+    monkeypatch.setattr("routes._check_channel_watch", fake_check)
+
+    r = client.post("/api/channels", json={"url": "https://x.com/@ch-check"})
+    cid = r.json()["id"]
+
+    r2 = client.post(f"/api/channels/{cid}/check")
+    assert r2.status_code == 200
+    assert r2.json()["new_videos"] == 3

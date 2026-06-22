@@ -119,3 +119,30 @@ class AppState:
         while True:
             await asyncio.sleep(300)
             self.evict_once()
+
+    # ------------------------------------------------------------------ #
+    # Watch mode scheduler
+    # ------------------------------------------------------------------ #
+    async def watch_loop(self) -> None:
+        from download import _check_channel_watch
+
+        while True:
+            await asyncio.sleep(60)
+            channels = self.db.list_channels(enabled_only=True)
+            now = int(time.time())
+            for ch in channels:
+                last = ch.get("last_checked") or 0
+                interval_s = ch["interval_minutes"] * 60
+                if now - last >= interval_s:
+                    try:
+                        found = await asyncio.to_thread(
+                            _check_channel_watch, self, ch,
+                        )
+                        self.db.touch_channel(ch["id"])
+                        if found:
+                            log.info(
+                                "watch: canal %s → %d videos nuevos",
+                                ch.get("title") or ch["url"], found,
+                            )
+                    except Exception:
+                        log.exception("watch: error en canal %s", ch["url"])
