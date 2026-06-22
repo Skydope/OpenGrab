@@ -11,7 +11,7 @@
   > Self-hosted YouTube downloader — paste a URL, get an MP4. Wraps yt-dlp + ffmpeg behind a clean web UI.
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-1.5.0-green.svg)]()
+  [![Version](https://img.shields.io/badge/version-1.6.0-green.svg)]()
   [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
   [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker)](https://hub.docker.com)
 

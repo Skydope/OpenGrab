@@ -7,16 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added (features — Balde A / polish)
-
-- Mensajes de error humanos: yt-dlp 403 / video privado / bloqueo regional / red / ffmpeg
-  se traducen a texto entendible (antes se mostraba el error técnico crudo)
-- Botón "Reintentar" en el error de descarga: re-dispara el job sin re-pegar la URL
-- Thumbnail en el historial (`add_history_entry` ahora guarda `thumbnail`; entradas
-  viejas sin el campo muestran sin imagen, sin romper)
-- Tests del mapeo de errores
-
-
 ### Added (binary track — M2/M3)
 
 - `POST /api/engine/update` + botón "Actualizar motor (yt-dlp)" en la UI (M3). El backend
@@ -35,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_desktop.py`: 12 tests de la lógica de escritorio y del hot-swap
 - `config.resource_path()` + `_STATIC_DIR` frozen-aware; `ffmpeg_location` bundleado
   con guard (no afecta Docker/dev)
+
+> Nota: el carril binario está completo en código pero queda bajo [Unreleased] hasta
+> que salga el `.exe` (necesita el build de Windows: reconfirmación del hot-swap + Inno Setup).
+
+## [1.6.0] — 2026-06-21
+
+### Added
+
+- Mensajes de error humanos: yt-dlp 403 / video privado / bloqueo regional / red / ffmpeg
+  se traducen a texto entendible (antes se mostraba el error técnico crudo)
+- Botón "Reintentar" en el error de descarga: re-dispara el job sin re-pegar la URL
+- Thumbnail en el historial (`add_history_entry` ahora guarda `thumbnail`; entradas
+  viejas sin el campo muestran sin imagen, sin romper)
+- Tests del mapeo de errores
 
 ## [1.5.0] — 2026-06-21
 
