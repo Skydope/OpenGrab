@@ -60,9 +60,11 @@ async def test_job_events_stream_lifecycle():
     from models import Job
     from routes import _job_events_stream
     from state import AppState
+    from db import Database
 
     tmp = Path(tempfile.mkdtemp())
-    state = AppState(tmp, tmp / ".history.json")
+    db = Database(":memory:")
+    state = AppState(db, tmp)
 
     job = Job(id="sse-test", created=time.time())
     job.status = "starting"
@@ -107,9 +109,11 @@ async def test_job_events_stream_error():
     from models import Job
     from routes import _job_events_stream
     from state import AppState
+    from db import Database
 
     tmp = Path(tempfile.mkdtemp())
-    state = AppState(tmp, tmp / ".history.json")
+    db = Database(":memory:")
+    state = AppState(db, tmp)
 
     job = Job(id="sse-err", created=time.time())
     job.status = "starting"

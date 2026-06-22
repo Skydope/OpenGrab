@@ -106,6 +106,7 @@ MAX_SIZE_MB = _int_env("OPENGRAB_MAX_SIZE_MB", _ini_int("max_size_mb", 0), min_v
 MAX_TOTAL_MB = _int_env("OPENGRAB_MAX_TOTAL_MB", _ini_int("max_total_mb", 0), min_val=0)
 
 TRUST_XFF = os.environ.get("OPENGRAB_TRUST_XFF", "").strip() == "1"
+DB_PATH = OUT_DIR / "opengrab.db"
 HISTORY_FILE = OUT_DIR / ".opengrab_history.json"
 HISTORY_MAX = 500
 

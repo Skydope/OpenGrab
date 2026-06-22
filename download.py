@@ -254,16 +254,15 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         job.mime = "audio/mpeg" if is_audio else "video/mp4"
         job.title = title
         log.info("job %s: completado → %s", job_id, f"{title}.{ext}")
-        state.add_history_entry({
-            "url": url,
-            "title": title,
-            "quality": quality,
-            "filename": f"{title}.{ext}",
-            "size": final.stat().st_size,
-            "thumbnail": info.get("thumbnail"),
-            "job_id": job_id,
-            "completed": int(time.time()),
-        })
+        state.complete_job(
+            job_id,
+            title=title,
+            filename=f"{title}.{ext}",
+            filepath=str(final),
+            mime=job.mime,
+            size=final.stat().st_size,
+            thumbnail=info.get("thumbnail"),
+        )
         loop.call_soon_threadsafe(evt.set)
     except Exception as exc:
         job.status = "error"

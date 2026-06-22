@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from db import Database
 from models import Job
 from state import AppState
 
@@ -13,9 +14,11 @@ from state import AppState
 @pytest.fixture
 def dl_state():
     tmp = Path(tempfile.mkdtemp())
-    state = AppState(tmp, tmp / ".history.json")
+    db = Database(":memory:")
+    state = AppState(db, tmp)
     state.out_dir.mkdir(parents=True, exist_ok=True)
     yield state
+    db.close()
     import shutil
 
     shutil.rmtree(tmp, ignore_errors=True)
@@ -24,6 +27,7 @@ def dl_state():
 def _make_job(state, job_id="test-1"):
     state.jobs[job_id] = Job(id=job_id, created=time.time())
     state.job_events[job_id] = asyncio.Event()
+    state.db.insert_job(job_id, "https://x.com/1", "best")
     return job_id
 
 
@@ -58,7 +62,7 @@ def test_run_download_video_success(dl_state, monkeypatch):
     assert job.filename == "Test.mp4"
     assert job.mime == "video/mp4"
     assert job.filepath == str(video)
-    assert len(dl_state.history) == 1
+    assert len(dl_state.get_history()) == 1
 
 
 # ------------------------------------------------------------------ T2 ----

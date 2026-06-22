@@ -214,6 +214,7 @@ async def api_create_job(
     job_id = uuid.uuid4().hex[:12]
     state.jobs[job_id] = Job(id=job_id, created=time.time())
     state.job_events[job_id] = asyncio.Event()
+    state.db.insert_job(job_id, url, req.quality)
     log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
     loop = asyncio.get_running_loop()
     task = asyncio.create_task(
@@ -330,8 +331,8 @@ async def api_history(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    entries = state.history[-max(1, min(limit, HISTORY_MAX)) :]
-    return JSONResponse(list(reversed(entries)))
+    entries = state.get_history(limit=max(1, min(limit, HISTORY_MAX)))
+    return JSONResponse(entries)
 
 
 @router.post("/api/jobs/{job_id}/open-folder")

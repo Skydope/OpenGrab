@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import json as _json
 import logging
 import shutil
-import threading
 import time
 from pathlib import Path
+from typing import Any
 
+from db import Database
 from models import Job
 
 log = logging.getLogger("opengrab")
@@ -16,43 +16,36 @@ log = logging.getLogger("opengrab")
 class AppState:
     def __init__(
         self,
+        db: Database,
         out_dir: Path,
-        history_file: Path,
         history_max: int = 500,
     ) -> None:
+        self.db = db
         self.out_dir = out_dir
-        self.history_file = history_file
         self.history_max = history_max
         self.jobs: dict[str, Job] = {}
         self.job_events: dict[str, asyncio.Event] = {}
         self.running_tasks: set[asyncio.Task[None]] = set()
-        self.history: list[dict[str, object]] = []
-        self._history_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
-    # History persistence
+    # Job completion
     # ------------------------------------------------------------------ #
-    def load_history(self) -> None:
+    def complete_job(self, job_id: str, **fields: Any) -> None:
+        fields.setdefault("status", "done")
+        fields.setdefault("completed", int(time.time()))
         try:
-            self.history = _json.loads(
-                self.history_file.read_text(encoding="utf-8")
-            )
-        except (OSError, _json.JSONDecodeError):
-            self.history = []
+            self.db.update_job(job_id, **fields)
+        except Exception:
+            log.exception("job %s: error al persistir en DB", job_id)
 
-    def _write_history(self) -> None:
-        entries = self.history[-self.history_max :]
-        try:
-            self.history_file.write_text(
-                _json.dumps(entries, indent=2, default=str), encoding="utf-8"
-            )
-        except OSError:
-            pass
-
-    def add_history_entry(self, entry: dict[str, object]) -> None:
-        with self._history_lock:
-            self.history.append(entry)
-            self._write_history()
+    # ------------------------------------------------------------------ #
+    # History
+    # ------------------------------------------------------------------ #
+    def get_history(self, limit: int = 20) -> list[dict[str, Any]]:
+        rows = self.db.get_history(limit=limit)
+        for r in rows:
+            r["job_id"] = r.pop("id", r.get("job_id"))
+        return rows
 
     # ------------------------------------------------------------------ #
     # Job helpers
@@ -117,6 +110,7 @@ class AppState:
             self.job_events.pop(jid, None)
         if to_delete:
             log.info("evacuados %d jobs viejos de memoria", len(to_delete))
+        self.db.prune_history(keep=self.history_max)
         return len(to_delete)
 
     async def evict_loop(self) -> None:

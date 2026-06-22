@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-_OPENGRAB_MODULES = ("app", "config", "models", "download", "routes", "state")
+_OPENGRAB_MODULES = ("app", "config", "models", "download", "routes", "state", "db")
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +29,7 @@ def clean_env(monkeypatch):
 def _make_client(**extra_env):
     for mod in list(sys.modules):
         if mod in _OPENGRAB_MODULES or mod.startswith(
-            ("app.", "config.", "models.", "download.", "routes.", "state.")
+            ("app.", "config.", "models.", "download.", "routes.", "state.", "db.")
         ):
             del sys.modules[mod]
     for key, val in extra_env.items():

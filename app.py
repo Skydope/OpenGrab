@@ -18,7 +18,9 @@ Environment:
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
+import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
@@ -31,7 +33,8 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from config import HOST, HISTORY_FILE, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
+from config import DB_PATH, HISTORY_FILE, HISTORY_MAX, HOST, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
+from db import Database
 from routes import limiter, router
 from state import AppState
 
@@ -45,10 +48,31 @@ log = logging.getLogger("opengrab")
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    state = AppState(OUT_DIR, HISTORY_FILE)
-    state.out_dir.mkdir(parents=True, exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    db = Database(DB_PATH)
+    state = AppState(db, OUT_DIR, history_max=HISTORY_MAX)
     state.cleanup_old_workdirs()
-    state.load_history()
+
+    interrupted = db.mark_interrupted()
+    for j in interrupted:
+        wd = j.get("workdir")
+        if wd:
+            try:
+                shutil.rmtree(wd, ignore_errors=True)
+            except OSError:
+                pass
+
+    if HISTORY_FILE.exists():
+        try:
+            entries = _json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+            imported = db.import_history_json(entries)
+            if imported:
+                log.info("Migrados %d jobs del history.json a SQLite", imported)
+        except (OSError, _json.JSONDecodeError):
+            pass
+
+    db.prune_history(keep=HISTORY_MAX)
+
     _app.state.opengrab = state
 
     task = asyncio.create_task(state.evict_loop())
@@ -58,6 +82,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await task
     except asyncio.CancelledError:
         pass
+    db.close()
 
 
 app = FastAPI(title="OpenGrab", lifespan=_lifespan)
