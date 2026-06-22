@@ -138,6 +138,21 @@
   .err-box.show{display:flex; align-items:center; gap:12px; justify-content:space-between}
   .err-box .retry-btn{flex:none}
 
+  .success-box{
+    margin-top:14px; display:none; padding:12px 14px; border-radius:8px;
+    border:1px solid var(--ok); background:rgba(91,201,126,.07);
+    color:var(--ok); font-size:13px; font-family:var(--mono);
+    align-items:center; gap:10px;
+  }
+  .success-box.show{display:flex}
+  .success-icon{font-size:16px; flex:none}
+  .success-path{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text)}
+  .folder-btn{
+    font-size:12px; padding:6px 12px; flex:none;
+    border-color:var(--ok); color:var(--ok); background:transparent;
+  }
+  .folder-btn:hover:not(:disabled){background:rgba(91,201,126,.1)}
+
   .auth-card{display:none}
 
   .pl-video{display:flex; align-items:center; gap:10px; padding:8px 12px;

@@ -146,6 +146,15 @@
     <div class="actions" :class="{show: downloadUrl}">
       <a class="dl" :href="downloadUrl" :download="downloadFilename">Guardar archivo</a>
     </div>
+
+    <!-- Success banner -->
+    <div class="success-box" :class="{show: successPath}" x-transition>
+      <span class="success-icon">✓</span>
+      <span class="success-path" x-text="successPath"></span>
+      <button class="folder-btn" @click="openFolder(lastJobId)" :disabled="!lastJobId">
+        Abrir carpeta
+      </button>
+    </div>
   </div>
 
   <footer>
@@ -280,6 +289,8 @@ document.addEventListener('alpine:init', () => {
     progressDone: false,
     downloadUrl: "",
     downloadFilename: "",
+    successPath: "",
+    lastJobId: "",
 
     // ── Error ─────────────────────────────────
     errorMsg: "",
@@ -479,6 +490,8 @@ document.addEventListener('alpine:init', () => {
           this.addLine("✓", "listo → " + s.filename, "ok");
           this.downloadUrl = "/api/jobs/" + jobId + "/file";
           this.downloadFilename = s.filename || "";
+          this.successPath = s.filepath || s.filename || "";
+          this.lastJobId = jobId;
           this.downloading = false;
           ev.close();
         }
@@ -546,12 +559,19 @@ document.addEventListener('alpine:init', () => {
       this.progressDone = false;
       this.downloadUrl = "";
       this.downloadFilename = "";
+      this.successPath = "";
+      this.lastJobId = "";
       this.errorMsg = "";
       this.canRetry = false;
       this.isPlaylist = false;
       this.playlistVideos = [];
       this.formats = [];
       this.showFormats = false;
+    },
+
+    async openFolder(jobId) {
+      if (!jobId) return;
+      await fetch("/api/jobs/" + jobId + "/open-folder", { method: "POST" });
     },
 
     // ── History ───────────────────────────────

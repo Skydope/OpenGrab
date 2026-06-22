@@ -50,9 +50,12 @@ def _setup_env(port: int) -> None:
     os.environ.setdefault("OPENGRAB_HOST", "127.0.0.1")
     os.environ.setdefault("OPENGRAB_PORT", str(port))
     os.environ.setdefault("OPENGRAB_NO_AUTH", "1")
-    os.environ.setdefault(
-        "OPENGRAB_DIR", str(Path.home() / "Downloads" / "OpenGrab")
-    )
+    import config
+
+    default_dir = config._ini.get("download_dir", "")
+    if not default_dir:
+        default_dir = str(Path.home() / "Downloads" / "OpenGrab")
+    os.environ.setdefault("OPENGRAB_DIR", default_dir)
 
 
 def acquire_single_instance(name: str = "OpenGrab_SingleInstance") -> bool:

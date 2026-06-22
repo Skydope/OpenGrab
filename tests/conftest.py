@@ -20,6 +20,10 @@ def clean_env(monkeypatch):
     monkeypatch.setenv("OPENGRAB_TOKEN", "test-token")
     monkeypatch.setenv("OPENGRAB_MAX_JOBS", "1")
     monkeypatch.setenv("OPENGRAB_AUTOUPDATE", "0")
+    monkeypatch.setenv(
+        "OPENGRAB_CONFIG",
+        str(Path(tempfile.gettempdir()) / "opengrab_test_nonexistent.ini"),
+    )
 
 
 def _make_client(**extra_env):

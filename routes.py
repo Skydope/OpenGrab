@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import logging
+import os
 import re
 import secrets
+import sys
 import time
 import urllib.parse
 import uuid
@@ -244,6 +246,7 @@ async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str
             "eta": job.eta,
             "note": job.note,
             "filename": job.filename,
+            "filepath": job.filepath,
             "error": job.error,
         }
         if snapshot != last:
@@ -329,6 +332,21 @@ async def api_history(
 ) -> JSONResponse:
     entries = state.history[-max(1, min(limit, HISTORY_MAX)) :]
     return JSONResponse(list(reversed(entries)))
+
+
+@router.post("/api/jobs/{job_id}/open-folder")
+async def api_open_folder(
+    job_id: str,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    job = state.jobs.get(job_id)
+    if job is None or not job.filepath:
+        raise HTTPException(404, "Job no encontrado o sin archivo.")
+    folder = str(Path(job.filepath).parent)
+    if sys.platform == "win32":
+        os.startfile(folder)
+    return JSONResponse({"ok": True, "folder": folder})
 
 
 @router.post("/api/engine/update")
