@@ -55,7 +55,7 @@ Filename: "{app}\OpenGrab.exe"; \
 
 [UninstallRun]
 Filename: "{cmd}"; Parameters: "/c taskkill /f /im OpenGrab.exe"; \
-  Flags: runhidden
+  Flags: runhidden; RunOnceId: "KillOpenGrab"
 
 [CustomMessages]
 spanish.CreateDesktopIcon=Crear acceso &directo en el escritorio
