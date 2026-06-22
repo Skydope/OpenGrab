@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   con guard (no afecta Docker/dev)
 - `tests/test_desktop.py`: 20 tests de la lógica de escritorio y hot-swap
 
-### Added (SQLite — PR-0, data layer, sin cablear)
+### Added (SQLite — PR-0, data layer)
 
 - `db.py`: capa de acceso SQLite (conexión WAL + lock serializado). Tabla única `jobs`
   (cola + historial), `channels` y `downloaded_urls` para watch mode. CRUD de jobs,
@@ -46,6 +46,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_db.py`: 17 tests en `:memory:`/temp (roundtrip, transiciones, history,
   dedup, interrupted, migración sin thumbnail, retención, concurrencia).
 - Diseño completo en `sqlite-schema.md`.
+
+### Added (SQLite — PR-1, cableado a AppState)
+
+- **`state.py`**: AppState ahora recibe `Database` por inyección. Removido historial
+  JSON (`load_history`, `_write_history`, `add_history_entry`). Nuevos métodos
+  `complete_job()` (persiste transición en DB) y `get_history()` (con alias
+  `job_id` para el frontend). `evict_once` llama `prune_history`.
+- **`download.py`**: `add_history_entry({...})` → `complete_job(job_id, ...)`.
+- **`routes.py`**: `api_create_job` inserta en DB; `api_history` lee de `get_history()`.
+- **`app.py` lifespan**: crea `Database`, `mark_interrupted` (crash recovery + limpia
+  workdirs), `import_history_json` (migración one-shot del JSON legacy), `prune_history`,
+  `db.close()` en shutdown.
+- **Migración**: el `history.json` legacy se importa una sola vez (idempotente). El
+  archivo queda intacto por si se necesita downgradear.
 
 ### Fixed
 
