@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # ffmpeg → muxear video+audio a mp4 | curl → healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl \
