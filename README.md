@@ -56,7 +56,7 @@
 
 ## Overview
 
-OpenGrab is a self-hosted YouTube downloader for your homelab or LAN. You run it on a server (or your desktop), open the web UI, paste a YouTube URL, choose a quality preset, and get back an MP4 or MP3 file. No browser extensions, no shady websites, no desktop apps. Just your own server doing the work.
+OpenGrab is a self-hosted YouTube downloader for your homelab or LAN. You run it on a server (or your desktop), open the web UI, paste a YouTube URL, choose a quality preset, and get back an MP4 or MP3 file. No browser extensions, no shady websites. Just your own server — or a [Windows desktop app](#desktop-app-windows) if you prefer.
 
 Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (the actively maintained youtube-dl fork) and [ffmpeg](https://ffmpeg.org/) for muxing. The entire backend is a single FastAPI app with an inline vanilla frontend — zero npm, zero bundlers, zero CDN calls.
 
@@ -293,7 +293,7 @@ Distributed under the [MIT License](LICENSE). See `LICENSE` for details.
 
 ### Descripción general
 
-OpenGrab es un descargador de YouTube que corrés en tu propio servidor. Abrís la interfaz web, pegás una URL de YouTube, elegís calidad, y te descarga un MP4 o MP3. Nada de extensiones de navegador, sitios shady, ni apps de escritorio. Solo tu servidor haciendo el trabajo.
+OpenGrab es un descargador de YouTube que corrés en tu propio servidor. Abrís la interfaz web, pegás una URL de YouTube, elegís calidad, y te descarga un MP4 o MP3. Nada de extensiones de navegador, sitios shady. Solo tu servidor — o la [app de escritorio para Windows](#desktop-app-windows) si preferís.
 
 Usa [yt-dlp](https://github.com/yt-dlp/yt-dlp) como motor de descarga y [ffmpeg](https://ffmpeg.org/) para el muxing. Todo el backend es una app FastAPI con frontend vanilla inline — sin npm, sin bundlers, sin CDN.
 
