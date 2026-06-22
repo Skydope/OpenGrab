@@ -31,7 +31,7 @@ from download import (
     _check_channel_watch,
     _fetch_info,
     _fetch_playlist,
-    _looks_like_supported,
+    _is_safe_url,
     _run_download,
     _sanitize_url,
 )
@@ -125,9 +125,10 @@ async def api_info(
     _: None = Depends(require_auth),
 ) -> JSONResponse:
     url = url.strip()
-    if not _looks_like_supported(url):
+    if not _is_safe_url(url):
         raise HTTPException(
-            400, "URL no soportada. Proba con YouTube, Vimeo, TikTok, X o Instagram."
+            400, "Pega un enlace http(s) valido. Si el sitio no anda, proba "
+            "'Actualizar motor' o revisa el formato del link."
         )
     try:
         info = await asyncio.to_thread(_fetch_info, url)
@@ -162,6 +163,7 @@ async def api_info(
         "duration_str": time.strftime("%H:%M:%S", time.gmtime(dur)) if dur else "—",
         "thumbnail": info.get("thumbnail"),
         "view_count": info.get("view_count") or 0,
+        "site": info.get("extractor_key") or info.get("extractor") or "",
         "formats": formats,
     })
 
@@ -174,9 +176,10 @@ async def api_playlist(
     _: None = Depends(require_auth),
 ) -> JSONResponse:
     url = url.strip()
-    if not _looks_like_supported(url):
+    if not _is_safe_url(url):
         raise HTTPException(
-            400, "URL no soportada. Proba con YouTube, Vimeo, TikTok, X o Instagram."
+            400, "Pega un enlace http(s) valido. Si el sitio no anda, proba "
+            "'Actualizar motor' o revisa el formato del link."
         )
     try:
         info = await asyncio.to_thread(_fetch_playlist, url)
@@ -194,9 +197,10 @@ async def api_create_job(
     state: AppState = Depends(get_state),
 ) -> dict[str, str]:
     url = req.url.strip()
-    if not _looks_like_supported(url):
+    if not _is_safe_url(url):
         raise HTTPException(
-            400, "URL no soportada. Proba con YouTube, Vimeo, TikTok, X o Instagram."
+            400, "Pega un enlace http(s) valido. Si el sitio no anda, proba "
+            "'Actualizar motor' o revisa el formato del link."
         )
     if req.quality not in FORMATS:
         raise HTTPException(400, "Calidad invalida.")

@@ -232,6 +232,11 @@ class Database:
         return row is not None
 
     def has_active_job_for_video(self, extractor: str, video_id: str) -> bool:
+        """Indica si hay un job no-terminal para este video (evita duplicados entre
+        ciclos del watch loop).
+
+        Limitacion: no detecta jobs manuales en curso porque extractor/video_id
+        se asignan recien dentro de _run_download, no al crearse el job."""
         placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)
         with self._lock:
             row = self._conn.execute(

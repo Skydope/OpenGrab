@@ -53,6 +53,7 @@
       <div class="info">
         <p class="t" x-text="title">—</p>
         <p class="s" x-text="subtitle">—</p>
+        <span class="site-badge" x-show="site" x-text="'Sitio detectado: ' + site"></span>
       </div>
     </div>
 
@@ -314,6 +315,7 @@ document.addEventListener('alpine:init', () => {
     inspecting: false,
     meta: false,
     thumbnail: "",
+    site: "",
     title: "—",
     subtitle: "—",
     cmdCopied: false,
@@ -367,6 +369,7 @@ document.addEventListener('alpine:init', () => {
         const data = await r.json();
         this.meta = true;
         this.thumbnail = data.thumbnail || "";
+        this.site = data.site || "";
         this.title = data.title || "—";
         const views = data.view_count
           ? " · " + Intl.NumberFormat("es-AR").format(data.view_count) + " views"

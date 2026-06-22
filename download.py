@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import re
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 import yt_dlp  # type: ignore[import-untyped]
 
@@ -16,22 +18,48 @@ from state import AppState
 log = logging.getLogger("opengrab")
 
 # --------------------------------------------------------------------------- #
-# URL validation helpers
+# URL validation: universal pero SSRF-safe
 # --------------------------------------------------------------------------- #
-_SUPPORTED_RE = re.compile(
-    r"^https?://("
-    r"(www\.|m\.|music\.)?(youtube\.com/(watch\?|shorts/|live/|playlist\?|embed/)|youtu\.be/)|"
-    r"(www\.)?vimeo\.com/\d+|"
-    r"(www\.)?(x\.com|twitter\.com)/\w+/status/\d+|"
-    r"(www\.)?tiktok\.com/@?[\w.]+/video/\d+|"
-    r"(www\.)?instagram\.com/(p|reel|tv)/[\w-]+"
-    r")",
-    re.IGNORECASE,
-)
+# OpenGrab es un frontend de yt-dlp (~1800 sitios), así que NO restringimos por
+# plataforma: aceptamos cualquier http(s) público y dejamos que yt-dlp decida si
+# puede extraerlo. Pero como yt-dlp hace requests del lado del servidor, mantenemos
+# una defensa en profundidad contra SSRF: rechazamos esquemas no-http, localhost, y
+# hosts que sean IP interna (privada/loopback/link-local/reservada) o el endpoint de
+# metadata cloud (169.254.169.254, que cae en link-local).
+
+_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
 
-def _looks_like_supported(url: str) -> bool:
-    return bool(_SUPPORTED_RE.match(url.strip()))
+def _is_safe_url(url: str) -> bool:
+    """True si la URL es un http(s) publico seguro de pasar a yt-dlp.
+
+    Universal en cuanto a sitio; restrictivo en cuanto a destino (anti-SSRF).
+
+    NOTA: No cubre notaciones no-estandar de IP (decimal, hex, IPv4-mapped
+    IPv6). Estos bypasses son conocidos pero de bajo riesgo en entornos
+    self-hosted. Ver tests/test_helpers.py para la cobertura exacta."""
+    try:
+        parsed = urlparse(url.strip())
+        host = parsed.hostname
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https") or not host:
+        return False
+    host_l = host.lower()
+    if host_l in _BLOCKED_HOSTS or host_l.endswith((".local", ".localhost")):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True  # hostname de dominio normal → ok (yt-dlp resuelve y baja)
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
 
 
 def _enforce_size(path: Path, max_mb: int) -> None:
@@ -230,6 +258,11 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         "progress_hooks": [hook],
         "merge_output_format": "mp4",
         "postprocessors": [],
+        # Robustez universal: reintentos ante extractors/redes frágiles (sitios duros,
+        # HLS fragmentado, rate limits). No es específico de ninguna plataforma.
+        "extractor_retries": 3,
+        "fragment_retries": 5,
+        "retries": 5,
     }
     if is_audio:
         opts["postprocessors"] = [

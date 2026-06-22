@@ -143,6 +143,13 @@ class AppState:
                         quality = ch["quality"]
                         dispatched = 0
                         for v in videos:
+                            # Nota: descargas manuales tienen extractor=NULL hasta que
+                            # _run_download completa extract_info. Si watch chequea justo en
+                            # ese instante, podria crear un duplicado. Es una ventana de ~1-2s
+                            # en un escenario casi imposible (mismo video en canal vigilado +
+                            # bajado a mano simultaneo). El fix requeriria _fetch_info previo en
+                            # api_create_job -> latencia extra en cada descarga manual.
+                            # Decision deliberada: no over-engineerear.
                             if self.db.is_downloaded(v["extractor"], v["video_id"]):
                                 continue
                             if self.db.has_active_job_for_video(v["extractor"], v["video_id"]):
