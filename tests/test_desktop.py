@@ -193,7 +193,7 @@ def test_open_ui_msgbox_received_on_fallback(monkeypatch):
 
     desktop._open_ui(12345)
     assert msgbox_calls[0]["icon"] == "info"
-    assert "instalador" in msgbox_calls[0]["text"]
+    assert "reinstalá" in msgbox_calls[0]["text"]
 
 
 # ----------------------- engine_update (hot-swap) ------------------------ #

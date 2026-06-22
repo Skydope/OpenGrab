@@ -147,7 +147,8 @@ def _open_ui(port: int) -> bool:
     _msgbox(
         "WebView2 Runtime no está instalado.\n\n"
         "OpenGrab se abrirá en tu navegador.\n"
-        "Para usar la ventana nativa, ejecutá el instalador.",
+        "Para usar la ventana nativa, reinstalá OpenGrab y\n"
+        "asegurate de marcar 'WebView2 Runtime'.",
         "OpenGrab", "info",
     )
     webbrowser.open(url)
