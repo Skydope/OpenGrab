@@ -30,5 +30,5 @@ plugins = ["pydantic.mypy"]
 exclude = ["tests/", "dist/", "build/"]
 
 [[tool.mypy.overrides]]
-module = ["webview", "webview.platforms.edgechromium", "pystray", "pystray._base"]
+module = ["webview", "webview.platforms.edgechromium", "pystray", "pystray._base", "PIL", "PIL.Image", "PIL.ImageDraw"]
 ignore_missing_imports = true
