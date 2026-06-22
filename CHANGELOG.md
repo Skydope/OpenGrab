@@ -5,41 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.7.0] — 2026-06-22
 
-### Added (Balde B — SQLite, PR-0, sin cablear todavía)
+### Added (Desktop — Windows installer)
 
-- `db.py`: capa de acceso SQLite (conexión WAL + lock serializado, `check_same_thread=False`).
-  Tabla única `jobs` (cola + historial), `channels` y `downloaded_urls` para watch mode.
-  CRUD de jobs, transiciones, `mark_interrupted()` (devuelve workdirs para limpiar),
-  dedup (`record_download`/`is_downloaded`), `prune_history`, e import del `history.json` legacy.
-- `tests/test_db.py`: 17 tests en `:memory:`/temp (roundtrip, transiciones, history, dedup,
-  interrupted, migración sin thumbnail, retención, concurrencia).
-- Diseño completo en `sqlite-schema.md`. PR-0 no cambia comportamiento observable; el cableado
-  de `state`/`routes`/`download`/`app` va en PR-1.
+- **OpenGrab-Setup.exe**: wizard de instalación con Inno Setup (59.6 MB), 7 páginas:
+  modo Recomendada (Next-Next-Finish) y Avanzada (carpeta de descargas, puerto,
+  contraseña, auto-start con Windows). Bilingüe (español + inglés).
+- **WebView2 detection**: `_webview2_available()` detecta el runtime real. Si no está
+  instalado, cae al navegador con un aviso; el wizard lo instala silenciosamente.
+- **MessageBox UX**: los errores del launcher en modo `--windowed` ahora se muestran
+  en ventanas visibles (antes `print()` no tenía destino y el usuario veía "no abrió nada").
+- **config.ini support**: `config.py` lee `%APPDATA%\OpenGrab\config.ini` como fuente de
+  defaults. El wizard lo escribe con las elecciones del usuario. Las variables de entorno
+  siempre tienen precedencia (Docker sin cambios).
+- **App icon**: `opengrab.ico` convertido desde `Logo.png`, usado en el `.exe`, accesos
+  directos y wizard.
+- **Single-instance UX**: si el usuario hace doble clic dos veces, un MessageBox avisa
+  que la app ya está corriendo (en vez de salir en silencio).
 
+### Added (Desktop — launcher)
 
-### Added (binary track — M2/M3)
-
-- `POST /api/engine/update` + botón "Actualizar motor (yt-dlp)" en la UI (M3). El backend
-  reusa `engine_update.check_and_update(force=True)`; la descarga va a un thread.
-- `desktop._open_ui()`: ventana nativa vía **pywebview** (WebView2) con fallback a
-  navegador si la extra `desktop` no está instalada (M2, lado app).
-- Tests: endpoint de engine update (con/sin auth) y selección pywebview/navegador.
-
-### Added (binary track — M1)
-
-- `desktop.py`: entrypoint de escritorio (puerto efímero, NO_AUTH, carpeta Descargas,
-  single-instance crash-safe vía named mutex/flock, health-gate, apertura en navegador)
-- `engine_update.py`: hot-swap de yt-dlp vía wheel en dir de usuario + `sys.path`
-  (spike verificado: `collect_all` deja yt-dlp suelto → el override gana)
-- `OpenGrab.spec`: build PyInstaller onedir (`collect_all yt_dlp`, windowed, sin UPX)
-- `tests/test_desktop.py`: 12 tests de la lógica de escritorio y del hot-swap
+- `desktop.py`: entrypoint de escritorio (puerto efímero, `NO_AUTH`, carpeta Descargas,
+  single-instance crash-safe vía named mutex/flock, health-gate, pywebview con fallback
+  a navegador)
+- `engine_update.py`: hot-swap de yt-dlp vía wheel en `%LOCALAPPDATA%` + `sys.path`
+  (spike verificado en Linux y Windows: `collect_all` deja yt-dlp suelto → el override gana)
+- `OpenGrab.spec`: build PyInstaller onedir (`collect_all yt_dlp`, `windowed`, sin UPX)
+- `POST /api/engine/update` + botón "Actualizar motor (yt-dlp)" en la UI
 - `config.resource_path()` + `_STATIC_DIR` frozen-aware; `ffmpeg_location` bundleado
   con guard (no afecta Docker/dev)
+- `tests/test_desktop.py`: 20 tests de la lógica de escritorio y hot-swap
 
-> Nota: el carril binario está completo en código pero queda bajo [Unreleased] hasta
-> que salga el `.exe` (necesita el build de Windows: reconfirmación del hot-swap + Inno Setup).
+### Added (SQLite — PR-0, data layer, sin cablear)
+
+- `db.py`: capa de acceso SQLite (conexión WAL + lock serializado). Tabla única `jobs`
+  (cola + historial), `channels` y `downloaded_urls` para watch mode. CRUD de jobs,
+  transiciones, `mark_interrupted()` (devuelve workdirs para limpiar), dedup
+  (`record_download`/`is_downloaded`), `prune_history`, e import del `history.json` legacy.
+- `tests/test_db.py`: 17 tests en `:memory:`/temp (roundtrip, transiciones, history,
+  dedup, interrupted, migración sin thumbnail, retención, concurrencia).
+- Diseño completo en `sqlite-schema.md`.
+
+### Fixed
+
+- **uvicorn `--windowed`**: el formatter de logging `default` fallaba cuando no hay stdout
+  (`Unable to configure formatter 'default'`). El launcher pasa un `log_config` mínimo.
+- **Server error capture**: si uvicorn crashea en el thread daemon, el MessageBox ahora
+  muestra el error real en vez de un mensaje genérico de firewall.
+- **mypy cross-platform**: los imports condicionales de `webview` se ignoran vía
+  `[[tool.mypy.overrides]]` en vez de inline `type: ignore` (roto en CI).
+- `dist/` y `build/` excluidos de mypy para no escanear el output de PyInstaller.
 
 ## [1.6.0] — 2026-06-21
 
