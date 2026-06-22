@@ -686,24 +686,26 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ── History ───────────────────────────────
+    async loadHistory() {
+      try {
+        const r = await fetch("/api/history?limit=15");
+        this.history = await r.json();
+      } catch (e) {
+        this.history = [];
+      }
+      this.historyLoaded = true;
+    },
     async toggleHistory() {
       this.historyOpen = !this.historyOpen;
       if (this.historyOpen && !this.historyLoaded) {
-        try {
-          const r = await fetch("/api/history?limit=15");
-          this.history = await r.json();
-        } catch (e) {
-          this.history = [];
-        }
-        this.historyLoaded = true;
+        await this.loadHistory();
       }
     },
     async deleteHistoryEntry(jobId) {
       if (!confirm("¿Borrar esta entrada? El archivo se eliminará de forma segura.")) return;
       try {
         await fetch("/api/history/" + jobId, { method: "DELETE" });
-        this.history = this.history.filter(e => e.job_id !== jobId);
-        this.historyLoaded = false;  // fuerza refetch en proxima apertura
+        await this.loadHistory();  // refetch inmediato — el servidor es la unica fuente de verdad
       } catch (e) {
         this.errorMsg = "Error al borrar entrada.";
       }
@@ -712,8 +714,7 @@ document.addEventListener('alpine:init', () => {
       if (!confirm("¿Borrar todo el historial (incluye errores)? Los archivos se eliminarán de forma segura.")) return;
       try {
         await fetch("/api/history", { method: "DELETE" });
-        this.history = [];
-        this.historyLoaded = false;  // fuerza refetch en proxima apertura
+        await this.loadHistory();  // refetch inmediato
       } catch (e) {
         this.errorMsg = "Error al limpiar historial.";
       }

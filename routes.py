@@ -337,7 +337,7 @@ async def api_history(
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
     entries = state.get_history(limit=max(1, min(limit, HISTORY_MAX)))
-    return JSONResponse(entries)
+    return JSONResponse(entries, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/jobs/{job_id}/open-folder")
