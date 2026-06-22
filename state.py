@@ -156,14 +156,13 @@ class AppState:
         job = self.db.get_job(job_id)
         if job is None:
             return False
-        # Borrar de la DB PRIMERO: el job desaparece del historial
-        # instantaneamente aunque el borrado seguro del archivo tarde.
         ok = self.db.delete_job(job_id)
         self.jobs.pop(job_id, None)
         self.job_events.pop(job_id, None)
         if not ok:
             log.warning("delete_history_entry: delete_job no afecto filas para %s", job_id)
-        # Borrado seguro del archivo y workdir (puede tardar, no bloquea la respuesta)
+        else:
+            log.info("delete_history_entry: borrado job %s de la DB", job_id)
         filepath = job.get("filepath")
         workdir = job.get("workdir")
         if filepath:

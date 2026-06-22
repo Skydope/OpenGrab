@@ -331,12 +331,28 @@ def test_api_check_channel(client, monkeypatch):
 
 
 # --------------------- history delete API ------------------------------ #
-def test_api_delete_history_entry(client):
+def test_api_delete_history_entry_removes_from_list(client):
+    # 1. Create a job and mark it done
     r = client.post("/api/jobs", json={"url": "https://example.com/v", "quality": "best"})
     job_id = r.json()["job_id"]
+    client.app.state.opengrab.db.update_job(
+        job_id, status="done", completed=99999, title="Test",
+        filename="t.mp4", filepath="/tmp/t.mp4", mime="video/mp4", size=100,
+    )
+    # 2. Verify it appears in history
+    r = client.get("/api/history?limit=50")
+    ids = [e["job_id"] for e in r.json()]
+    assert job_id in ids, "Debe aparecer en el historial"
 
+    # 3. Delete the entry
     d = client.delete(f"/api/history/{job_id}")
-    assert d.status_code in (200, 404)
+    assert d.status_code == 200
+    assert d.json()["ok"] is True
+
+    # 4. Verify it's gone from history
+    r = client.get("/api/history?limit=50")
+    ids_after = [e["job_id"] for e in r.json()]
+    assert job_id not in ids_after, "La entrada borrada NO debe reaparecer en el historial"
 
 
 def test_api_delete_history_nonexistent(client):

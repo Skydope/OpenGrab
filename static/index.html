@@ -180,7 +180,7 @@
           <span class="h-title" :title="e.title" x-text="e.title"></span>
           <span class="h-meta" x-text="e.quality"></span>
           <span class="h-size" x-show="e.size" x-text="(e.size/1048576).toFixed(1) + ' MB'"></span>
-          <button class="h-del" @click="deleteHistoryEntry(e.job_id)" title="Borrar">×</button>
+          <button class="h-del" @click.stop="deleteHistoryEntry(e.job_id)" title="Borrar">×</button>
         </div>
       </template>
       <div class="engine-row">
@@ -703,6 +703,7 @@ document.addEventListener('alpine:init', () => {
       try {
         await fetch("/api/history/" + jobId, { method: "DELETE" });
         this.history = this.history.filter(e => e.job_id !== jobId);
+        this.historyLoaded = false;  // fuerza refetch en proxima apertura
       } catch (e) {
         this.errorMsg = "Error al borrar entrada.";
       }
@@ -712,6 +713,7 @@ document.addEventListener('alpine:init', () => {
       try {
         await fetch("/api/history", { method: "DELETE" });
         this.history = [];
+        this.historyLoaded = false;  // fuerza refetch en proxima apertura
       } catch (e) {
         this.errorMsg = "Error al limpiar historial.";
       }
