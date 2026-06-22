@@ -123,8 +123,8 @@ def _webview2_available() -> bool:
     if sys.platform != "win32":
         return False
     try:
-        import webview
-        from webview.platforms.edgechromium import EdgeChrome  # noqa: F401
+        import webview  # type: ignore[import-not-found,unused-ignore]
+        from webview.platforms.edgechromium import EdgeChrome  # noqa: F401  # type: ignore[import-not-found,unused-ignore]
     except ImportError:
         return False
     return True
