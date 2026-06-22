@@ -61,6 +61,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migración**: el `history.json` legacy se importa una sola vez (idempotente). El
   archivo queda intacto por si se necesita downgradear.
 
+### Added (Watch mode — canales)
+
+- **Channel CRUD**: `db.py` con 6 métodos para insert/update/delete/get/list/touch de
+  canales. Column whitelist anti-injection. Tablas `channels` y `downloaded_urls` que
+  ya existían (schema v1) ahora tienen API pública completa.
+- **`_check_channel_watch`**: lógica de chequeo en `download.py`. Usa `extract_flat=True`
+  (rápido, sin descargar), filtra contra `downloaded_urls` (dedup), y crea jobs para
+  los videos nuevos.
+- **6 endpoints REST**: `GET/POST /api/channels`, `PUT/DELETE /api/channels/{id}`,
+  `POST /api/channels/{id}/check` (chequeo manual). Rate limits: 10/min y 5/min.
+- **`watch_loop` scheduler**: corre cada 60s en `AppState`, respeta el intervalo por
+  canal (`interval_minutes`), ejecuta el chequeo en thread pool vía `asyncio.to_thread`.
+  Arranca desde el lifespan junto al eviction loop.
+- **UI "Canales"**: sección nueva debajo de Historial. Agregar canal (URL + calidad +
+  intervalo), toggle enable/disable, chequeo manual, borrar. Alpine.js + CSS.
+
+### Added (Polish)
+
+- **Graceful shutdown**: `atexit.register(self.db.close)` en `AppState.__init__`.
+  Asegura que la DB se cierra al salir del proceso (Docker, bare metal o desktop).
+- **Dependencias unificadas**: `requirements.txt` eliminado. Las dependencias de runtime
+  (fastapi, uvicorn, yt-dlp, slowapi) ahora viven en `pyproject.toml [project] dependencies`.
+  Dockerfile y CI actualizados a `pip install -e .`.
+- **README**: actualizado de v1.6.0 a v1.7.0 — features nuevas, tech stack ampliado,
+  variables de entorno completas (12 vars), API reference corregida (13 endpoints),
+  sección Desktop App, file tree actualizado, badge de versión.
+- **sqlite-schema.md**: documento de diseño del schema SQLite (tablas, flujo de datos,
+  concurrencia, crash recovery, migración).
+- **`.env.example`**: agregados `OPENGRAB_TRUST_XFF` y `OPENGRAB_CONFIG`.
+
 ### Fixed
 
 - **uvicorn `--windowed`**: el formatter de logging `default` fallaba cuando no hay stdout
