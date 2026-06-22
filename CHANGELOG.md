@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added (binary track — M1)
+
+- `desktop.py`: entrypoint de escritorio (puerto efímero, NO_AUTH, carpeta Descargas,
+  single-instance crash-safe vía named mutex/flock, health-gate, apertura en navegador)
+- `engine_update.py`: hot-swap de yt-dlp vía wheel en dir de usuario + `sys.path`
+  (spike verificado: `collect_all` deja yt-dlp suelto → el override gana)
+- `OpenGrab.spec`: build PyInstaller onedir (`collect_all yt_dlp`, windowed, sin UPX)
+- `tests/test_desktop.py`: 12 tests de la lógica de escritorio y del hot-swap
+- `config.resource_path()` + `_STATIC_DIR` frozen-aware; `ffmpeg_location` bundleado
+  con guard (no afecta Docker/dev)
+
 ## [1.5.0] — 2026-06-21
 
 ### Added

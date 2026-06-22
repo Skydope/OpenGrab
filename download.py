@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -10,7 +11,7 @@ from typing import Any, Dict
 
 import yt_dlp  # type: ignore[import-untyped]
 
-from config import FORMATS, MAX_SIZE_MB
+from config import FORMATS, MAX_SIZE_MB, resource_path
 from models import Job
 from state import AppState
 
@@ -167,6 +168,13 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
             }
         ]
         opts.pop("merge_output_format", None)
+
+    # En el binario de escritorio, ffmpeg viaja bundleado y no está en el PATH.
+    # Guard: solo seteamos ffmpeg_location si el binario existe junto al recurso;
+    # en Docker/dev no existe y yt-dlp usa el ffmpeg del PATH como siempre.
+    _ffmpeg = resource_path("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+    if _ffmpeg.exists():
+        opts["ffmpeg_location"] = str(_ffmpeg)
 
     try:
         job.status = "starting"

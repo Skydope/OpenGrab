@@ -57,4 +57,15 @@ FORMATS = {
     "audio": "bestaudio/best",
 }
 
-_STATIC_DIR = Path(__file__).parent / "static"
+def resource_path(rel: str) -> Path:
+    """Resuelve recursos bundleados tanto en dev como bajo PyInstaller.
+
+    En un binario congelado, los recursos se extraen a ``sys._MEIPASS`` (onefile)
+    o viven junto al ejecutable (onedir); fuera del binario, son relativos a este
+    archivo. No rompe el modo Docker/dev: si ``_MEIPASS`` no existe, cae al path normal.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    return base / rel
+
+
+_STATIC_DIR = resource_path("static")

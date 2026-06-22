@@ -11,3 +11,9 @@ improve.md
 .DS_Store
 .pytest_cache/
 tests/_test_downloads/
+
+# PyInstaller / build de escritorio
+build/
+dist/
+vendor/
+*.whl
