@@ -8,8 +8,8 @@ RUN useradd --create-home --no-log-init opengrab \
     && mkdir -p /downloads && chown opengrab:opengrab /downloads
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml .
+RUN pip install --no-cache-dir -e .
 COPY *.py ./
 COPY static/ static/
 

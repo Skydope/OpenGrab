@@ -19,7 +19,6 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
-      - run: pip install -r requirements.txt
       - run: python -m pytest tests/ -v
 
   typecheck:
@@ -30,5 +29,4 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev]"
-      - run: pip install -r requirements.txt
       - run: mypy --strict .

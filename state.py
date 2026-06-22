@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import logging
 import shutil
 import time
@@ -26,6 +27,7 @@ class AppState:
         self.jobs: dict[str, Job] = {}
         self.job_events: dict[str, asyncio.Event] = {}
         self.running_tasks: set[asyncio.Task[None]] = set()
+        atexit.register(self.db.close)
 
     # ------------------------------------------------------------------ #
     # Job completion
