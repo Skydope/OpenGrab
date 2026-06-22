@@ -116,6 +116,20 @@ def test_record_download_idempotent(db):
     assert db.is_downloaded("youtube", "vid1") is True
 
 
+def test_has_active_job_for_video(db):
+    assert db.has_active_job_for_video("youtube", "vid1") is False
+
+    db.insert_job("j1", "u", "best", status="downloading")
+    db.update_job("j1", extractor="youtube", video_id="vid1")
+    assert db.has_active_job_for_video("youtube", "vid1") is True
+
+    db.insert_job("j2", "u", "best", status="done")
+    db.update_job("j2", extractor="youtube", video_id="vid2")
+    assert db.has_active_job_for_video("youtube", "vid2") is False
+
+    assert db.has_active_job_for_video("vimeo", "vid1") is False
+
+
 # ------------------------- migración json -------------------------------- #
 def test_import_history_legacy_without_thumbnail(db):
     # entrada pre-v1.6.0: sin thumbnail

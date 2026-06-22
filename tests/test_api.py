@@ -315,7 +315,7 @@ def test_api_check_channel(client, monkeypatch):
     from download import _check_channel_watch
 
     def fake_check(state, channel):
-        return 3
+        return [{"url": "https://x.com/1", "extractor": "yt", "video_id": "v1", "title": "Test"}]
 
     monkeypatch.setattr("routes._check_channel_watch", fake_check)
 
@@ -324,4 +324,7 @@ def test_api_check_channel(client, monkeypatch):
 
     r2 = client.post(f"/api/channels/{cid}/check")
     assert r2.status_code == 200
-    assert r2.json()["new_videos"] == 3
+    data = r2.json()
+    assert data["new_videos"] == 1
+    assert len(data["videos"]) == 1
+    assert data["videos"][0]["title"] == "Test"

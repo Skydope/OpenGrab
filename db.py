@@ -231,6 +231,16 @@ class Database:
             ).fetchone()
         return row is not None
 
+    def has_active_job_for_video(self, extractor: str, video_id: str) -> bool:
+        placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT 1 FROM jobs WHERE extractor=? AND video_id=? "
+                f"AND status IN ({placeholders}) LIMIT 1",
+                (extractor, video_id, *ACTIVE_STATUSES),
+            ).fetchone()
+        return row is not None
+
     # ------------------------------------------------------------------ #
     # Channels CRUD
     # ------------------------------------------------------------------ #

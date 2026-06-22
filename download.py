@@ -5,15 +5,12 @@ import logging
 import re
 import sys
 import tempfile
-import time
-import uuid
 from pathlib import Path
 from typing import Any, Dict
 
 import yt_dlp  # type: ignore[import-untyped]
 
 from config import FORMATS, MAX_SIZE_MB, resource_path
-from models import Job
 from state import AppState
 
 log = logging.getLogger("opengrab")
@@ -148,24 +145,21 @@ def _fetch_playlist(url: str) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Watch mode — channel check
 # --------------------------------------------------------------------------- #
-def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> int:
-    """Revisa un canal por videos nuevos y crea jobs de descarga.
+def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> list[dict[str, Any]]:
+    """Revisa un canal por videos nuevos (solo deteccion, sin crear jobs).
 
-    Usa ``extract_flat=True`` (rápido, sin bajar nada) y filtra contra
-    ``downloaded_urls`` para no repetir. Crea un job por cada video nuevo
-    y registra el download en la tabla de dedup.
-    Devuelve la cantidad de videos nuevos encontrados.
+    Usa ``extract_flat=True`` (rapido, sin bajar nada) y filtra contra
+    ``downloaded_urls`` y jobs activos para no repetir.
+    Devuelve una lista de videos nuevos con url, extractor, video_id y title.
     """
     url = channel["url"]
-    quality = channel["quality"]
-    channel_id = channel["id"]
     try:
         info = _fetch_playlist(url)
     except Exception:
         log.exception("watch: error al leer playlist %s", _sanitize_url(url))
-        return 0
+        return []
 
-    new_count = 0
+    new_videos: list[dict[str, Any]] = []
     for v in info.get("videos", []):
         extractor = v.get("extractor")
         video_id = str(v.get("video_id", ""))
@@ -173,21 +167,17 @@ def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> int:
             continue
         if state.db.is_downloaded(extractor, video_id):
             continue
+        if state.db.has_active_job_for_video(extractor, video_id):
+            continue
 
-        job_id = uuid.uuid4().hex[:12]
-        state.db.insert_job(job_id, v["url"], quality)
-        state.jobs[job_id] = Job(id=job_id, created=time.time())
-        state.job_events[job_id] = asyncio.Event()
-        state.db.update_job(job_id, extractor=extractor, video_id=video_id)
-        state.db.record_download(extractor, video_id, job_id, channel_id=channel_id)
+        new_videos.append({
+            "url": v["url"],
+            "extractor": extractor,
+            "video_id": video_id,
+            "title": v.get("title", "?"),
+        })
 
-        log.info(
-            "watch: nuevo video en %s → job %s (%s)",
-            _sanitize_url(url), job_id, v.get("title", "?"),
-        )
-        new_count += 1
-
-    return new_count
+    return new_videos
 
 
 # --------------------------------------------------------------------------- #
@@ -310,6 +300,11 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
             size=final.stat().st_size,
             thumbnail=info.get("thumbnail"),
         )
+        extractor_key = info.get("extractor_key") or info.get("extractor")
+        vid = info.get("id")
+        if extractor_key and vid:
+            state.db.update_job(job_id, extractor=extractor_key, video_id=str(vid))
+            state.db.record_download(extractor_key, str(vid), job_id)
         loop.call_soon_threadsafe(evt.set)
     except Exception as exc:
         job.status = "error"

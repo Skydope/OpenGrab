@@ -5,6 +5,7 @@ import atexit
 import logging
 import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -124,7 +125,7 @@ class AppState:
     # Watch mode scheduler
     # ------------------------------------------------------------------ #
     async def watch_loop(self) -> None:
-        from download import _check_channel_watch
+        from download import _check_channel_watch, _run_download
 
         while True:
             await asyncio.sleep(60)
@@ -135,14 +136,36 @@ class AppState:
                 interval_s = ch["interval_minutes"] * 60
                 if now - last >= interval_s:
                     try:
-                        found = await asyncio.to_thread(
+                        videos = await asyncio.to_thread(
                             _check_channel_watch, self, ch,
                         )
                         self.db.touch_channel(ch["id"])
-                        if found:
+                        quality = ch["quality"]
+                        dispatched = 0
+                        for v in videos:
+                            if self.db.is_downloaded(v["extractor"], v["video_id"]):
+                                continue
+                            if self.db.has_active_job_for_video(v["extractor"], v["video_id"]):
+                                continue
+                            job_id = uuid.uuid4().hex[:12]
+                            self.jobs[job_id] = Job(id=job_id, created=time.time())
+                            self.job_events[job_id] = asyncio.Event()
+                            self.db.insert_job(job_id, v["url"], quality)
+                            self.db.update_job(job_id, extractor=v["extractor"], video_id=v["video_id"])
                             log.info(
-                                "watch: canal %s → %d videos nuevos",
-                                ch.get("title") or ch["url"], found,
+                                "watch: nuevo video → job %s (%s)", job_id, v.get("title", "?"),
+                            )
+                            loop = asyncio.get_running_loop()
+                            task = asyncio.create_task(
+                                asyncio.to_thread(_run_download, self, job_id, v["url"], quality, loop)
+                            )
+                            self.running_tasks.add(task)
+                            task.add_done_callback(self.running_tasks.discard)
+                            dispatched += 1
+                        if dispatched:
+                            log.info(
+                                "watch: canal %s → %d videos despachados",
+                                ch.get("title") or ch["url"], dispatched,
                             )
                     except Exception:
                         log.exception("watch: error en canal %s", ch["url"])

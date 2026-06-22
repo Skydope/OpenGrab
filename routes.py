@@ -433,9 +433,9 @@ async def api_check_channel(
     ch = state.db.get_channel(channel_id)
     if ch is None:
         raise HTTPException(404, "Canal no encontrado.")
-    new_count = await asyncio.to_thread(_check_channel_watch, state, ch)
+    videos = await asyncio.to_thread(_check_channel_watch, state, ch)
     state.db.touch_channel(channel_id)
-    return JSONResponse({"ok": True, "new_videos": new_count})
+    return JSONResponse({"ok": True, "new_videos": len(videos), "videos": videos})
 
 
 @router.get("/health")

@@ -296,18 +296,19 @@ def test_check_channel_watch_finds_new_videos(dl_state, monkeypatch):
         ],
     }
 
-    def fake_playlist(url):
-        return playlist
-
-    monkeypatch.setattr("download._fetch_playlist", fake_playlist)
-    monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
+    monkeypatch.setattr("download._fetch_playlist", lambda url: playlist)
 
     cid = dl_state.db.insert_channel("https://x.com/@test", "best")
     channel = {"id": cid, "url": "https://x.com/@test", "quality": "best"}
-    found = _check_channel_watch(dl_state, channel)
-    assert found == 2
-    assert dl_state.db.is_downloaded("youtube", "vid1")
-    assert dl_state.db.is_downloaded("youtube", "vid2")
+    videos = _check_channel_watch(dl_state, channel)
+    assert len(videos) == 2
+    assert videos[0]["url"] == "https://x.com/1"
+    assert videos[0]["extractor"] == "youtube"
+    assert videos[0]["video_id"] == "vid1"
+    # No debe haber creado jobs ni registrado descargas
+    assert not dl_state.db.is_downloaded("youtube", "vid1")
+    assert not dl_state.db.is_downloaded("youtube", "vid2")
+    assert len(dl_state.jobs) == 0
 
 
 def test_check_channel_watch_skips_downloaded(dl_state, monkeypatch):
@@ -326,12 +327,35 @@ def test_check_channel_watch_skips_downloaded(dl_state, monkeypatch):
     }
 
     monkeypatch.setattr("download._fetch_playlist", lambda url: playlist)
-    monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
     cid = dl_state.db.insert_channel("https://x.com/@test", "best")
     channel = {"id": cid, "url": "https://x.com/@test", "quality": "best"}
-    found = _check_channel_watch(dl_state, channel)
-    assert found == 1
+    videos = _check_channel_watch(dl_state, channel)
+    assert len(videos) == 1
+    assert videos[0]["video_id"] == "vid2"
+
+
+def test_check_channel_watch_skips_active_job(dl_state, monkeypatch):
+    from download import _check_channel_watch
+
+    dl_state.db.insert_job("j1", "https://x.com/1", "best", status="downloading")
+    dl_state.db.update_job("j1", extractor="youtube", video_id="vid1")
+
+    playlist = {
+        "title": "TC",
+        "count": 2,
+        "videos": [
+            {"title": "V1", "url": "https://x.com/1", "extractor": "youtube", "video_id": "vid1"},
+            {"title": "V2", "url": "https://x.com/2", "extractor": "youtube", "video_id": "vid2"},
+        ],
+    }
+
+    monkeypatch.setattr("download._fetch_playlist", lambda url: playlist)
+
+    channel = {"id": 1, "url": "https://x.com/@test", "quality": "best"}
+    videos = _check_channel_watch(dl_state, channel)
+    assert len(videos) == 1
+    assert videos[0]["video_id"] == "vid2"
 
 
 def test_check_channel_watch_handles_fetch_error(dl_state, monkeypatch):
@@ -343,5 +367,54 @@ def test_check_channel_watch_handles_fetch_error(dl_state, monkeypatch):
     monkeypatch.setattr("download._fetch_playlist", fail)
 
     channel = {"id": 1, "url": "https://x.com/@test", "quality": "best"}
-    found = _check_channel_watch(dl_state, channel)
-    assert found == 0
+    videos = _check_channel_watch(dl_state, channel)
+    assert videos == []
+
+
+# ---------------- _run_download: dedup en camino de éxito ----------------- #
+def test_run_download_records_dedup(dl_state, monkeypatch):
+    import config
+    from download import _run_download
+
+    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
+    loop = asyncio.new_event_loop()
+
+    jid = _make_job(dl_state, "dedup-ok")
+    wd = Path(tempfile.mkdtemp(prefix="opengrab_", dir=dl_state.out_dir))
+    video = wd / "Test.mp4"
+    video.write_bytes(b"fake mp4")
+    info = {
+        "title": "Test",
+        "extractor_key": "youtube",
+        "id": "abc123",
+        "requested_downloads": [{"filepath": str(video)}],
+    }
+
+    with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
+        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+    loop.close()
+
+    assert dl_state.jobs[jid].status == "done"
+    assert dl_state.db.is_downloaded("youtube", "abc123")
+    j = dl_state.db.get_job(jid)
+    assert j["extractor"] == "youtube"
+    assert j["video_id"] == "abc123"
+
+
+def test_run_download_does_not_record_on_error(dl_state, monkeypatch):
+    import config
+    from download import _run_download
+
+    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
+    loop = asyncio.new_event_loop()
+
+    jid = _make_job(dl_state, "dedup-fail")
+    ydl = _mock_ydl(None)
+    ydl.extract_info.return_value = None
+
+    with patch("download.yt_dlp.YoutubeDL", return_value=ydl):
+        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+    loop.close()
+
+    assert dl_state.jobs[jid].status == "error"
+    assert not dl_state.db.is_downloaded("youtube", "abc123")
