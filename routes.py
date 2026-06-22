@@ -361,27 +361,21 @@ async def api_delete_history_entry(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    try:
-        job = await asyncio.to_thread(state.db.get_job, job_id)
-        if job is None:
-            raise HTTPException(404, "Entrada no encontrada.")
-        filepath = job.get("filepath")
-        workdir = job.get("workdir")
-        ok = await asyncio.to_thread(state.db.delete_job, job_id)
-        if not ok:
-            raise HTTPException(404, "Entrada no encontrada.")
-        state.jobs.pop(job_id, None)
-        state.job_events.pop(job_id, None)
-        log.info("delete_history_entry: borrado job %s de la DB", job_id)
+    job = state.db.get_job(job_id)
+    if job is None:
+        raise HTTPException(404, "Entrada no encontrada.")
+    filepath = job.get("filepath")
+    workdir = job.get("workdir")
+    if not state.db.delete_job(job_id):
+        raise HTTPException(404, "Entrada no encontrada.")
+    state.jobs.pop(job_id, None)
+    state.job_events.pop(job_id, None)
+    log.info("delete_history_entry: borrado job %s de la DB", job_id)
+    if filepath or workdir:
         asyncio.create_task(
             asyncio.to_thread(state._secure_delete_files, filepath, workdir)
         )
-        return JSONResponse({"ok": True})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        log.exception("delete_history_entry: error inesperado para job %s", job_id)
-        raise HTTPException(500, f"Error interno al borrar: {exc}")
+    return JSONResponse({"ok": True})
 
 
 @router.delete("/api/history")
@@ -391,13 +385,9 @@ async def api_clear_history(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    try:
-        count = await asyncio.to_thread(state.clear_all_history)
-        log.info("historial limpiado: %d entradas borradas", count)
-        return JSONResponse({"ok": True, "deleted": count})
-    except Exception as exc:
-        log.exception("clear_history: error inesperado")
-        raise HTTPException(500, f"Error interno al limpiar: {exc}")
+    count = await asyncio.to_thread(state.clear_all_history)
+    log.info("historial limpiado: %d entradas borradas", count)
+    return JSONResponse({"ok": True, "deleted": count})
 
 
 @router.get("/api/storage")
