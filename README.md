@@ -43,7 +43,7 @@
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
-- [Desktop App (Windows)](#desktop-app-windows)
+- [Desktop App](#desktop-app)
 - [Usage](#usage)
 - [Architecture](#architecture)
 - [Environment Variables](#environment-variables)
@@ -124,15 +124,30 @@ docker compose up -d
 
 ---
 
-## Desktop App (Windows)
+## Desktop App
 
-Download `OpenGrab-Setup.exe` from the [latest release](https://github.com/Skydope/OpenGrab/releases/latest). The installer wizard (Spanish/English) offers:
+| Platform | Download | Format |
+|----------|----------|--------|
+| Windows | `OpenGrab-Setup.exe` | Installer wizard (Spanish/English) |
+| Linux | `OpenGrab-x86_64.AppImage` | Portable executable |
+| macOS | `OpenGrab-macos.zip` | App bundle |
 
-- **Recommended mode** — Next-Next-Finish with sensible defaults
-- **Advanced mode** — custom download folder, port, password, auto-start with Windows
-- **WebView2 bootstrapper** — silently installs the Edge WebView2 runtime if missing
+All downloads include bundled ffmpeg and yt-dlp with hot-swap support.
 
-The desktop app runs the server on a random local port (no auth needed), opens a native window via pywebview, and stays in the system tray after you close the window. FFmpeg and yt-dlp are bundled — no separate installs needed.
+Download from the [latest release](https://github.com/Skydope/OpenGrab/releases/latest).
+
+### Platform notes
+
+**Windows:** Installer wizard with Recommended (defaults) and Advanced (custom folder, port,
+password, auto-start) modes. Native window via WebView2 (pywebview), silently installed if
+missing. System tray support.
+
+**Linux:** AppImage — `chmod +x OpenGrab-x86_64.AppImage && ./OpenGrab-x86_64.AppImage`.
+Opens your default browser (no native window). System tray via D-Bus/pystray. Requires a
+desktop environment with an indicator area (GNOME, KDE, XFCE, etc.).
+
+**macOS:** Unzip and run `OpenGrab.app`. Native window via Cocoa WebKit (pywebview). System
+tray support. May require right-click → Open on first launch (Gatekeeper).
 
 ---
 

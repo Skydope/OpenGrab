@@ -5,9 +5,12 @@
 # hot-swap por sys.path (ver spike en binary-plan.md §2.3).
 #
 # Build:  pyinstaller OpenGrab.spec --noconfirm
-# Requiere: pip install -e ".[desktop,build]" y colocar vendor/ffmpeg.exe
+# Requiere: pip install -e ".[desktop,build]" y colocar vendor/ffmpeg(.exe)
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
+
+import os
+import sys
 
 datas, binaries, hiddenimports = [], [], []
 for pkg in ("yt_dlp", "pydantic", "pydantic_core"):
@@ -22,12 +25,17 @@ hiddenimports += ["anyio._backends._asyncio"]
 # UI embebida.
 datas += [("static", "static")]
 
-# ffmpeg bundleado (descargado a vendor/ por el CI). Si no está, el build sigue,
-# pero el .exe dependería del ffmpeg del PATH — el CI debe garantizar vendor/ffmpeg.exe.
-import os
+# ffmpeg bundleado. El nombre depende de la plataforma (.exe en Windows).
+_ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+if os.path.exists(f"vendor/{_ffmpeg_name}"):
+    binaries += [(f"vendor/{_ffmpeg_name}", ".")]
 
-if os.path.exists("vendor/ffmpeg.exe"):
-    binaries += [("vendor/ffmpeg.exe", ".")]
+# Icono: ICO en Windows, ICNS en macOS. Linux no tiene icono de binario nativo.
+_icon = None
+if sys.platform == "win32" and os.path.exists("vendor/opengrab.ico"):
+    _icon = "vendor/opengrab.ico"
+elif sys.platform == "darwin" and os.path.exists("vendor/opengrab.icns"):
+    _icon = "vendor/opengrab.icns"
 
 a = Analysis(
     ["desktop.py"],
@@ -48,7 +56,7 @@ exe = EXE(
     exclude_binaries=True,
     name="OpenGrab",
     console=False,          # --windowed: sin consola negra
-    icon="vendor/opengrab.ico" if os.path.exists("vendor/opengrab.ico") else None,
+    icon=_icon,
     # Sin UPX a propósito: empeora los falsos positivos de antivirus.
     upx=False,
 )

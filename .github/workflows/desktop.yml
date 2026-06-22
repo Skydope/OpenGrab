@@ -1,0 +1,119 @@
+name: desktop
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libayatana-appindicator3-1
+
+      - name: Install Python deps
+        run: pip install -e ".[desktop,build]"
+
+      - name: Bundle ffmpeg
+        run: |
+          curl -fsSL -o ffmpeg.tar.xz \
+            "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+          tar xf ffmpeg.tar.xz
+          cp ffmpeg-*-amd64-static/ffmpeg vendor/ffmpeg
+
+      - name: Build with PyInstaller
+        run: pyinstaller OpenGrab.spec --noconfirm
+
+      - name: Generate AppImage icon from tray image
+        run: |
+          python -c "
+          from PIL import Image, ImageDraw
+          img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+          draw = ImageDraw.Draw(img)
+          draw.rounded_rectangle([16, 16, 240, 240], radius=48, fill=(28, 33, 43, 255))
+          draw.polygon([(96, 72), (96, 184), (176, 128)], fill=(232, 160, 44, 255))
+          img.save('vendor/open-grab.png')
+          "
+
+      - name: Create AppDir
+        run: |
+          mkdir -p AppDir
+          cp -r dist/OpenGrab/* AppDir/
+
+          # AppRun
+          printf '%s\n' \
+            '#!/bin/bash' \
+            'cd "$(dirname "$0")"' \
+            'exec ./OpenGrab "$@"' \
+            > AppDir/AppRun
+          chmod +x AppDir/AppRun
+
+          # Desktop entry
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Name=OpenGrab' \
+            'Comment=Self-hosted YouTube downloader' \
+            'Exec=OpenGrab' \
+            'Icon=open-grab' \
+            'Type=Application' \
+            'Categories=Network;' \
+            > AppDir/open-grab.desktop
+
+          cp vendor/open-grab.png AppDir/open-grab.png
+
+      - name: Build AppImage
+        run: |
+          curl -fsSL -o appimagetool \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          ./appimagetool AppDir OpenGrab-x86_64.AppImage
+
+      - name: Upload AppImage to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OpenGrab-x86_64.AppImage
+
+  macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python deps
+        run: pip install -e ".[desktop,build]"
+
+      - name: Bundle ffmpeg
+        run: |
+          curl -fsSL -o ffmpeg.zip \
+            "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip"
+          unzip -o ffmpeg.zip -d vendor/
+          # evermeet names it just 'ffmpeg', already in vendor/
+
+      - name: Build with PyInstaller
+        run: pyinstaller OpenGrab.spec --noconfirm
+
+      - name: Package as zip
+        run: |
+          cd dist
+          zip -r ../OpenGrab-macos.zip OpenGrab/
+
+      - name: Upload zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OpenGrab-macos.zip
