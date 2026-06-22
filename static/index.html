@@ -190,6 +190,49 @@
     </div>
   </div>
 
+  <!-- Channels (watch mode) -->
+  <div class="mt-14" x-show="authenticated" x-cloak>
+    <div class="toggle-label-lg"
+         role="button" tabindex="0" :aria-expanded="channelsOpen"
+         @click="toggleChannels"
+         @keydown.enter.prevent="toggleChannels"
+         @keydown.space.prevent="toggleChannels"
+         x-text="channelsOpen ? 'canales ▾' : 'canales ▸'"></div>
+    <div x-show="channelsOpen">
+      <span x-show="!channelsLoaded" class="muted-sm">Cargando…</span>
+
+      <template x-for="ch in channels" :key="ch.id">
+        <div class="ch-entry">
+          <span class="ch-title" :title="ch.url" x-text="ch.title || ch.url"></span>
+          <span class="ch-meta" x-text="ch.quality"></span>
+          <span class="ch-meta" x-text="'cada ' + ch.interval_minutes + 'm'"></span>
+          <button class="btn-sm" @click="checkChannel(ch.id)" :disabled="ch._checking"
+                  x-text="ch._checking ? '…' : 'Chequear'"></button>
+          <button class="btn-sm" :class="{toggled: ch.enabled}"
+                  @click="toggleChannel(ch)"
+                  x-text="ch.enabled ? 'ON' : 'OFF'"></button>
+          <button class="btn-sm" @click="deleteChannel(ch.id)">✕</button>
+        </div>
+      </template>
+      <span x-show="channelsLoaded && !channels.length" class="muted-sm">Sin canales. Agregá uno para monitorear.</span>
+
+      <div class="ch-add">
+        <input type="text" placeholder="URL del canal o playlist" x-model="newChannelUrl"
+               @keydown.enter="addChannel">
+        <select x-model="newChannelQuality">
+          <option value="best">best</option>
+          <option value="1080p">1080p</option>
+          <option value="720p">720p</option>
+          <option value="480p">480p</option>
+          <option value="audio">audio</option>
+        </select>
+        <input type="number" x-model="newChannelInterval" min="5" max="1440" style="width:60px"
+               title="Intervalo en minutos">
+        <button class="btn-sm" @click="addChannel" :disabled="!newChannelUrl">Agregar</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -300,6 +343,14 @@ document.addEventListener('alpine:init', () => {
     historyOpen: false,
     historyLoaded: false,
     history: [],
+
+    // ── Channels ──────────────────────────────
+    channelsOpen: false,
+    channelsLoaded: false,
+    channels: [],
+    newChannelUrl: "",
+    newChannelQuality: "best",
+    newChannelInterval: 60,
 
     // ── Inspect ───────────────────────────────
     async inspect() {
@@ -586,6 +637,71 @@ document.addEventListener('alpine:init', () => {
         }
         this.historyLoaded = true;
       }
+    },
+
+    // ── Channels ──────────────────────────────
+    async toggleChannels() {
+      this.channelsOpen = !this.channelsOpen;
+      if (this.channelsOpen && !this.channelsLoaded) {
+        await this.loadChannels();
+      }
+    },
+    async loadChannels() {
+      try {
+        const r = await fetch("/api/channels");
+        this.channels = await r.json();
+      } catch (e) {
+        this.channels = [];
+      }
+      this.channelsLoaded = true;
+    },
+    async addChannel() {
+      if (!this.newChannelUrl.trim()) return;
+      try {
+        const r = await fetch("/api/channels", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: this.newChannelUrl.trim(),
+            quality: this.newChannelQuality,
+            interval_minutes: parseInt(this.newChannelInterval) || 60,
+          }),
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || "Error");
+        this.newChannelUrl = "";
+        await this.loadChannels();
+      } catch (err) {
+        this.errorMsg = err.message;
+      }
+    },
+    async toggleChannel(ch) {
+      try {
+        const r = await fetch("/api/channels/" + ch.id, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: ch.enabled ? 0 : 1 }),
+        });
+        if (r.ok) ch.enabled = ch.enabled ? 0 : 1;
+      } catch (e) {}
+    },
+    async checkChannel(channelId) {
+      const ch = this.channels.find(c => c.id === channelId);
+      if (!ch) return;
+      ch._checking = true;
+      try {
+        const r = await fetch("/api/channels/" + channelId + "/check", { method: "POST" });
+        const d = await r.json();
+        if (d.new_videos > 0) this.errorMsg = d.new_videos + " videos nuevos encontrados";
+      } catch (err) {
+        this.errorMsg = "Error al chequear canal";
+      }
+      ch._checking = false;
+    },
+    async deleteChannel(channelId) {
+      try {
+        await fetch("/api/channels/" + channelId, { method: "DELETE" });
+        await this.loadChannels();
+      } catch (e) {}
     },
 
     // ── Duration formatter ────────────────────
