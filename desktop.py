@@ -1,8 +1,9 @@
 """Entrypoint de escritorio de OpenGrab (modo binario .exe).
 
 Levanta el server FastAPI en loopback con un puerto efímero, sin auth (single-user),
-guarda en la carpeta de Descargas del usuario, hace hot-swap de yt-dlp y abre la UI en
-el navegador. Single-instance crash-safe: named mutex en Windows, flock en el resto.
+guarda en la carpeta de Descargas del usuario, hace hot-swap de yt-dlp y abre la UI
+(ventana nativa vía WebView2 + pywebview, con fallback al navegador). Single-instance
+crash-safe: named mutex en Windows, flock en el resto.
 
 Las funciones ``_free_port``, ``_setup_env``, ``_wait_healthy`` y ``acquire_single_instance``
 están factorizadas para testearse sin levantar uvicorn ni abrir navegadores reales.
@@ -20,7 +21,18 @@ import webbrowser
 from pathlib import Path
 
 _HEALTH_TIMEOUT = 10.0
-_lock_handle: object = None  # mantiene vivo el mutex/lock durante el proceso
+_lock_handle: object = None
+
+
+def _msgbox(text: str, title: str = "OpenGrab", icon: str = "error") -> None:
+    """Muestra un MessageBox. En modo ``--windowed``, ``print()`` no se ve."""
+    if sys.platform != "win32":
+        print(f"[opengrab] {title}: {text}")
+        return
+    import ctypes
+
+    icons = {"error": 0x10, "warn": 0x30, "info": 0x40}
+    ctypes.windll.user32.MessageBoxW(0, text, title, icons.get(icon, 0x10))
 
 
 def _free_port() -> int:
@@ -96,11 +108,49 @@ def _serve(port: int) -> None:
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)
 
 
+def _webview2_available() -> bool:
+    """True si el runtime de WebView2 está disponible para pywebview."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import webview
+        from webview.platforms.edgechromium import EdgeChrome  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _open_ui(port: int) -> bool:
+    """Abre la UI. True si ventana nativa (bloqueante), False si navegador.
+
+    Prefiere pywebview + WebView2 (ventana nativa). Si WebView2 no está instalado,
+    muestra un aviso y cae al navegador del sistema.
+    """
+    url = f"http://127.0.0.1:{port}"
+    if _webview2_available():
+        import webview
+
+        webview.create_window("OpenGrab", url, width=980, height=720)
+        webview.start()
+        return True
+
+    _msgbox(
+        "WebView2 Runtime no está instalado.\n\n"
+        "OpenGrab se abrirá en tu navegador.\n"
+        "Para usar la ventana nativa, ejecutá el instalador.",
+        "OpenGrab", "info",
+    )
+    webbrowser.open(url)
+    return False
+
+
 def main() -> int:
     if not acquire_single_instance():
-        # Ya hay una instancia; en un build real abriríamos su ventana. Por ahora,
-        # reabrir el navegador es suficiente y no levantamos un segundo server.
-        print("[opengrab] ya hay una instancia corriendo.")
+        _msgbox(
+            "OpenGrab ya está corriendo.\n\n"
+            "Revisá la barra de tareas o la bandeja del sistema.",
+            "OpenGrab", "info",
+        )
         return 0
 
     # Hot-swap de yt-dlp ANTES de importar app (que importa download → yt_dlp).
@@ -109,7 +159,7 @@ def main() -> int:
 
         engine_update.check_and_update()
     except Exception as exc:  # noqa: BLE001 — degradar al yt-dlp bundleado
-        print(f"[opengrab] hot-swap omitido: {exc}")
+        _msgbox(f"No se pudo actualizar yt-dlp:\n{exc}", "OpenGrab", "warn")
 
     port = _free_port()
     _setup_env(port)
@@ -117,11 +167,15 @@ def main() -> int:
     threading.Thread(target=_serve, args=(port,), daemon=True).start()
 
     if not _wait_healthy(port):
-        print("[opengrab] el server no respondió a tiempo.")
+        _msgbox(
+            "El servidor no pudo iniciarse.\n\n"
+            "Revisá que el puerto no esté bloqueado por un firewall.",
+            "OpenGrab", "error",
+        )
         return 1
 
-    # pywebview bloquea hasta cerrar la ventana; el navegador retorna al toque y
-    # entonces hay que mantener vivo el proceso (server en thread daemon).
+    # pywebview bloquea hasta cerrar la ventana; el navegador retorna al toque
+    # y entonces hay que mantener vivo el proceso (server en thread daemon).
     if not _open_ui(port):
         try:
             while True:
@@ -129,24 +183,6 @@ def main() -> int:
         except KeyboardInterrupt:
             return 0
     return 0
-
-
-def _open_ui(port: int) -> bool:
-    """Abre la UI. Devuelve True si abrió ventana nativa (bloqueante), False si navegador.
-
-    Prefiere pywebview (WebView2 en Windows → se siente app nativa). Si no está instalado
-    (extra ``desktop``), cae al navegador del sistema. ``webview.start()`` bloquea hasta
-    que se cierra la ventana, lo que de paso mantiene vivo el proceso.
-    """
-    url = f"http://127.0.0.1:{port}"
-    try:
-        import webview  # type: ignore[import-not-found]  # pywebview, opcional
-    except ImportError:
-        webbrowser.open(url)
-        return False
-    webview.create_window("OpenGrab", url, width=980, height=720)
-    webview.start()
-    return True
 
 
 if __name__ == "__main__":
