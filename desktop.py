@@ -22,6 +22,7 @@ from pathlib import Path
 
 _HEALTH_TIMEOUT = 10.0
 _lock_handle: object = None
+_server_error: Exception | None = None
 
 
 def _msgbox(text: str, title: str = "OpenGrab", icon: str = "error") -> None:
@@ -101,11 +102,15 @@ def _wait_healthy(port: int, timeout: float = _HEALTH_TIMEOUT) -> bool:
 
 
 def _serve(port: int) -> None:
-    import uvicorn
+    global _server_error
+    try:
+        import uvicorn
 
-    from app import app
+        from app import app
 
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)
+    except Exception as exc:
+        _server_error = exc
 
 
 def _webview2_available() -> bool:
@@ -167,11 +172,17 @@ def main() -> int:
     threading.Thread(target=_serve, args=(port,), daemon=True).start()
 
     if not _wait_healthy(port):
-        _msgbox(
-            "El servidor no pudo iniciarse.\n\n"
-            "Revisá que el puerto no esté bloqueado por un firewall.",
-            "OpenGrab", "error",
-        )
+        if _server_error is not None:
+            _msgbox(
+                f"Error al iniciar el servidor:\n{_server_error}",
+                "OpenGrab", "error",
+            )
+        else:
+            _msgbox(
+                "El servidor no pudo iniciarse.\n\n"
+                "Revisá que el puerto no esté bloqueado por un firewall.",
+                "OpenGrab", "error",
+            )
         return 1
 
     # pywebview bloquea hasta cerrar la ventana; el navegador retorna al toque
