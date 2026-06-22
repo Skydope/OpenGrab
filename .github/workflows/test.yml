@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
-      - run: python -m pytest tests/ -v
+      - run: python -m pytest tests/ -v -m "not e2e"
 
   typecheck:
     runs-on: ubuntu-latest

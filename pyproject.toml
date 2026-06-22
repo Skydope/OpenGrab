@@ -29,6 +29,9 @@ py-modules = ["app", "config", "db", "desktop", "download", "engine_update", "mo
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "e2e: tests that download real videos from YouTube (slow, network-dependent)",
+]
 
 [tool.mypy]
 strict = true
