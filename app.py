@@ -18,12 +18,20 @@ Environment:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json as _json
 import logging
 import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
+
+# Fix DeprecationWarning de slowapi en Python 3.14+:
+# asyncio.iscoroutinefunction está deprecado; inspect.iscoroutinefunction es el reemplazo.
+try:
+    asyncio.iscoroutinefunction = inspect.iscoroutinefunction  # type: ignore[assignment]
+except AttributeError:
+    pass  # Python 3.16+: el atributo fue removido; slowapi ya debería tener fix.
 
 import uvicorn
 from fastapi import FastAPI, Request
