@@ -25,6 +25,7 @@ from config import (
     MAX_TOTAL_MB,
     TOKEN,
     TRUST_XFF,
+    VERSION,
     _STATIC_DIR,
 )
 from download import (
@@ -336,8 +337,15 @@ async def api_history(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    entries = state.get_history(limit=max(1, min(limit, HISTORY_MAX)))
-    return JSONResponse(entries, headers={"Cache-Control": "no-store"})
+    try:
+        entries = state.get_history(limit=max(1, min(limit, HISTORY_MAX)))
+        return JSONResponse(
+            entries,
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+    except Exception as exc:
+        log.exception("api_history: error al leer historial")
+        raise HTTPException(500, f"Error al leer historial: {exc}")
 
 
 @router.post("/api/jobs/{job_id}/open-folder")
@@ -540,4 +548,5 @@ async def index() -> HTMLResponse:
     html = html.replace(
         "__FORMATS_JSON__", _json.dumps(FORMATS).replace("</", "<\\/")
     )
+    html = html.replace("__VERSION__", VERSION)
     return HTMLResponse(html)
