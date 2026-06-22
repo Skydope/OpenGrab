@@ -196,11 +196,15 @@ class Database:
         if keep <= 0:
             return 0
         with self._lock:
+            sub = ("SELECT id FROM jobs WHERE status='done' "
+                   "ORDER BY completed DESC LIMIT ?")
+            self._conn.execute(
+                f"DELETE FROM downloaded_urls WHERE job_id IN "
+                f"(SELECT id FROM jobs WHERE status='done' AND id NOT IN ({sub}))",
+                (keep,),
+            )
             cur = self._conn.execute(
-                "DELETE FROM jobs WHERE status='done' AND id NOT IN ("
-                "  SELECT id FROM jobs WHERE status='done' "
-                "  ORDER BY completed DESC LIMIT ?"
-                ")",
+                f"DELETE FROM jobs WHERE status='done' AND id NOT IN ({sub})",
                 (keep,),
             )
             self._conn.commit()
@@ -208,12 +212,17 @@ class Database:
 
     def delete_job(self, job_id: str) -> bool:
         with self._lock:
+            self._conn.execute("DELETE FROM downloaded_urls WHERE job_id=?", (job_id,))
             cur = self._conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
             self._conn.commit()
             return cur.rowcount > 0
 
     def clear_history(self) -> int:
         with self._lock:
+            self._conn.execute(
+                "DELETE FROM downloaded_urls WHERE job_id IN "
+                "(SELECT id FROM jobs WHERE status IN ('done', 'error', 'interrupted'))"
+            )
             cur = self._conn.execute(
                 "DELETE FROM jobs WHERE status IN ('done', 'error', 'interrupted')"
             )

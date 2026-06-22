@@ -175,7 +175,7 @@
       <span x-show="!historyLoaded" class="muted-sm">Cargando…</span>
       <span x-show="historyLoaded && !history.length" class="muted-sm">Sin descargas todavía.</span>
       <template x-for="e in history" :key="e.job_id">
-        <div class="h-entry">
+        <div class="h-entry" :data-job-id="e.job_id">
           <img class="h-thumb" x-show="e.thumbnail" :src="e.thumbnail" alt="" loading="lazy">
           <span class="h-title" :title="e.title" x-text="e.title"></span>
           <span class="h-meta" x-text="e.quality"></span>
@@ -283,6 +283,13 @@
         <button class="btn-sm" @click="addChannel" :disabled="!newChannelUrl">Agregar</button>
       </div>
     </div>
+  </div>
+
+  <div class="toast" :class="{show: toast.show, success: toast.type === 'success'}">
+    <span x-text="toast.message"></span>
+    <button @click="undoDelete" x-show="toast.type === 'pending'">Deshacer</button>
+    <button @click="acceptDeletes" x-show="toast.type === 'pending'">Aceptar</button>
+    <button @click="dismissToast" x-show="toast.type === 'success'" class="toast-close">✕</button>
   </div>
 
 </div>
@@ -396,6 +403,9 @@ document.addEventListener('alpine:init', () => {
     historyOpen: false,
     historyLoaded: false,
     history: [],
+    pendingDeletes: {},      // { jobId: { timeoutId, entry } }
+    _clearAllPending: null,  // { timeoutId, history }
+    toast: { show: false, message: "", type: null },  // 'pending' | 'success'
 
     // ── Storage ───────────────────────────────
     storageOpen: false,
@@ -523,6 +533,7 @@ document.addEventListener('alpine:init', () => {
       }
       this.addLine(ok > 0 ? "✓" : "✗", "completado: " + ok + " ok, " + fail + " fallidos", ok > 0 ? "ok" : "err");
       this.downloading = false;
+      if (this.historyLoaded) this.loadHistory();
     },
 
     // ── Download ──────────────────────────────
@@ -604,6 +615,7 @@ document.addEventListener('alpine:init', () => {
           this.successPath = s.filepath || s.filename || "";
           this.lastJobId = jobId;
           this.downloading = false;
+          if (this.historyLoaded) this.loadHistory();
           ev.close();
         }
         if (s.status === "error") {
@@ -689,7 +701,10 @@ document.addEventListener('alpine:init', () => {
     async loadHistory() {
       try {
         const r = await fetch("/api/history?limit=15");
-        this.history = await r.json();
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const data = await r.json();
+        // Defensa: no revivir items con borrado diferido en vuelo.
+        this.history = data.filter(e => !(e.job_id in this.pendingDeletes));
       } catch (e) {
         this.history = [];
       }
@@ -701,22 +716,130 @@ document.addEventListener('alpine:init', () => {
         await this.loadHistory();
       }
     },
-    async deleteHistoryEntry(jobId) {
-      if (!confirm("¿Borrar esta entrada? El archivo se eliminará de forma segura.")) return;
-      try {
-        await fetch("/api/history/" + jobId, { method: "DELETE" });
-        await this.loadHistory();  // refetch inmediato — el servidor es la unica fuente de verdad
-      } catch (e) {
-        this.errorMsg = "Error al borrar entrada.";
+
+    // ── Deferred destruction (patron "undo send") ──
+    // El click NO toca el backend: saca el item, arranca un timer de 5s y
+    // muestra el toast. Deshacer cancela el timer (nada se borro). Si el timer
+    // vence, recien ahi se dispara el DELETE real (DB + secure-delete del archivo,
+    // irreversible). "No confirmado = no destruido".
+    deleteHistoryEntry(jobId) {
+      const entry = this.history.find(e => e.job_id === jobId);
+      if (!entry) return;
+      this._removeWithFade(jobId);
+      const timeoutId = setTimeout(() => this._executeDelete(jobId), 5000);
+      this.pendingDeletes[jobId] = { timeoutId, entry };
+      this._updateToast();
+    },
+    _removeWithFade(jobId) {
+      const drop = () => { this.history = this.history.filter(e => e.job_id !== jobId); };
+      const el = document.querySelector('.h-entry[data-job-id="' + jobId + '"]');
+      if (el) {
+        el.classList.add("removing");
+        setTimeout(drop, 300);  // espera la transicion CSS antes del splice
+      } else {
+        drop();  // degradacion elegante si no se encuentra el nodo
       }
     },
-    async clearAllHistory() {
-      if (!confirm("¿Borrar todo el historial (incluye errores)? Los archivos se eliminarán de forma segura.")) return;
+    async _executeDelete(jobId) {
+      const pending = this.pendingDeletes[jobId];
+      if (!pending) return;
       try {
-        await fetch("/api/history", { method: "DELETE" });
-        await this.loadHistory();  // refetch inmediato
+        const r = await fetch("/api/history/" + jobId, { method: "DELETE" });
+        if (!r.ok) {
+          let detail = "Error del servidor";
+          try { detail = (await r.json()).detail || detail; } catch (_) {}
+          throw new Error(detail);
+        }
+        // Exito: si no quedan mas pendientes, success toast; si quedan, refrescar cuenta
+        delete this.pendingDeletes[jobId];
+        if (Object.keys(this.pendingDeletes).length || this._clearAllPending) {
+          this._updateToast();
+        } else {
+          this.toast = { show: true, message: "Eliminado ✓", type: 'success' };
+          setTimeout(() => { if (this.toast.type === 'success') this.dismissToast(); }, 3000);
+        }
       } catch (e) {
-        this.errorMsg = "Error al limpiar historial.";
+        // El DELETE fallo: el archivo sigue intacto, restauramos el item.
+        this.history.push(pending.entry);
+        this.history.sort((a, b) => (b.completed || 0) - (a.completed || 0));
+        this.errorMsg = "Error al borrar entrada: " + e.message;
+        delete this.pendingDeletes[jobId];
+        this._updateToast();
+      }
+    },
+    undoDelete() {
+      // Cancela todos los timers en vuelo (individuales y clear-all).
+      Object.values(this.pendingDeletes).forEach(p => clearTimeout(p.timeoutId));
+      if (this._clearAllPending) clearTimeout(this._clearAllPending.timeoutId);
+      // Reconstruye la lista. clear-all e individuales son mutuamente excluyentes:
+      // clearAllHistory absorbe los pendientes individuales en su snapshot.
+      if (this._clearAllPending) {
+        this.history = this._clearAllPending.history;
+      } else {
+        Object.values(this.pendingDeletes).forEach(p => this.history.push(p.entry));
+        this.history.sort((a, b) => (b.completed || 0) - (a.completed || 0));
+      }
+      this.pendingDeletes = {};
+      this._clearAllPending = null;
+      this.toast = { show: false, message: "", type: null };
+    },
+    _updateToast() {
+      const n = Object.keys(this.pendingDeletes).length;
+      if (this._clearAllPending) {
+        this.toast = { show: true, message: "Historial borrado", type: 'pending' };
+      } else if (n > 0) {
+        this.toast = { show: true, message: n + (n === 1 ? " borrado" : " borrados"), type: 'pending' };
+      } else {
+        this.toast = { show: false, message: "", type: null };
+      }
+    },
+    dismissToast() {
+      this.toast = { show: false, message: "", type: null };
+    },
+    acceptDeletes() {
+      const ids = Object.keys(this.pendingDeletes);
+      const hasClearAll = !!this._clearAllPending;
+      Object.values(this.pendingDeletes).forEach(p => clearTimeout(p.timeoutId));
+      if (this._clearAllPending) clearTimeout(this._clearAllPending.timeoutId);
+      this.toast = { show: true, message: "Eliminando...", type: 'pending' };
+      for (const jobId of ids) this._executeDelete(jobId);
+      if (hasClearAll) this._executeClearAll();
+    },
+
+    clearAllHistory() {
+      if (!this.history.length && !Object.keys(this.pendingDeletes).length) return;
+      // Absorbe los borrados individuales pendientes: cancela sus timers y suma
+      // sus entries al snapshot, asi "Deshacer" restaura TODO de una.
+      Object.values(this.pendingDeletes).forEach(p => clearTimeout(p.timeoutId));
+      const snapshot = [
+        ...this.history,
+        ...Object.values(this.pendingDeletes).map(p => p.entry),
+      ].sort((a, b) => (b.completed || 0) - (a.completed || 0));
+      this.pendingDeletes = {};
+      if (this._clearAllPending) clearTimeout(this._clearAllPending.timeoutId);
+      this.history = [];  // optimistic
+      const timeoutId = setTimeout(() => this._executeClearAll(), 5000);
+      this._clearAllPending = { timeoutId, history: snapshot };
+      this._updateToast();
+    },
+    async _executeClearAll() {
+      const pending = this._clearAllPending;
+      if (!pending) return;
+      try {
+        const r = await fetch("/api/history", { method: "DELETE" });
+        if (!r.ok) {
+          let detail = "Error del servidor";
+          try { detail = (await r.json()).detail || detail; } catch (_) {}
+          throw new Error(detail);
+        }
+        this._clearAllPending = null;
+        this.toast = { show: true, message: "Historial eliminado ✓", type: 'success' };
+        setTimeout(() => { if (this.toast.type === 'success') this.dismissToast(); }, 3000);
+      } catch (e) {
+        this.history = pending.history;
+        this.errorMsg = "Error al limpiar historial: " + e.message;
+        this._clearAllPending = null;
+        this._updateToast();
       }
     },
 

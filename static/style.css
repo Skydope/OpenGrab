@@ -248,3 +248,28 @@
   .wd-name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .wd-badge{font-size:10px; padding:1px 6px; border-radius:3px; background:var(--accent-muted); color:var(--accent)}
   .storage-summary{font-size:14px; margin-bottom:4px; padding:4px 0}
+
+  /* Borrado diferido: fade-out del item antes del splice */
+  .h-entry.removing{opacity:0; transform:translateX(8px); transition:opacity .3s, transform .3s}
+
+  /* Toast de "Deshacer" (deferred destruction) */
+  .toast{
+    position:fixed; bottom:20px; left:50%;
+    transform:translateX(-50%) translateY(120px);
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:12px 20px; display:flex; align-items:center; gap:16px;
+    font-family:var(--mono); font-size:13px; color:var(--text);
+    box-shadow:0 4px 24px rgba(0,0,0,.3);
+    transition:transform .25s cubic-bezier(.4,0,.2,1);
+    z-index:100; pointer-events:none;
+  }
+  .toast.show{transform:translateX(-50%) translateY(0); pointer-events:auto}
+  .toast button{
+    font-size:12px; padding:6px 14px; color:var(--amber);
+    border:1px solid var(--amber); background:transparent; border-radius:6px; cursor:pointer;
+  }
+  .toast button:hover{background:var(--chip-active-bg)}
+  .toast.success{border-color:var(--ok)}
+  .toast.success span{color:var(--ok)}
+  .toast-close{font-size:16px; padding:4px 10px; border:none; background:none; color:var(--muted); cursor:pointer}
+  .toast-close:hover{color:var(--text)}

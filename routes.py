@@ -549,4 +549,4 @@ async def index() -> HTMLResponse:
         "__FORMATS_JSON__", _json.dumps(FORMATS).replace("</", "<\\/")
     )
     html = html.replace("__VERSION__", VERSION)
-    return HTMLResponse(html)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
