@@ -11,7 +11,7 @@
   > Self-hosted YouTube downloader — paste a URL, get an MP4. Wraps yt-dlp + ffmpeg behind a clean web UI.
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-1.6.0-green.svg)]()
+  [![Version](https://img.shields.io/badge/version-1.7.0-green.svg)]()
   [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
   [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker)](https://hub.docker.com)
 
@@ -43,6 +43,7 @@
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
+- [Desktop App (Windows)](#desktop-app-windows)
 - [Usage](#usage)
 - [Architecture](#architecture)
 - [Environment Variables](#environment-variables)
@@ -66,11 +67,14 @@ Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (the actively maintai
 - Video downloads as **MP4** (best, 1080p, 720p, 480p) or **MP3** (audio-only)
 - **Playlist support** — browse all videos in a playlist and download selected ones in batch
 - Real-time progress via **Server-Sent Events** (SSE), no WebSocket complexity
-- **Download history** persisted to a local JSON file
+- **Download history** persisted to SQLite (WAL mode), with crash recovery
 - Optional **token authentication** to restrict access (`OPENGRAB_TOKEN`)
-- Configurable limits: max concurrent jobs, max file size
+- **Human-friendly error messages** with a retry button for failed downloads
+- **yt-dlp hot-swap** — update the download engine from the UI or on desktop start, without rebuilding
+- Configurable limits: max concurrent jobs, max file size, total disk budget
 - **Pinned yt-dlp** in the image for reproducible builds; kept fresh via Dependabot. Optional opt-in auto-update on container start (`OPENGRAB_AUTOUPDATE=1`) for when you need the latest fix immediately
 - Production-ready **nginx reverse proxy** config with TLS, SSE-friendly settings, and security headers
+- **Windows desktop app** — native window via pywebview + WebView2, system tray, single-instance, installer wizard (Spanish/English)
 
 ---
 
@@ -82,9 +86,11 @@ Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (the actively maintai
 | Web framework | FastAPI + uvicorn | Async, type-driven |
 | Download engine | yt-dlp | Runs in thread pool (blocking I/O) |
 | Video processing | ffmpeg | System binary, muxing to MP4 |
+| Data | SQLite (WAL mode) | Job persistence, crash recovery, history |
 | Frontend | Alpine.js + vanilla CSS | Embedded, no CDN, dark/light theme |
 | Container | Docker + Compose | Single-image, healthcheck included |
 | Reverse proxy | nginx | Optional, with TLS and SSE support |
+| Desktop | pywebview + pystray | Windows app, system tray, WebView2 |
 
 ---
 
@@ -118,10 +124,22 @@ docker compose up -d
 
 ---
 
+## Desktop App (Windows)
+
+Download `OpenGrab-Setup.exe` from the [latest release](https://github.com/Skydope/OpenGrab/releases/latest). The installer wizard (Spanish/English) offers:
+
+- **Recommended mode** — Next-Next-Finish with sensible defaults
+- **Advanced mode** — custom download folder, port, password, auto-start with Windows
+- **WebView2 bootstrapper** — silently installs the Edge WebView2 runtime if missing
+
+The desktop app runs the server on a random local port (no auth needed), opens a native window via pywebview, and stays in the system tray after you close the window. FFmpeg and yt-dlp are bundled — no separate installs needed.
+
+---
+
 ## Usage
 
 1. Open `http://localhost:8800` in your browser
-2. If you set `OPENGRAB_TOKEN`, enter the token when prompted (stored in `sessionStorage`)
+2. If you set `OPENGRAB_TOKEN`, enter the token when prompted (stored in an HTTP-only cookie, 30-day expiry)
 3. Paste a YouTube URL and click **Analizar**
 4. Choose a quality preset: `best mp4`, `1080p`, `720p`, `480p`, or `solo audio · mp3`
 5. Click **Descargar** — progress appears in the terminal-style output area
@@ -135,25 +153,32 @@ For playlists, step 3 will detect the URL and show the playlist panel. Select th
 
 ```
 opengrab/
-├── app.py              # Entrypoint (~100 lines)
-├── config.py           # Environment config
-├── state.py            # AppState — jobs, history, locks
+├── app.py              # Entrypoint (~120 lines)
+├── config.py           # Environment + config.ini
+├── state.py            # AppState — runtime jobs, events, eviction
+├── db.py               # SQLite data layer (WAL, crash recovery)
 ├── models.py           # Pydantic models
-├── download.py         # yt-dlp wrappers
-├── routes.py           # API endpoints (APIRouter)
+├── download.py         # yt-dlp wrappers + error mapping
+├── routes.py           # API endpoints (APIRouter, 13 endpoints)
+├── desktop.py          # Windows desktop launcher (pywebview)
+├── engine_update.py    # yt-dlp hot-swap via PyPI wheel
 ├── static/
-│   ├── index.html      # Alpine.js declarative UI
-│   ├── style.css       # Dark/light theme
-│   └── alpine.min.js   # Embedded, no CDN
-├── tests/              # pytest tests
+│   ├── index.html      # Alpine.js SPA
+│   ├── style.css       # Dark/light theme, WCAG AA
+│   └── alpine.min.js   # Embedded (~43KB), no CDN
+├── tests/              # pytest tests (~111 tests)
+├── vendor/             # Bundled ffmpeg + app icon
+├── nginx/              # Reverse proxy TLS config
 ├── Dockerfile          # Non-root user, healthcheck
-└── docker-compose.yml
+├── docker-compose.yml
+├── OpenGrab.spec       # PyInstaller build spec
+└── opengrab.iss        # Inno Setup installer wizard
 ```
 
 **Key design decisions:**
 - **Async backend + thread pool.** FastAPI handles HTTP, yt-dlp runs in `asyncio.to_thread()` to avoid blocking the event loop.
 - **SSE over WebSockets.** Progress updates use `asyncio.Event` with a 2-second timeout polling loop. Simpler than WebSockets, zero extra dependencies.
-- **In-memory state.** Job state is a typed Pydantic model in a `dict`. Download history is a JSON file on disk. Old jobs are evicted after 1 hour.
+- **RAM + SQLite state.** Job state (progress, speed, ETA) lives in-memory for real-time SSE delivery. State transitions (queued → downloading → done) are persisted to SQLite (WAL mode). History reads come from the database. Old in-memory jobs are evicted after 1 hour.
 - **Offline-first frontend.** Alpine.js is embedded (~43KB), CSS uses variables for theming. No CDN calls, works entirely on LAN.
 
 ---
@@ -165,10 +190,15 @@ opengrab/
 | `OPENGRAB_HOST` | No | `127.0.0.1` | Bind address (`0.0.0.0` for Docker) |
 | `OPENGRAB_PORT` | No | `8800` | HTTP server port |
 | `OPENGRAB_DIR` | No | `./downloads` | Output directory for downloaded files |
-| `OPENGRAB_TOKEN` | No | — | If set, requires Bearer token on all `/api/*` routes |
+| `OPENGRAB_TOKEN` | No | — | If set, requires Bearer token on all `/api/*` routes. If empty, auto-generates one at startup. |
+| `OPENGRAB_NO_AUTH` | No | — | Set to `1` to disable authentication (dev/local only) |
 | `OPENGRAB_MAX_JOBS` | No | `2` | Maximum concurrent downloads |
-| `OPENGRAB_MAX_SIZE_MB` | No | `0` (unlimited) | Reject formats exceeding this size |
-| `OPENGRAB_AUTOUPDATE` | No | `1` | Auto-update yt-dlp on container start |
+| `OPENGRAB_MAX_SIZE_MB` | No | `0` (unlimited) | Per-file size limit |
+| `OPENGRAB_MAX_TOTAL_MB` | No | `0` (unlimited) | Disk budget — refuses new jobs via HTTP 507 when exceeded |
+| `OPENGRAB_AUTOUPDATE` | No | `0` | Auto-update yt-dlp on container start. Opt-in. |
+| `OPENGRAB_YTDLP_VERSION` | No | — | Pin a specific yt-dlp version when auto-update is enabled |
+| `OPENGRAB_TRUST_XFF` | No | `0` | Trust `X-Forwarded-For` for rate limiting (enable behind nginx) |
+| `OPENGRAB_CONFIG` | No | — | Custom path to `config.ini` (desktop mode) |
 
 See [`.env.example`](.env.example) for a ready-to-copy template.
 
@@ -179,19 +209,21 @@ See [`.env.example`](.env.example) for a ready-to-copy template.
 All `/api/*` endpoints require authentication unless `OPENGRAB_NO_AUTH=1`. If `OPENGRAB_TOKEN` is empty, a token is auto-generated at startup and printed to the logs. Authenticate via:
 - `Authorization: Bearer <token>` header
 - `?token=<token>` query parameter
-- `opengrab_token` HTTP-only cookie (set by `POST /api/auth`)
+- `opengrab_token` HTTP-only cookie (set by `POST /api/auth`, 30-day expiry)
 
 | Method | Path | Rate Limit | Description |
 |--------|------|------------|-------------|
 | `GET` | `/` | — | Web UI |
-| `GET` | `/health` | — | Health check (returns `{"status":"ok","jobs_active":N}`) |
+| `GET` | `/health` | — | Health check (returns `{"status":"ok"}`) |
 | `POST` | `/api/auth` | — | Authenticate and receive cookie — body: `{"token":"..."}` |
 | `POST` | `/api/logout` | — | Clear auth cookie |
 | `GET` | `/api/info?url=...` | 10/min | Fetch video metadata + available formats |
-| `GET` | `/api/playlist?url=...` | — | Fetch playlist entries |
+| `GET` | `/api/playlist?url=...` | 10/min | Fetch playlist entries |
 | `POST` | `/api/jobs` | 5/min | Create download job — body: `{"url":"...", "quality":"best"}` |
 | `GET` | `/api/jobs/{id}/events` | — | SSE progress stream for a job |
 | `GET` | `/api/jobs/{id}/file` | — | Download the completed file |
+| `POST` | `/api/jobs/{id}/open-folder` | — | Open file explorer to downloaded file |
+| `POST` | `/api/engine/update` | 2/min | Force yt-dlp hot-swap |
 | `GET` | `/api/history?limit=20` | — | Download history as JSON |
 
 ### `POST /api/jobs`
