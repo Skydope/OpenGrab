@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] — 2026-06-22
+
+### Added
+
+- **Modo universal**: el gate de validacion de URL paso de un allowlist de 5
+  plataformas (YouTube, Vimeo, TikTok, X, Instagram) a `_is_safe_url`, que acepta
+  cualquier http(s) publico y deja que yt-dlp decida si puede extraer. OpenGrab
+  ahora funciona con los ~1800 sitios que soporta yt-dlp (Bandcamp, SoundCloud,
+  etc.), no solo los 5 originales.
+- Defensa en profundidad **anti-SSRF** en el nuevo gate: rechaza esquemas no-http
+  (file://, ftp://, javascript:), localhost, `.local`, IPs internas
+  (privada/loopback/link-local/reservada/multicast/unspecified) y el endpoint de
+  metadata cloud (`169.254.169.254`).
+- **Indicador de sitio detectado** en la UI (`extractor_key`): muestra "Sitio
+  detectado: YouTube" (o el extractor que corresponda) al analizar una URL.
+- **Retries** en las opciones de descarga (`extractor_retries=3`,
+  `fragment_retries=5`, `retries=5`) para robustez ante extractors o redes
+  fragiles.
+- `has_active_job_for_video` en la capa SQLite para prevenir jobs duplicados
+  entre ciclos del watch loop.
+
+### Changed
+
+- Mensajes de error de URL ahora universales, sin listar plataformas especificas.
+- `_looks_like_supported` renombrado a `_is_safe_url` (la semantica ahora es
+  "es seguro pasar esto a yt-dlp", no "coincide con nuestro allowlist").
+
+### Fixed
+
+- **Watch mode no descargaba nada**: `_check_channel_watch` creaba jobs pero nunca
+  disparaba `_run_download`. Ahora retorna la lista de videos y `watch_loop` los
+  despacha como tareas asyncio (igual que `api_create_job`).
+- **Dedup llamaba `record_download` al crear el job, no al completar**: descargas
+  fallidas quedaban marcadas como bajadas y nunca se reintentaban. Ahora
+  `record_download` se llama en el camino de exito de `_run_download`, cubriendo
+  tanto watch mode como descargas manuales.
+- DeprecationWarning de `asyncio.iscoroutinefunction` (slowapi + Python 3.14+):
+  monkeypatch a `inspect.iscoroutinefunction` al arranque.
+
+### Security
+
+- Gate SSRF-safe: defensa en profundidad contra requests del lado del servidor a
+  destinos internos (ver Added).
+
 ## [1.7.0] — 2026-06-22
 
 ### Added (Desktop — Windows installer)

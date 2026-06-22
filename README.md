@@ -4,11 +4,11 @@
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="Logo-dark.png">
       <source media="(prefers-color-scheme: light)" srcset="Logo.png">
-      <img src="Logo.png" alt="OpenGrab — self-hosted YouTube downloader" width="500" style="max-width:100%">
+      <img src="Logo.png" alt="OpenGrab — self-hosted video downloader" width="500" style="max-width:100%">
     </picture>
   </a>
 
-  > Self-hosted YouTube downloader — paste a URL, get an MP4. Wraps yt-dlp + ffmpeg behind a clean web UI.
+  > Self-hosted video & audio downloader — paste a URL from any site, get an MP4. Wraps yt-dlp (1800+ sites) + ffmpeg behind a clean web UI.
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
   [![Version](https://img.shields.io/badge/version-1.7.0-green.svg)]()
@@ -56,15 +56,16 @@
 
 ## Overview
 
-OpenGrab is a self-hosted YouTube downloader for your homelab or LAN. You run it on a server (or your desktop), open the web UI, paste a YouTube URL, choose a quality preset, and get back an MP4 or MP3 file. No browser extensions, no shady websites. Just your own server — or a [Windows desktop app](#desktop-app-windows) if you prefer.
+OpenGrab is a self-hosted video & audio downloader for your homelab or LAN. Paste a URL from practically any site — YouTube, Vimeo, TikTok, Instagram, X/Twitter, Bandcamp, SoundCloud, and thousands more — choose a quality preset, and get back an MP4 or MP3 file. No browser extensions, no shady websites. Just your own server — or a [Windows desktop app](#desktop-app-windows) if you prefer.
 
-Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (the actively maintained youtube-dl fork) and [ffmpeg](https://ffmpeg.org/) for muxing. The entire backend is a single FastAPI app with an inline vanilla frontend — zero npm, zero bundlers, zero CDN calls.
+Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (engine that supports 1800+ sites) and [ffmpeg](https://ffmpeg.org/) for muxing. The entire backend is a single FastAPI app with an inline vanilla frontend — zero npm, zero bundlers, zero CDN calls.
 
 ---
 
 ## Features
 
 - Video downloads as **MP4** (best, 1080p, 720p, 480p) or **MP3** (audio-only)
+- **Universal support** — works with any site yt-dlp can handle (1800+), not just YouTube
 - **Playlist support** — browse all videos in a playlist and download selected ones in batch
 - Real-time progress via **Server-Sent Events** (SSE), no WebSocket complexity
 - **Download history** persisted to SQLite (WAL mode), with crash recovery
@@ -155,7 +156,7 @@ tray support. May require right-click → Open on first launch (Gatekeeper).
 
 1. Open `http://localhost:8800` in your browser
 2. If you set `OPENGRAB_TOKEN`, enter the token when prompted (stored in an HTTP-only cookie, 30-day expiry)
-3. Paste a YouTube URL and click **Analizar**
+3. Paste a URL from any supported site and click **Analizar**
 4. Choose a quality preset: `best mp4`, `1080p`, `720p`, `480p`, or `solo audio · mp3`
 5. Click **Descargar** — progress appears in the terminal-style output area
 6. When complete, click the download link to save the file
@@ -304,13 +305,13 @@ Distributed under the [MIT License](LICENSE). See `LICENSE` for details.
 
 ## Español
 
-> **OpenGrab** — Descargador de YouTube auto-alojado. Pegás una URL, te llevás un MP4 (o MP3).
+> **OpenGrab** — Descargador de video auto-alojado. Pegás una URL de cualquier sitio, te llevás un MP4 (o MP3).
 
 ### Descripción general
 
-OpenGrab es un descargador de YouTube que corrés en tu propio servidor. Abrís la interfaz web, pegás una URL de YouTube, elegís calidad, y te descarga un MP4 o MP3. Nada de extensiones de navegador, sitios shady. Solo tu servidor — o la [app de escritorio para Windows](#desktop-app-windows) si preferís.
+OpenGrab es un descargador de video y audio que corrés en tu propio servidor. Pegás una URL de prácticamente cualquier sitio — YouTube, Vimeo, TikTok, Instagram, X/Twitter, Bandcamp, SoundCloud, y miles más — elegís calidad, y te descarga un MP4 o MP3. Nada de extensiones de navegador, sitios shady. Solo tu servidor — o la [app de escritorio para Windows](#desktop-app-windows) si preferís.
 
-Usa [yt-dlp](https://github.com/yt-dlp/yt-dlp) como motor de descarga y [ffmpeg](https://ffmpeg.org/) para el muxing. Todo el backend es una app FastAPI con frontend vanilla inline — sin npm, sin bundlers, sin CDN.
+Usa [yt-dlp](https://github.com/yt-dlp/yt-dlp) (motor que soporta +1800 sitios) y [ffmpeg](https://ffmpeg.org/) para el muxing. Todo el backend es una app FastAPI con frontend vanilla inline — sin npm, sin bundlers, sin CDN.
 
 ### Instalacion manual
 
@@ -336,7 +337,7 @@ docker compose up -d
 ### Uso básico
 
 1. Abrí `http://localhost:8800`
-2. Pegá una URL de YouTube y clic en **Analizar**
+2. Pegá una URL y clic en **Analizar**
 3. Elegí calidad (best, 1080p, 720p, 480p, o solo audio mp3)
 4. Clic en **Descargar**
 
