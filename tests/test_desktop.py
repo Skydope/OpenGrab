@@ -155,17 +155,10 @@ def test_webview2_unavailable_when_edgechromium_missing(monkeypatch):
 # ------------------------------ _open_ui --------------------------------- #
 def test_open_ui_falls_back_to_browser(monkeypatch):
     monkeypatch.setattr(desktop, "_webview2_available", lambda: False)
-
-    msgbox_calls = []
-    monkeypatch.setattr(desktop, "_msgbox", lambda *a, **k: msgbox_calls.append(a))
-
     opened = {}
     monkeypatch.setattr(desktop.webbrowser, "open", lambda u: opened.setdefault("url", u))
-
-    assert desktop._open_ui(8800) is False
+    desktop._open_ui_window(8800)
     assert "8800" in opened["url"]
-    assert len(msgbox_calls) == 1
-    assert "WebView2" in msgbox_calls[0][0]
 
 
 def test_open_ui_uses_pywebview_when_available(monkeypatch):
@@ -177,23 +170,20 @@ def test_open_ui_uses_pywebview_when_available(monkeypatch):
     fake.start = lambda: calls.setdefault("started", True)  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "webview", fake)
 
-    assert desktop._open_ui(8800) is True
+    desktop._open_ui_window(8800)
     assert calls.get("started") is True
 
 
-def test_open_ui_msgbox_received_on_fallback(monkeypatch):
-    """Verifica que el MessageBox de fallback recibe los parámetros correctos."""
+def test_open_ui_no_msgbox_on_browser_fallback(monkeypatch):
+    """En el nuevo diseño, el fallback a navegador es silencioso (el msgbox está en main)."""
     monkeypatch.setattr(desktop, "_webview2_available", lambda: False)
     monkeypatch.setattr(desktop.webbrowser, "open", lambda u: None)
 
     msgbox_calls = []
-    monkeypatch.setattr(desktop, "_msgbox", lambda text, title="", icon="": msgbox_calls.append(
-        {"text": text, "title": title, "icon": icon}
-    ))
+    monkeypatch.setattr(desktop, "_msgbox", lambda *a, **k: msgbox_calls.append(a))
 
-    desktop._open_ui(12345)
-    assert msgbox_calls[0]["icon"] == "info"
-    assert "reinstalá" in msgbox_calls[0]["text"]
+    desktop._open_ui_window(12345)
+    assert len(msgbox_calls) == 0
 
 
 # ----------------------- engine_update (hot-swap) ------------------------ #

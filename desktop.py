@@ -5,6 +5,9 @@ guarda en la carpeta de Descargas del usuario, hace hot-swap de yt-dlp y abre la
 (ventana nativa vía WebView2 + pywebview, con fallback al navegador). Single-instance
 crash-safe: named mutex en Windows, flock en el resto.
 
+La ventana se abre al iniciar. Al cerrarla, la app sigue viva en la bandeja del sistema
+con un menú "Abrir OpenGrab" (reabre la ventana) y "Salir" (termina el proceso).
+
 Las funciones ``_free_port``, ``_setup_env``, ``_wait_healthy`` y ``acquire_single_instance``
 están factorizadas para testearse sin levantar uvicorn ni abrir navegadores reales.
 """
@@ -133,29 +136,57 @@ def _webview2_available() -> bool:
     return True
 
 
-def _open_ui(port: int) -> bool:
-    """Abre la UI. True si ventana nativa (bloqueante), False si navegador.
-
-    Prefiere pywebview + WebView2 (ventana nativa). Si WebView2 no está instalado,
-    muestra un aviso y cae al navegador del sistema.
-    """
+def _open_ui_window(port: int) -> None:
+    """Abre la UI en un thread (no bloquea el launcher)."""
     url = f"http://127.0.0.1:{port}"
     if _webview2_available():
-        import webview
+        try:
+            import webview
 
-        webview.create_window("OpenGrab", url, width=980, height=720)
-        webview.start()
-        return True
+            webview.create_window("OpenGrab", url, width=980, height=720)
+            webview.start()
+        except Exception:  # noqa: BLE001 — degradar a navegador
+            webbrowser.open(url)
+    else:
+        webbrowser.open(url)
 
-    _msgbox(
-        "WebView2 Runtime no está instalado.\n\n"
-        "OpenGrab se abrirá en tu navegador.\n"
-        "Para usar la ventana nativa, reinstalá OpenGrab y\n"
-        "asegurate de marcar 'WebView2 Runtime'.",
-        "OpenGrab", "info",
+
+def _get_tray_image() -> object:
+    """Genera un icono para la bandeja del sistema (sin dependencia de archivos externos)."""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    # Fondo redondeado oscuro
+    draw.rounded_rectangle([4, 4, 60, 60], radius=12, fill=(28, 33, 43, 255))
+    # Play button simplificado (triángulo ámbar)
+    draw.polygon([(24, 18), (24, 46), (44, 32)], fill=(232, 160, 44, 255))
+    return img
+
+
+def _system_tray(port: int) -> None:
+    """Bandeja del sistema. Bloquea hasta que el usuario elige Salir."""
+    import pystray
+
+    image = _get_tray_image()
+
+    def _on_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        threading.Thread(target=_open_ui_window, args=(port,), daemon=True).start()
+
+    def _on_exit(icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        icon.stop()
+
+    icon = pystray.Icon(
+        "OpenGrab",
+        image,
+        "OpenGrab",
+        menu=pystray.Menu(
+            pystray.MenuItem("Abrir OpenGrab", _on_open, default=True),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Salir", _on_exit),
+        ),
     )
-    webbrowser.open(url)
-    return False
+    icon.run()
 
 
 def main() -> int:
@@ -194,14 +225,9 @@ def main() -> int:
             )
         return 1
 
-    # pywebview bloquea hasta cerrar la ventana; el navegador retorna al toque
-    # y entonces hay que mantener vivo el proceso (server en thread daemon).
-    if not _open_ui(port):
-        try:
-            while True:
-                time.sleep(3600)
-        except KeyboardInterrupt:
-            return 0
+    # Abrir ventana en thread y mostrar bandeja del sistema (bloqueante).
+    threading.Thread(target=_open_ui_window, args=(port,), daemon=True).start()
+    _system_tray(port)
     return 0
 
 
