@@ -180,13 +180,63 @@
           <span class="h-title" :title="e.title" x-text="e.title"></span>
           <span class="h-meta" x-text="e.quality"></span>
           <span class="h-size" x-show="e.size" x-text="(e.size/1048576).toFixed(1) + ' MB'"></span>
+          <button class="h-del" @click="deleteHistoryEntry(e.job_id)" title="Borrar">×</button>
         </div>
       </template>
       <div class="engine-row">
+        <button class="btn-sm" @click="clearAllHistory" x-show="history.length">Limpiar historial</button>
         <button class="btn-sm" @click="updateEngine" :disabled="engineUpdating"
                 aria-label="Actualizar el motor de descarga yt-dlp"
                 x-text="engineUpdating ? 'Actualizando…' : 'Actualizar motor (yt-dlp)'"></button>
         <span class="muted-sm" x-show="engineMsg" x-text="engineMsg" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Storage -->
+  <div class="mt-14" x-show="authenticated" x-cloak>
+    <div class="toggle-label-lg"
+         role="button" tabindex="0" :aria-expanded="storageOpen"
+         @click="toggleStorage"
+         @keydown.enter.prevent="toggleStorage"
+         @keydown.space.prevent="toggleStorage"
+         x-text="storageOpen ? 'almacenamiento ▾' : 'almacenamiento ▸'"></div>
+    <div x-show="storageOpen">
+      <span x-show="!storageLoaded" class="muted-sm">Cargando…</span>
+      <div x-show="storageLoaded">
+        <div class="storage-summary">
+          <span x-text="'Total usado: ' + formatMB(storage.total_usage_bytes)"></span>
+          <span class="muted-sm" x-show="storage.db_size_bytes" x-text="' · DB: ' + formatMB(storage.db_size_bytes)"></span>
+        </div>
+        <template x-if="storage.workdirs.length">
+          <div>
+            <div class="muted-sm" style="margin:8px 0 4px">Workdirs temporales:</div>
+            <template x-for="w in storage.workdirs" :key="w.name">
+              <div class="wd-entry">
+                <span class="wd-name" x-text="w.name"></span>
+                <span class="wd-badge" x-show="w.active">activo</span>
+                <span class="h-meta" x-text="formatMB(w.size_bytes)"></span>
+                <span class="h-meta" x-text="formatAge(w.age_hours)"></span>
+              </div>
+            </template>
+          </div>
+        </template>
+        <template x-if="storage.loose_files && storage.loose_files.length">
+          <div>
+            <div class="muted-sm" style="margin:8px 0 4px">Archivos sueltos:</div>
+            <template x-for="f in storage.loose_files" :key="f.name">
+              <div class="wd-entry">
+                <span class="wd-name" x-text="f.name"></span>
+                <span class="h-meta" x-text="formatMB(f.size_bytes)"></span>
+                <span class="h-meta" x-text="formatAge(f.age_hours)"></span>
+              </div>
+            </template>
+          </div>
+        </template>
+        <div class="engine-row">
+          <button class="btn-sm" @click="cleanupStorage">Limpiar workdirs viejos (>24h)</button>
+          <span class="muted-sm" x-show="storageMsg" x-text="storageMsg" aria-live="polite"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -345,6 +395,12 @@ document.addEventListener('alpine:init', () => {
     historyOpen: false,
     historyLoaded: false,
     history: [],
+
+    // ── Storage ───────────────────────────────
+    storageOpen: false,
+    storageLoaded: false,
+    storage: { total_usage_bytes: 0, workdirs: [], loose_files: [], db_size_bytes: 0 },
+    storageMsg: "",
 
     // ── Channels ──────────────────────────────
     channelsOpen: false,
@@ -639,6 +695,59 @@ document.addEventListener('alpine:init', () => {
           this.history = [];
         }
         this.historyLoaded = true;
+      }
+    },
+    async deleteHistoryEntry(jobId) {
+      if (!confirm("¿Borrar esta entrada? El archivo se eliminará de forma segura.")) return;
+      try {
+        await fetch("/api/history/" + jobId, { method: "DELETE" });
+        this.history = this.history.filter(e => e.job_id !== jobId);
+      } catch (e) {
+        this.errorMsg = "Error al borrar entrada.";
+      }
+    },
+    async clearAllHistory() {
+      if (!confirm("¿Borrar todo el historial (incluye errores)? Los archivos se eliminarán de forma segura.")) return;
+      try {
+        await fetch("/api/history", { method: "DELETE" });
+        this.history = [];
+      } catch (e) {
+        this.errorMsg = "Error al limpiar historial.";
+      }
+    },
+
+    // ── Storage ───────────────────────────────
+    formatMB(bytes) { return (bytes / 1048576).toFixed(1) + " MB"; },
+    formatAge(hours) {
+      if (hours < 1) return Math.round(hours * 60) + "min";
+      if (hours < 24) return Math.round(hours) + "h";
+      return Math.round(hours / 24) + "d";
+    },
+    async toggleStorage() {
+      this.storageOpen = !this.storageOpen;
+      if (this.storageOpen && !this.storageLoaded) {
+        await this.loadStorage();
+      }
+    },
+    async loadStorage() {
+      try {
+        const r = await fetch("/api/storage");
+        this.storage = await r.json();
+      } catch (e) {
+        this.storage = { total_usage_bytes: 0, workdirs: [], loose_files: [], db_size_bytes: 0 };
+      }
+      this.storageLoaded = true;
+    },
+    async cleanupStorage() {
+      if (!confirm("¿Limpiar workdirs con más de 24 horas? Los archivos se eliminarán de forma segura.")) return;
+      this.storageMsg = "Limpiando…";
+      try {
+        const r = await fetch("/api/storage/cleanup", { method: "POST" });
+        const d = await r.json();
+        this.storageMsg = d.cleaned + " workdirs limpiados · " + this.formatMB(d.freed_bytes) + " liberados";
+        await this.loadStorage();
+      } catch (e) {
+        this.storageMsg = "Error al limpiar.";
       }
     },
 

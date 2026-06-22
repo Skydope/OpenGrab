@@ -328,3 +328,37 @@ def test_api_check_channel(client, monkeypatch):
     assert data["new_videos"] == 1
     assert len(data["videos"]) == 1
     assert data["videos"][0]["title"] == "Test"
+
+
+# --------------------- history delete API ------------------------------ #
+def test_api_delete_history_entry(client):
+    r = client.post("/api/jobs", json={"url": "https://example.com/v", "quality": "best"})
+    job_id = r.json()["job_id"]
+
+    d = client.delete(f"/api/history/{job_id}")
+    assert d.status_code in (200, 404)
+
+
+def test_api_delete_history_nonexistent(client):
+    d = client.delete("/api/history/phantom123")
+    assert d.status_code == 404
+
+
+def test_api_clear_history(client):
+    d = client.delete("/api/history")
+    assert d.status_code == 200
+    assert d.json()["ok"] is True
+
+
+# --------------------- storage API ------------------------------------- #
+def test_api_storage(client):
+    r = client.get("/api/storage")
+    assert r.status_code == 200
+
+
+def test_api_storage_cleanup(client):
+    r = client.post("/api/storage/cleanup")
+    assert r.status_code == 200
+    data = r.json()
+    assert "cleaned" in data
+    assert "freed_bytes" in data

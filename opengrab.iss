@@ -7,7 +7,7 @@
 [Setup]
 AppId={{8F3A1C92-7B5E-4D12-A6F8-9E2B0D4C8A71}
 AppName=OpenGrab
-AppVersion=1.7.0
+AppVersion=1.8.0
 AppPublisher=OpenGrab
 AppPublisherURL=https://github.com/Skydope/OpenGrab
 AppSupportURL=https://github.com/Skydope/OpenGrab/issues
@@ -21,6 +21,8 @@ OutputBaseFilename=OpenGrab-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+WizardSmallImageFile=vendor\wizard-small.bmp
+WizardImageFile=vendor\wizard-image.bmp
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"

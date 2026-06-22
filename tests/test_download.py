@@ -1,4 +1,5 @@
 import asyncio
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -418,3 +419,111 @@ def test_run_download_does_not_record_on_error(dl_state, monkeypatch):
 
     assert dl_state.jobs[jid].status == "error"
     assert not dl_state.db.is_downloaded("youtube", "abc123")
+
+
+# --------------------- secure delete ----------------------------------- #
+def test_secure_delete_file_three_pass(tmp_path):
+    from state import AppState
+
+    f = tmp_path / "secret.bin"
+    f.write_bytes(b"A" * 5000)
+    assert f.exists()
+    AppState._secure_delete_file(str(f))
+    assert not f.exists()
+
+
+def test_secure_delete_file_noop_on_missing(tmp_path):
+    from state import AppState
+
+    AppState._secure_delete_file(str(tmp_path / "ghost.bin"))
+
+
+def test_secure_delete_workdir_recursive(tmp_path):
+    from state import AppState
+
+    wd = tmp_path / "opengrab_test"
+    wd.mkdir()
+    (wd / "a.bin").write_bytes(b"x" * 100)
+    (wd / "b.bin").write_bytes(b"y" * 200)
+    sub = wd / "sub"
+    sub.mkdir()
+    (sub / "c.bin").write_bytes(b"z" * 300)
+    AppState._secure_delete_workdir(str(wd))
+    assert not wd.exists()
+
+
+# --------------------- history management ------------------------------ #
+def test_delete_history_entry_removes_from_db_and_ram(dl_state, tmp_path):
+    dl_state.db.insert_job("h1", "https://x.com/1", "best", status="done")
+    dl_state.db.update_job("h1", filepath=str(tmp_path / "video.mp4"), workdir=str(tmp_path / "opengrab_wd"))
+
+    f = tmp_path / "video.mp4"
+    f.write_bytes(b"fake")
+    wd = tmp_path / "opengrab_wd"
+    wd.mkdir()
+
+    assert dl_state.delete_history_entry("h1") is True
+    assert dl_state.db.get_job("h1") is None
+
+
+def test_delete_history_entry_nonexistent(dl_state):
+    assert dl_state.delete_history_entry("phantom") is False
+
+
+def test_clear_all_history(dl_state):
+    dl_state.db.insert_job("a", "u", "best", status="done")
+    dl_state.db.insert_job("b", "u", "best", status="error")
+    dl_state.db.insert_job("c", "u", "best", status="interrupted")
+    dl_state.db.insert_job("d", "u", "best", status="downloading")
+
+    count = dl_state.clear_all_history()
+    assert count == 3
+    assert dl_state.db.get_job("d") is not None
+
+
+# --------------------- storage ----------------------------------------- #
+def test_list_storage(dl_state):
+    info = dl_state.list_storage()
+    assert "total_usage_bytes" in info
+    assert "workdirs" in info
+    assert "loose_files" in info
+    assert "db_size_bytes" in info
+
+
+def test_cleanup_storage_dry_run(dl_state):
+    import time
+    wd = dl_state.out_dir / "opengrab_old"
+    wd.mkdir()
+    (wd / "f.bin").write_bytes(b"x" * 1000)
+    # make it look old
+    old = time.time() - 50 * 3600
+    os.utime(str(wd), (old, old))
+
+    result = dl_state.cleanup_storage(max_age_hours=24, dry_run=True)
+    assert result["dry_run"] is True
+    assert result["would_clean"] >= 1
+    assert result["freed_bytes"] >= 1000
+    assert wd.exists()
+
+
+def test_cleanup_storage_deletes_old_workdirs(dl_state):
+    import time
+    wd = dl_state.out_dir / "opengrab_ancient"
+    wd.mkdir()
+    (wd / "f.bin").write_bytes(b"x" * 500)
+    old = time.time() - 50 * 3600
+    os.utime(str(wd), (old, old))
+
+    result = dl_state.cleanup_storage(max_age_hours=24)
+    assert result["cleaned"] >= 1
+    assert result["freed_bytes"] >= 500
+    assert not wd.exists()
+
+
+def test_cleanup_storage_keeps_recent_workdirs(dl_state):
+    wd = dl_state.out_dir / "opengrab_fresh"
+    wd.mkdir()
+    (wd / "f.bin").write_bytes(b"x" * 100)
+
+    result = dl_state.cleanup_storage(max_age_hours=24)
+    assert wd.exists()

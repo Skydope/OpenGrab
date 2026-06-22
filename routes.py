@@ -355,6 +355,58 @@ async def api_open_folder(
     return JSONResponse({"ok": True, "folder": folder})
 
 
+@router.delete("/api/history/{job_id}")
+async def api_delete_history_entry(
+    job_id: str,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    deleted = await asyncio.to_thread(state.delete_history_entry, job_id)
+    if not deleted:
+        raise HTTPException(404, "Entrada no encontrada.")
+    return JSONResponse({"ok": True})
+
+
+@router.delete("/api/history")
+@limiter.limit("5/minute")
+async def api_clear_history(
+    request: Request,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    count = await asyncio.to_thread(state.clear_all_history)
+    log.info("historial limpiado: %d entradas borradas", count)
+    return JSONResponse({"ok": True, "deleted": count})
+
+
+@router.get("/api/storage")
+async def api_storage(
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    info = await asyncio.to_thread(state.list_storage)
+    return JSONResponse(info)
+
+
+@router.post("/api/storage/cleanup")
+@limiter.limit("5/minute")
+async def api_storage_cleanup(
+    request: Request,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    max_age = max(1, int(body.get("max_age_hours", 24)))
+    result = await asyncio.to_thread(state.cleanup_storage, max_age)
+    log.info("storage cleanup: %d workdirs, %d bytes liberados",
+             result["cleaned"], result["freed_bytes"])
+    return JSONResponse(result)
+
+
 @router.post("/api/engine/update")
 @limiter.limit("2/minute")
 async def api_engine_update(

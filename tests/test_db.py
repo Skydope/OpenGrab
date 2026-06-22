@@ -248,3 +248,38 @@ def test_list_channels_ordered_by_created(db):
     db.insert_channel("https://b.com", "best", created=200)
     channels = db.list_channels()
     assert [c["url"] for c in channels] == ["https://a.com", "https://b.com"]
+
+
+# ------------------------------- delete / clear -------------------------- #
+def test_delete_job_removes_row(db):
+    db.insert_job("j1", "u", "best")
+    assert db.delete_job("j1") is True
+    assert db.get_job("j1") is None
+
+
+def test_delete_job_nonexistent(db):
+    assert db.delete_job("phantom") is False
+
+
+def test_clear_history_deletes_done_error_interrupted(db):
+    db.insert_job("a", "u", "best", status="done")
+    db.insert_job("b", "u", "best", status="error")
+    db.insert_job("c", "u", "best", status="interrupted")
+    db.insert_job("d", "u", "best", status="downloading")
+    db.insert_job("e", "u", "best", status="queued")
+    count = db.clear_history()
+    assert count == 3
+    assert db.get_job("a") is None
+    assert db.get_job("b") is None
+    assert db.get_job("c") is None
+    assert db.get_job("d") is not None
+    assert db.get_job("e") is not None
+
+
+def test_get_deletable_jobs_returns_correct_set(db):
+    db.insert_job("x", "u", "best", status="done")
+    db.insert_job("y", "u", "best", status="error")
+    db.insert_job("z", "u", "best", status="downloading")
+    jobs = db.get_deletable_jobs()
+    ids = {j["id"] for j in jobs}
+    assert ids == {"x", "y"}

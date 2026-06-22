@@ -241,3 +241,10 @@
 [x-cloak]{display:none!important}
 
   .site-badge{display:inline-block; margin-top:4px; font-size:11px; color:var(--muted); font-family:var(--mono)}
+
+  .h-del{opacity:.4; cursor:pointer; padding:2px 8px; border:none; background:none; font-size:16px; line-height:1; border-radius:4px}
+  .h-del:hover{opacity:1; color:var(--red); background:rgba(255,80,80,.12)}
+  .wd-entry{display:flex; align-items:center; gap:12px; padding:3px 0; font-size:13px}
+  .wd-name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .wd-badge{font-size:10px; padding:1px 6px; border-radius:3px; background:var(--accent-muted); color:var(--accent)}
+  .storage-summary{font-size:14px; margin-bottom:4px; padding:4px 0}

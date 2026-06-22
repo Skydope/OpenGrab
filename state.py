@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import logging
+import os
 import shutil
 import time
 import uuid
@@ -89,6 +90,171 @@ class AppState:
                     pass
         if count:
             log.info("limpiados %d workdirs viejos", count)
+
+    # ------------------------------------------------------------------ #
+    # Secure file deletion (3-pass: 0x00, 0xFF, random — no external tool)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _secure_delete_file(filepath: str) -> None:
+        path = Path(filepath)
+        if not path.is_file():
+            return
+        size = path.stat().st_size
+        if size == 0:
+            path.unlink()
+            return
+        try:
+            with open(path, "r+b") as f:
+                # Pass 1: zeros
+                f.seek(0)
+                remaining = size
+                while remaining > 0:
+                    chunk = min(remaining, 1024 * 1024)
+                    f.write(b"\x00" * chunk)
+                    remaining -= chunk
+                f.flush()
+                os.fsync(f.fileno())
+                # Pass 2: ones (0xFF)
+                f.seek(0)
+                remaining = size
+                while remaining > 0:
+                    chunk = min(remaining, 1024 * 1024)
+                    f.write(b"\xFF" * chunk)
+                    remaining -= chunk
+                f.flush()
+                os.fsync(f.fileno())
+                # Pass 3: random
+                f.seek(0)
+                remaining = size
+                while remaining > 0:
+                    chunk = min(remaining, 1024 * 1024)
+                    f.write(os.urandom(chunk))
+                    remaining -= chunk
+                f.flush()
+                os.fsync(f.fileno())
+            path.unlink()
+        except OSError:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+    @classmethod
+    def _secure_delete_workdir(cls, workdir: str) -> None:
+        wd = Path(workdir)
+        if not wd.is_dir():
+            return
+        for f in wd.rglob("*"):
+            if f.is_file():
+                cls._secure_delete_file(str(f))
+        shutil.rmtree(wd, ignore_errors=True)
+
+    # ------------------------------------------------------------------ #
+    # History management
+    # ------------------------------------------------------------------ #
+    def delete_history_entry(self, job_id: str) -> bool:
+        job = self.db.get_job(job_id)
+        if job is None:
+            return False
+        filepath = job.get("filepath")
+        workdir = job.get("workdir")
+        if filepath:
+            self._secure_delete_file(str(filepath))
+        if workdir:
+            self._secure_delete_workdir(str(workdir))
+        self.db.delete_job(job_id)
+        self.jobs.pop(job_id, None)
+        self.job_events.pop(job_id, None)
+        return True
+
+    def clear_all_history(self) -> int:
+        rows = self.db.get_deletable_jobs()
+        for r in rows:
+            if r.get("filepath"):
+                try:
+                    self._secure_delete_file(str(r["filepath"]))
+                except Exception:
+                    pass
+        workdirs_seen: set[str] = set()
+        for r in rows:
+            wd = r.get("workdir")
+            if wd and wd not in workdirs_seen:
+                workdirs_seen.add(str(wd))
+                try:
+                    self._secure_delete_workdir(str(wd))
+                except Exception:
+                    pass
+        count = self.db.clear_history()
+        self.jobs = {k: v for k, v in self.jobs.items()
+                     if v.status not in ("done", "error", "interrupted")}
+        self.job_events = {k: v for k, v in self.job_events.items()
+                           if k in self.jobs}
+        return count
+
+    # ------------------------------------------------------------------ #
+    # Storage info
+    # ------------------------------------------------------------------ #
+    def list_storage(self) -> dict[str, Any]:
+        active_workdirs: set[str] = set()
+        for j in self.jobs.values():
+            if j.status in ("queued", "starting", "downloading", "processing") and j.workdir:
+                active_workdirs.add(j.workdir)
+        workdirs: list[dict[str, Any]] = []
+        for d in self.out_dir.glob("opengrab_*"):
+            if not d.is_dir():
+                continue
+            size = sum(
+                f.stat().st_size for f in d.rglob("*") if f.is_file()
+            )
+            age_h = (time.time() - d.stat().st_mtime) / 3600
+            workdirs.append({
+                "name": d.name,
+                "size_bytes": size,
+                "age_hours": round(age_h, 1),
+                "active": str(d) in active_workdirs,
+            })
+        workdirs.sort(key=lambda w: w["age_hours"])
+        loose: list[dict[str, Any]] = []
+        for f in self.out_dir.iterdir():
+            if f.is_file() and f.name != "opengrab.db":
+                loose.append({
+                    "name": f.name,
+                    "size_bytes": f.stat().st_size,
+                    "age_hours": round((time.time() - f.stat().st_mtime) / 3600, 1),
+                })
+        return {
+            "total_usage_bytes": self.current_usage_bytes(),
+            "workdirs": workdirs,
+            "loose_files": loose,
+            "db_size_bytes": Path(self.db.path).stat().st_size if Path(self.db.path).exists() else 0,
+        }
+
+    def cleanup_storage(self, max_age_hours: float = 24, dry_run: bool = False) -> dict[str, Any]:
+        cutoff = time.time() - max_age_hours * 3600
+        cleaned = 0
+        freed = 0
+        to_clean: list[Path] = []
+        for d in self.out_dir.glob("opengrab_*"):
+            if d.is_dir() and d.stat().st_mtime < cutoff:
+                to_clean.append(d)
+        if dry_run:
+            for d in to_clean:
+                freed += sum(
+                    f.stat().st_size for f in d.rglob("*") if f.is_file()
+                )
+            return {"cleaned": 0, "freed_bytes": freed, "dry_run": True,
+                    "would_clean": len(to_clean)}
+        for d in to_clean:
+            try:
+                freed_before = sum(
+                    f.stat().st_size for f in d.rglob("*") if f.is_file()
+                )
+                self._secure_delete_workdir(str(d))
+                freed += freed_before
+                cleaned += 1
+            except Exception:
+                pass
+        return {"cleaned": cleaned, "freed_bytes": freed}
 
     # ------------------------------------------------------------------ #
     # Background eviction

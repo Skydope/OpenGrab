@@ -206,6 +206,28 @@ class Database:
             self._conn.commit()
             return cur.rowcount
 
+    def delete_job(self, job_id: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def clear_history(self) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM jobs WHERE status IN ('done', 'error', 'interrupted')"
+            )
+            self._conn.commit()
+            return cur.rowcount
+
+    def get_deletable_jobs(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, filepath, workdir FROM jobs "
+                "WHERE status IN ('done', 'error', 'interrupted')"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     # ------------------------------------------------------------------ #
     # Dedup / watch mode (poblado después; la API existe ya)
     # ------------------------------------------------------------------ #
