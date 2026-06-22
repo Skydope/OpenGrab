@@ -108,7 +108,12 @@ def _serve(port: int) -> None:
 
         from app import app
 
-        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)
+        uvicorn.run(
+            app,
+            host="127.0.0.1",
+            port=port,
+            log_config={"version": 1, "disable_existing_loggers": True},
+        )
     except Exception as exc:
         _server_error = exc
 
