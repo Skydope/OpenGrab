@@ -331,6 +331,20 @@ async def api_history(
     return JSONResponse(list(reversed(entries)))
 
 
+@router.post("/api/engine/update")
+@limiter.limit("2/minute")
+async def api_engine_update(
+    request: Request,
+    _: None = Depends(require_auth),
+) -> JSONResponse:
+    """Fuerza el hot-swap de yt-dlp (botón "Actualizar motor"). La descarga es I/O
+    bloqueante → va a un thread para no frenar el event loop. Degrada solo si falla."""
+    import engine_update
+
+    result = await asyncio.to_thread(engine_update.check_and_update, True)
+    return JSONResponse(result)
+
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

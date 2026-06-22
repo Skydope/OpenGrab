@@ -167,6 +167,12 @@
           <span class="h-size" x-show="e.size" x-text="(e.size/1048576).toFixed(1) + ' MB'"></span>
         </div>
       </template>
+      <div class="engine-row">
+        <button class="btn-sm" @click="updateEngine" :disabled="engineUpdating"
+                aria-label="Actualizar el motor de descarga yt-dlp"
+                x-text="engineUpdating ? 'Actualizando…' : 'Actualizar motor (yt-dlp)'"></button>
+        <span class="muted-sm" x-show="engineMsg" x-text="engineMsg" aria-live="polite"></span>
+      </div>
     </div>
   </div>
 
@@ -241,6 +247,10 @@ document.addEventListener('alpine:init', () => {
     ],
     formats: [],
     showFormats: false,
+
+    // ── Engine (yt-dlp hot-swap) ──────────────
+    engineUpdating: false,
+    engineMsg: "",
 
     // ── URL / inspect ─────────────────────────
     url: "",
@@ -388,6 +398,24 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ── Download ──────────────────────────────
+    async updateEngine() {
+      if (this.engineUpdating) return;
+      this.engineUpdating = true;
+      this.engineMsg = "Actualizando motor…";
+      try {
+        const r = await fetch("/api/engine/update", { method: "POST" });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || "No se pudo actualizar.");
+        this.engineMsg = d.updated
+          ? "Motor actualizado a yt-dlp " + d.version
+          : "Ya estabas en la última versión.";
+      } catch (err) {
+        this.engineMsg = "Error: " + err.message;
+      } finally {
+        this.engineUpdating = false;
+      }
+    },
+
     async download() {
       if (!this.url.trim()) return;
       this.resetUI();

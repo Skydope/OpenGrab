@@ -120,13 +120,33 @@ def main() -> int:
         print("[opengrab] el server no respondió a tiempo.")
         return 1
 
-    webbrowser.open(f"http://127.0.0.1:{port}")
-    # Mantener vivo el proceso (el server corre en un thread daemon).
+    # pywebview bloquea hasta cerrar la ventana; el navegador retorna al toque y
+    # entonces hay que mantener vivo el proceso (server en thread daemon).
+    if not _open_ui(port):
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            return 0
+    return 0
+
+
+def _open_ui(port: int) -> bool:
+    """Abre la UI. Devuelve True si abrió ventana nativa (bloqueante), False si navegador.
+
+    Prefiere pywebview (WebView2 en Windows → se siente app nativa). Si no está instalado
+    (extra ``desktop``), cae al navegador del sistema. ``webview.start()`` bloquea hasta
+    que se cierra la ventana, lo que de paso mantiene vivo el proceso.
+    """
+    url = f"http://127.0.0.1:{port}"
     try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        return 0
+        import webview  # type: ignore[import-not-found]  # pywebview, opcional
+    except ImportError:
+        webbrowser.open(url)
+        return False
+    webview.create_window("OpenGrab", url, width=980, height=720)
+    webview.start()
+    return True
 
 
 if __name__ == "__main__":

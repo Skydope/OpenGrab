@@ -122,3 +122,24 @@ def test_prepend_to_path_idempotent(tmp_path, monkeypatch):
 def test_engine_dir_honors_override(monkeypatch):
     monkeypatch.setenv("OPENGRAB_ENGINE_DIR", "/tmp/some/engine")
     assert engine_update._engine_dir() == Path("/tmp/some/engine")
+
+
+def test_open_ui_falls_back_to_browser(monkeypatch):
+    # pywebview no está instalado en el entorno de test → import falla → navegador.
+    monkeypatch.delitem(sys.modules, "webview", raising=False)
+    opened = {}
+    monkeypatch.setattr(desktop.webbrowser, "open", lambda u: opened.setdefault("url", u))
+    assert desktop._open_ui(8800) is False
+    assert "8800" in opened["url"]
+
+
+def test_open_ui_uses_pywebview_when_available(monkeypatch):
+    import types
+
+    fake = types.ModuleType("webview")
+    calls = {}
+    fake.create_window = lambda *a, **k: calls.setdefault("window", True)  # type: ignore[attr-defined]
+    fake.start = lambda: calls.setdefault("started", True)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    assert desktop._open_ui(8800) is True
+    assert calls.get("started") is True

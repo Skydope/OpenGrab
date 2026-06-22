@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (binary track — M2/M3)
+
+- `POST /api/engine/update` + botón "Actualizar motor (yt-dlp)" en la UI (M3). El backend
+  reusa `engine_update.check_and_update(force=True)`; la descarga va a un thread.
+- `desktop._open_ui()`: ventana nativa vía **pywebview** (WebView2) con fallback a
+  navegador si la extra `desktop` no está instalada (M2, lado app).
+- Tests: endpoint de engine update (con/sin auth) y selección pywebview/navegador.
+
 ### Added (binary track — M1)
 
 - `desktop.py`: entrypoint de escritorio (puerto efímero, NO_AUTH, carpeta Descargas,

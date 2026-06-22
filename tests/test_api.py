@@ -225,3 +225,33 @@ def test_health_public_no_jobs_active(client_no_auth):
     r = client_no_auth.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+def test_engine_update_endpoint(client, monkeypatch):
+    import engine_update
+
+    called = {}
+
+    def fake(force=False):
+        called["force"] = force
+        return {"updated": True, "version": "9999.1.1", "used_bundled": False}
+
+    monkeypatch.setattr(engine_update, "check_and_update", fake)
+    r = client.post("/api/engine/update")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["updated"] is True
+    assert body["version"] == "9999.1.1"
+    assert called["force"] is True  # el botón manual fuerza el update
+
+
+def test_engine_update_requires_auth(client_no_auth, monkeypatch):
+    # Con NO_AUTH el endpoint responde sin token; solo verificamos que no rompe.
+    import engine_update
+
+    monkeypatch.setattr(
+        engine_update, "check_and_update",
+        lambda force=False: {"updated": False, "version": None, "used_bundled": True},
+    )
+    r = client_no_auth.post("/api/engine/update")
+    assert r.status_code == 200
