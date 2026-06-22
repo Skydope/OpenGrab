@@ -152,6 +152,19 @@ class AppState:
     # ------------------------------------------------------------------ #
     # History management
     # ------------------------------------------------------------------ #
+    def _secure_delete_files(self, filepath: str | None, workdir: str | None) -> None:
+        """Borra archivos en background. Nunca raisea — el DB delete ya ocurrio."""
+        try:
+            if filepath:
+                self._secure_delete_file(str(filepath))
+        except Exception:
+            pass
+        try:
+            if workdir:
+                self._secure_delete_workdir(str(workdir))
+        except Exception:
+            pass
+
     def delete_history_entry(self, job_id: str) -> bool:
         job = self.db.get_job(job_id)
         if job is None:
