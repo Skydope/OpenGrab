@@ -156,16 +156,21 @@ class AppState:
         job = self.db.get_job(job_id)
         if job is None:
             return False
+        # Borrar de la DB PRIMERO: el job desaparece del historial
+        # instantaneamente aunque el borrado seguro del archivo tarde.
+        ok = self.db.delete_job(job_id)
+        self.jobs.pop(job_id, None)
+        self.job_events.pop(job_id, None)
+        if not ok:
+            log.warning("delete_history_entry: delete_job no afecto filas para %s", job_id)
+        # Borrado seguro del archivo y workdir (puede tardar, no bloquea la respuesta)
         filepath = job.get("filepath")
         workdir = job.get("workdir")
         if filepath:
             self._secure_delete_file(str(filepath))
         if workdir:
             self._secure_delete_workdir(str(workdir))
-        self.db.delete_job(job_id)
-        self.jobs.pop(job_id, None)
-        self.job_events.pop(job_id, None)
-        return True
+        return ok
 
     def clear_all_history(self) -> int:
         rows = self.db.get_deletable_jobs()
@@ -245,6 +250,23 @@ class AppState:
             return {"cleaned": 0, "freed_bytes": freed, "dry_run": True,
                     "would_clean": len(to_clean)}
         for d in to_clean:
+            try:
+                freed_before = sum(
+                    f.stat().st_size for f in d.rglob("*") if f.is_file()
+                )
+                self._secure_delete_workdir(str(d))
+                freed += freed_before
+                cleaned += 1
+            except Exception:
+                pass
+        return {"cleaned": cleaned, "freed_bytes": freed}
+
+    def cleanup_storage_all(self) -> dict[str, Any]:
+        cleaned = 0
+        freed = 0
+        for d in self.out_dir.glob("opengrab_*"):
+            if not d.is_dir():
+                continue
             try:
                 freed_before = sum(
                     f.stat().st_size for f in d.rglob("*") if f.is_file()

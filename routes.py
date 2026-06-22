@@ -407,6 +407,19 @@ async def api_storage_cleanup(
     return JSONResponse(result)
 
 
+@router.post("/api/storage/cleanup-all")
+@limiter.limit("3/minute")
+async def api_storage_cleanup_all(
+    request: Request,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    result = await asyncio.to_thread(state.cleanup_storage_all)
+    log.info("storage cleanup-all: %d workdirs, %d bytes liberados",
+             result["cleaned"], result["freed_bytes"])
+    return JSONResponse(result)
+
+
 @router.post("/api/engine/update")
 @limiter.limit("2/minute")
 async def api_engine_update(

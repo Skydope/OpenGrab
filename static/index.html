@@ -234,7 +234,8 @@
           </div>
         </template>
         <div class="engine-row">
-          <button class="btn-sm" @click="cleanupStorage">Limpiar workdirs viejos (>24h)</button>
+          <button class="btn-sm" @click="cleanupStorage">Limpiar workdirs viejos (&gt;24h)</button>
+          <button class="btn-sm" @click="cleanupAllStorage">Borrar todos los workdirs</button>
           <span class="muted-sm" x-show="storageMsg" x-text="storageMsg" aria-live="polite"></span>
         </div>
       </div>
@@ -748,6 +749,18 @@ document.addEventListener('alpine:init', () => {
         await this.loadStorage();
       } catch (e) {
         this.storageMsg = "Error al limpiar.";
+      }
+    },
+    async cleanupAllStorage() {
+      if (!confirm("¿Borrar TODOS los workdirs? Los archivos de descargas activas también se eliminarán.")) return;
+      this.storageMsg = "Borrando…";
+      try {
+        const r = await fetch("/api/storage/cleanup-all", { method: "POST" });
+        const d = await r.json();
+        this.storageMsg = d.cleaned + " workdirs borrados · " + this.formatMB(d.freed_bytes) + " liberados";
+        await this.loadStorage();
+      } catch (e) {
+        this.storageMsg = "Error al borrar.";
       }
     },
 
