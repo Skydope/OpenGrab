@@ -48,12 +48,23 @@
     </div>
 
     <!-- Video metadata -->
-    <div class="meta" x-show="meta" x-transition>
+    <div class="meta" x-show="inspecting && !meta" x-transition.duration.200ms>
+      <div class="skeleton skeleton-thumb"></div>
+      <div class="info" style="flex:1">
+        <div class="skeleton skeleton-line"></div>
+        <div class="skeleton skeleton-line short"></div>
+      </div>
+    </div>
+    <div class="meta" x-show="meta" x-transition.duration.200ms>
       <img class="thumb" :src="thumbnail" alt="">
       <div class="info">
         <p class="t" x-text="title">—</p>
         <p class="s" x-text="subtitle">—</p>
         <span class="site-badge" x-show="site" x-text="'Sitio detectado: ' + site"></span>
+        <button class="btn-sm mt-14" x-show="playlistAvailable"
+                @click="isPlaylist = true; loadPlaylist()">
+          Ver playlist ▸
+        </button>
       </div>
     </div>
 
@@ -77,7 +88,7 @@
            @keydown.enter.prevent="showFormats = !showFormats"
            @keydown.space.prevent="showFormats = !showFormats"
            x-text="showFormats ? 'formatos ▾' : 'formatos ▸ (' + formats.length + ')'"></div>
-      <table class="fmt-table" x-show="showFormats">
+      <table class="fmt-table" x-show="showFormats" x-transition.duration.200ms>
         <thead><tr><th>Calidad</th><th>Codec</th><th class="fsize">Tamaño</th></tr></thead>
         <tbody>
           <template x-for="f in formats" :key="f.format_id">
@@ -96,20 +107,26 @@
     </div>
 
     <!-- Playlist panel -->
-    <div x-show="isPlaylist" x-transition class="mt-14">
+    <div x-show="isPlaylist" x-transition.duration.200ms class="mt-14">
       <div class="pl-header">
-        <span class="pl-count" x-text="playlistCount + ' videos'"></span>
-        <button class="btn-sm" @click="downloadPlaylist">Descargar playlist</button>
+        <span class="pl-count" x-text="selectedCount() + ' de ' + playlistCount + ' seleccionados'"></span>
+        <button class="btn-sm" @click="toggleAllPlaylist(true)">Todos</button>
+        <button class="btn-sm" @click="toggleAllPlaylist(false)">Ninguno</button>
+        <button class="btn-sm" @click="downloadPlaylist" :disabled="selectedCount() === 0">Descargar playlist</button>
       </div>
       <div class="pl-list">
-        <template x-for="(v, i) in playlistVideos" :key="v.url">
+        <template x-for="(v, i) in playlistVideos" :key="v.url || v.video_id || i">
           <div class="pl-video">
-            <input type="checkbox" x-model="playlistChecked" :value="i">
+            <input type="checkbox" x-model="v.selected" :disabled="v.unavailable">
             <span class="pl-title" :title="v.title" x-text="v.title"></span>
             <span class="pl-dur" x-text="v.duration ? fmtDuration(v.duration) : ''"></span>
           </div>
         </template>
-        <span x-show="playlistLoading" class="loading-msg">Cargando playlist…</span>
+        <span x-show="playlistLoading" class="loading-msg">
+          <template x-for="i in 4" :key="i">
+            <div class="skeleton-pl"><div class="skeleton skeleton-line"></div></div>
+          </template>
+        </span>
       </div>
     </div>
 
@@ -149,7 +166,7 @@
     </div>
 
     <!-- Success banner -->
-    <div class="success-box" :class="{show: successPath}" x-transition>
+    <div class="success-box" :class="{show: successPath}" x-transition.duration.200ms>
       <span class="success-icon">✓</span>
       <span class="success-path" x-text="successPath"></span>
       <button class="folder-btn" @click="openFolder(lastJobId)" :disabled="!lastJobId">
@@ -159,21 +176,26 @@
   </div>
 
   <footer>
-    Corre en tu red. El servidor descarga con <code>yt-dlp</code> + <code>ffmpeg</code> y te entrega el <code>.mp4</code>.<br>
+    Corre en tu red. El servidor descarga con <code>yt-dlp</code> + <code>ffmpeg</code> y te entrega el <code>.mp4</code>.
     Usalo solo con contenido propio, con licencia que lo permita, o bajo fair use.
   </footer>
 
+  <!-- Tools section divider -->
+  <div class="section-divider" x-show="authenticated" x-cloak>
+    <span class="section-label">Herramientas</span>
+  </div>
+
   <!-- History -->
-  <div class="mt-14" x-show="authenticated" x-cloak>
+  <div class="tools-section" x-show="authenticated" x-cloak>
     <div class="toggle-label-lg"
          role="button" tabindex="0" :aria-expanded="historyOpen"
          @click="toggleHistory"
          @keydown.enter.prevent="toggleHistory"
          @keydown.space.prevent="toggleHistory"
-         x-text="historyOpen ? 'historial ▾' : 'historial ▸'"></div>
+                   x-text="historyOpen ? 'historial ▾' : 'historial ▸' + historyBadge()"></div>
     <div x-show="historyOpen">
       <span x-show="!historyLoaded" class="muted-sm">Cargando…</span>
-      <span x-show="historyLoaded && !history.length" class="muted-sm">Sin descargas todavía.</span>
+      <span x-show="historyLoaded && !history.length" class="empty-state">Sin descargas todavía.</span>
       <template x-for="e in history" :key="e.job_id">
         <div class="h-entry" :data-job-id="e.job_id">
           <img class="h-thumb" x-show="e.thumbnail" :src="e.thumbnail" alt="" loading="lazy">
@@ -194,13 +216,13 @@
   </div>
 
   <!-- Storage -->
-  <div class="mt-14" x-show="authenticated" x-cloak>
+  <div class="tools-section" x-show="authenticated" x-cloak>
     <div class="toggle-label-lg"
          role="button" tabindex="0" :aria-expanded="storageOpen"
          @click="toggleStorage"
          @keydown.enter.prevent="toggleStorage"
          @keydown.space.prevent="toggleStorage"
-         x-text="storageOpen ? 'almacenamiento ▾' : 'almacenamiento ▸'"></div>
+                   x-text="storageOpen ? 'almacenamiento ▾' : 'almacenamiento ▸' + storageBadge()"></div>
     <div x-show="storageOpen">
       <span x-show="!storageLoaded" class="muted-sm">Cargando…</span>
       <div x-show="storageLoaded">
@@ -208,6 +230,8 @@
           <span x-text="'Total usado: ' + formatMB(storage.total_usage_bytes)"></span>
           <span class="muted-sm" x-show="storage.db_size_bytes" x-text="' · DB: ' + formatMB(storage.db_size_bytes)"></span>
         </div>
+        <div x-show="storageLoaded && !storage.workdirs.length && !(storage.loose_files && storage.loose_files.length)"
+             class="empty-state"><span class="success-icon">✓</span> Almacenamiento limpio</div>
         <template x-if="storage.workdirs.length">
           <div>
             <div class="muted-sm" style="margin:8px 0 4px">Workdirs temporales:</div>
@@ -243,13 +267,13 @@
   </div>
 
   <!-- Channels (watch mode) -->
-  <div class="mt-14" x-show="authenticated" x-cloak>
+  <div class="tools-section" x-show="authenticated" x-cloak>
     <div class="toggle-label-lg"
          role="button" tabindex="0" :aria-expanded="channelsOpen"
          @click="toggleChannels"
          @keydown.enter.prevent="toggleChannels"
          @keydown.space.prevent="toggleChannels"
-         x-text="channelsOpen ? 'canales ▾' : 'canales ▸'"></div>
+                   x-text="channelsOpen ? 'canales ▾' : 'canales ▸' + channelsBadge()"></div>
     <div x-show="channelsOpen">
       <span x-show="!channelsLoaded" class="muted-sm">Cargando…</span>
 
@@ -266,7 +290,7 @@
           <button class="btn-sm" @click="deleteChannel(ch.id)">✕</button>
         </div>
       </template>
-      <span x-show="channelsLoaded && !channels.length" class="muted-sm">Sin canales. Agregá uno para monitorear.</span>
+      <span x-show="channelsLoaded && !channels.length" class="empty-state">Sin canales. Agregá uno para monitorear.</span>
 
       <div class="ch-add">
         <input type="text" placeholder="URL del canal o playlist" x-model="newChannelUrl"
@@ -380,9 +404,9 @@ document.addEventListener('alpine:init', () => {
 
     // ── Playlist ──────────────────────────────
     isPlaylist: false,
+    playlistAvailable: false,
     playlistCount: 0,
     playlistVideos: [],
-    playlistChecked: [],
     playlistLoading: false,
 
     // ── Download ──────────────────────────────
@@ -422,9 +446,28 @@ document.addEventListener('alpine:init', () => {
     newChannelInterval: 60,
 
     // ── Inspect ───────────────────────────────
+    classifyUrl(u) {
+      const hasV = /[?&]v=/.test(u);
+      const hasList = /[?&]list=/.test(u);
+      if (hasList && !hasV) return "playlist";
+      if (hasV && hasList) return "video+list";
+      return "video";
+    },
+
     async inspect() {
       if (!this.url.trim()) { this.errorMsg = "Pega una URL primero."; return; }
       this.resetUI();
+      const kind = this.classifyUrl(this.url.trim());
+
+      if (kind === "playlist") {
+        this.isPlaylist = true;
+        this.meta = false;
+        this.inspecting = true;
+        await this.loadPlaylist();
+        this.inspecting = false;
+        return;
+      }
+
       this.inspecting = true;
       try {
         const r = await fetch("/api/info?url=" + encodeURIComponent(this.url.trim()));
@@ -445,12 +488,8 @@ document.addEventListener('alpine:init', () => {
         this.formats = data.formats || [];
         this.showFormats = false;
 
-        if (/[?&]list=/.test(this.url)) {
-          this.isPlaylist = true;
-          this.loadPlaylist();
-        } else {
-          this.isPlaylist = false;
-        }
+        this.playlistAvailable = kind === "video+list";
+        this.isPlaylist = false;
       } catch (err) {
         this.meta = false;
         this.errorMsg = err.message;
@@ -477,7 +516,6 @@ document.addEventListener('alpine:init', () => {
     // ── Playlist ──────────────────────────────
     async loadPlaylist() {
       this.playlistLoading = true;
-      this.playlistChecked = [];
       try {
         const r = await fetch("/api/playlist?url=" + encodeURIComponent(this.url.trim()));
         if (!r.ok) {
@@ -486,9 +524,11 @@ document.addEventListener('alpine:init', () => {
           throw new Error(msg);
         }
         const data = await r.json();
-        this.playlistVideos = data.videos || [];
+        this.playlistVideos = (data.videos || []).map(v => ({
+          ...v,
+          selected: !v.unavailable,
+        }));
         this.playlistCount = data.count || 0;
-        this.playlistChecked = this.playlistVideos.map((_, i) => i);
       } catch (err) {
         this.playlistVideos = [];
         this.errorMsg = err.message;
@@ -497,17 +537,29 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    selectedCount() {
+      return this.playlistVideos.filter(v => v.selected).length;
+    },
+
+    toggleAllPlaylist(val) {
+      this.playlistVideos.forEach(v => {
+        if (!v.unavailable) v.selected = val;
+      });
+    },
+
     async downloadPlaylist() {
-      const selected = this.playlistChecked.map(i => this.playlistVideos[i]).filter(Boolean);
+      const selected = this.playlistVideos.filter(v => v.selected && v.url);
       if (!selected.length) { this.errorMsg = "Selecciona al menos un video."; return; }
       this.resetUI();
       this.downloading = true;
       this.addLine("$", "playlist: " + selected.length + " videos");
-      let ok = 0, fail = 0, count = 0;
-      for (const v of selected) {
-        count++;
-        this.addLine("$", "[" + count + "/" + selected.length + "] iniciando: " + v.title);
+      let ok = 0, fail = 0;
+      for (let i = 0; i < selected.length; i++) {
+        const v = selected[i];
+        const n = i + 1;
         try {
+          if (!v || !v.url) { fail++; continue; }
+          this.addLine("$", "[" + n + "/" + selected.length + "] iniciando: " + (v.title || "—"));
           let r = await fetch("/api/jobs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -527,8 +579,11 @@ document.addEventListener('alpine:init', () => {
           await this.waitJob(job_id, v.title);
           ok++;
         } catch (err) {
-          this.addLine("✗", err.message, "err");
+          this.addLine("✗", (err && err.message) || "Error inesperado", "err");
           fail++;
+        }
+        if (i < selected.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
       this.addLine(ok > 0 ? "✓" : "✗", "completado: " + ok + " ok, " + fail + " fallidos", ok > 0 ? "ok" : "err");
@@ -687,6 +742,7 @@ document.addEventListener('alpine:init', () => {
       this.errorMsg = "";
       this.canRetry = false;
       this.isPlaylist = false;
+      this.playlistAvailable = false;
       this.playlistVideos = [];
       this.formats = [];
       this.showFormats = false;
@@ -715,6 +771,10 @@ document.addEventListener('alpine:init', () => {
       if (this.historyOpen && !this.historyLoaded) {
         await this.loadHistory();
       }
+    },
+    historyBadge() {
+      if (this.historyOpen || !this.history.length) return "";
+      return " · " + this.history.length;
     },
 
     // ── Deferred destruction (patron "undo send") ──
@@ -856,6 +916,11 @@ document.addEventListener('alpine:init', () => {
         await this.loadStorage();
       }
     },
+    storageBadge() {
+      if (this.storageOpen || !this.storageLoaded) return "";
+      const dirs = (this.storage.workdirs || []).length;
+      return dirs > 0 ? " · " + dirs + " dirs" : "";
+    },
     async loadStorage() {
       try {
         const r = await fetch("/api/storage");
@@ -896,6 +961,11 @@ document.addEventListener('alpine:init', () => {
       if (this.channelsOpen && !this.channelsLoaded) {
         await this.loadChannels();
       }
+    },
+    channelsBadge() {
+      if (this.channelsOpen || !this.channelsLoaded) return "";
+      const n = (this.channels || []).length;
+      return n > 0 ? " · " + n : "";
     },
     async loadChannels() {
       try {

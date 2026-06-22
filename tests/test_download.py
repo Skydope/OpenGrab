@@ -284,6 +284,34 @@ def test_friendly_error_truncates_long_unknown():
     assert len(msg) <= 300
 
 
+# ------- _fetch_playlist: includes unavailable entries ------- #
+def test_fetch_playlist_includes_unavailable():
+    from download import _fetch_playlist
+
+    info = {
+        "title": "Test Playlist",
+        "entries": [
+            {"title": "Video OK", "url": "https://x.com/1", "id": "v1"},
+            {"title": "Video Privado", "url": "", "id": "v2"},
+            None,
+            {"title": "Otro OK", "webpage_url": "https://x.com/3", "id": "v3"},
+        ],
+    }
+    with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
+        result = _fetch_playlist("https://x.com/playlist?list=test")
+
+    assert result["count"] == 3  # 3 valid entries (not None)
+    videos = result["videos"]
+    assert len(videos) == 3
+    assert videos[0]["title"] == "Video OK"
+    assert videos[0]["unavailable"] is False
+    assert videos[1]["title"] == "Video Privado"
+    assert videos[1]["unavailable"] is True
+    assert videos[1]["url"] == ""
+    assert videos[2]["title"] == "Otro OK"
+    assert videos[2]["unavailable"] is False
+
+
 # --------------------- watch mode: channel check ------------------------ #
 def test_check_channel_watch_finds_new_videos(dl_state, monkeypatch):
     from download import _check_channel_watch

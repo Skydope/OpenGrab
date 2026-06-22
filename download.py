@@ -156,14 +156,14 @@ def _fetch_playlist(url: str) -> Dict[str, Any]:
         if e is None:
             continue
         vid_url = e.get("url") or e.get("webpage_url") or ""
-        if vid_url:
-            videos.append({
-                "title": e.get("title", "—"),
-                "url": vid_url,
-                "duration": e.get("duration"),
-                "extractor": e.get("ie_key"),
-                "video_id": e.get("id"),
-            })
+        videos.append({
+            "title": e.get("title") or "(no disponible)",
+            "url": vid_url,
+            "duration": e.get("duration"),
+            "extractor": e.get("ie_key"),
+            "video_id": e.get("id"),
+            "unavailable": not vid_url,
+        })
     return {
         "title": info.get("title", "—"),
         "count": len(videos),
