@@ -28,3 +28,7 @@ asyncio_mode = "auto"
 strict = true
 plugins = ["pydantic.mypy"]
 exclude = ["tests/", "dist/", "build/"]
+
+[[tool.mypy.overrides]]
+module = ["webview", "webview.platforms.edgechromium"]
+ignore_missing_imports = true
