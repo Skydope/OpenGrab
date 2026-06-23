@@ -31,6 +31,7 @@ _HEALTH_TIMEOUT = 10.0
 _lock_handle: object = None
 _server_error: Exception | None = None
 _log = logging.getLogger("opengrab.desktop")
+_tray_icon: object = None  # pystray.Icon, seteado por _system_tray()
 
 
 def _setup_logging() -> None:
@@ -79,6 +80,8 @@ def _setup_logging() -> None:
 
     # Silenciar access log de uvicorn (ruido)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    # Silenciar imports de PIL (ruido al cargar _get_tray_image)
+    logging.getLogger("PIL").setLevel(logging.WARNING)
 
 
 def _msgbox(text: str, title: str = "OpenGrab", icon: str = "error") -> None:
@@ -303,35 +306,41 @@ def _get_tray_image() -> object:
 
 
 def _system_tray(port: int) -> None:
-    """Bandeja del sistema. Bloquea hasta que el usuario elige Salir.
+    """Bandeja del sistema. Corre en thread secundario (no-daemon).
 
-    La reapertura de ventana usa el navegador en vez de webview nativa porque
-    pywebview 6.x requiere ejecutar ``webview.start()`` en el thread principal,
-    que está ocupado con el mensaje pump del tray. La primera apertura sí usa
-    ventana nativa (ver ``main()``).
+    Setea ``_tray_icon`` para que ``main()`` pueda llamar ``icon.stop()``
+    cuando la ventana nativa se cierra. La reapertura usa navegador porque
+    pywebview 6.x requiere el thread principal.
     """
-    import pystray
+    global _tray_icon
 
-    image = _get_tray_image()
-    url = f"http://127.0.0.1:{port}"
+    try:
+        import pystray
 
-    def _on_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
-        webbrowser.open(url)
+        image = _get_tray_image()
+        url = f"http://127.0.0.1:{port}"
 
-    def _on_exit(icon: pystray.Icon, item: pystray.MenuItem) -> None:
-        icon.stop()
+        def _on_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
+            webbrowser.open(url)
 
-    icon = pystray.Icon(
-        "OpenGrab",
-        image,
-        "OpenGrab",
-        menu=pystray.Menu(
-            pystray.MenuItem("Abrir OpenGrab", _on_open, default=True),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Salir", _on_exit),
-        ),
-    )
-    icon.run()
+        def _on_exit(icon: pystray.Icon, item: pystray.MenuItem) -> None:
+            _log.info("tray: salir solicitado por usuario")
+            icon.stop()
+
+        _tray_icon = pystray.Icon(
+            "OpenGrab",
+            image,
+            "OpenGrab",
+            menu=pystray.Menu(
+                pystray.MenuItem("Abrir OpenGrab", _on_open, default=True),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Salir", _on_exit),
+            ),
+        )
+        _tray_icon.run()
+        _log.info("tray: icon.run() retornó")
+    except Exception:
+        _log.exception("tray: error inesperado")
 
 
 def main() -> int:
@@ -373,14 +382,30 @@ def main() -> int:
             )
         return 1
 
-    # pywebview 6.x requiere webview.start() en el thread principal.
-    # Abrimos la ventana nativa primero; cuando el usuario la cierra, el tray
-    # toma el control del mensaje pump. Reapertura desde tray → navegador.
-    if _webview2_available():
-        _open_ui_window(port)
-    else:
-        webbrowser.open(f"http://127.0.0.1:{port}")
-    _system_tray(port)
+    # Tray en thread no-daemon → vive independiente del main thread.
+    # pywebview 6.x requiere webview.start() en thread principal,
+    # asi que la ventana nativa bloquea aca. Al cerrarla, detenemos el tray.
+    tray_thread = threading.Thread(
+        target=_system_tray, args=(port,), daemon=False, name="og-tray",
+    )
+    tray_thread.start()
+
+    try:
+        if _webview2_available():
+            _log.info("abriendo ventana nativa WebView2")
+            _open_ui_window(port)
+            _log.info("ventana cerrada, deteniendo tray")
+            if _tray_icon is not None:
+                _tray_icon.stop()
+        else:
+            webbrowser.open(f"http://127.0.0.1:{port}")
+            # Sin ventana nativa, el tray queda vivo hasta que el usuario sale
+    finally:
+        tray_thread.join(timeout=8)
+        if tray_thread.is_alive():
+            _log.warning("tray thread no terminó en 8s")
+
+    _log.info("OpenGrab finalizado")
     return 0
 
 
