@@ -464,16 +464,10 @@ async def api_delete_history_entry(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    job = state.db.get_job(job_id)
-    if job is None:
+    result = state.delete_history_entry(job_id)
+    if result is None:
         raise HTTPException(404, "Entrada no encontrada.")
-    filepath = job.get("filepath")
-    workdir = job.get("workdir")
-    if not state.db.delete_job(job_id):
-        raise HTTPException(404, "Entrada no encontrada.")
-    state.jobs.pop(job_id, None)
-    state.job_events.pop(job_id, None)
-    log.info("delete_history_entry: borrado job %s de la DB", job_id)
+    filepath, workdir = result
     if filepath or workdir:
         asyncio.create_task(
             asyncio.to_thread(state._secure_delete_files, filepath, workdir)

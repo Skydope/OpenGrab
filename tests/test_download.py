@@ -519,12 +519,16 @@ def test_delete_history_entry_removes_from_db_and_ram(dl_state, tmp_path):
     wd = tmp_path / "opengrab_wd"
     wd.mkdir()
 
-    assert dl_state.delete_history_entry("h1") is True
+    result = dl_state.delete_history_entry("h1")
+    assert result is not None
+    filepath, workdir = result
+    assert filepath == str(tmp_path / "video.mp4")
+    assert workdir == str(tmp_path / "opengrab_wd")
     assert dl_state.db.get_job("h1") is None
 
 
 def test_delete_history_entry_nonexistent(dl_state):
-    assert dl_state.delete_history_entry("phantom") is False
+    assert dl_state.delete_history_entry("phantom") is None
 
 
 def test_clear_all_history(dl_state):

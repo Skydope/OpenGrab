@@ -198,24 +198,22 @@ class AppState:
         except Exception:
             pass
 
-    def delete_history_entry(self, job_id: str) -> bool:
+    def delete_history_entry(
+        self, job_id: str,
+    ) -> tuple[str | None, str | None] | None:
+        """Borra de DB + RAM. Retorna (filepath, workdir) para que el caller
+        haga el file delete (sync o async), o None si no existe."""
         job = self.db.get_job(job_id)
         if job is None:
-            return False
+            return None
         ok = self.db.delete_job(job_id)
         self.jobs.pop(job_id, None)
         self.job_events.pop(job_id, None)
         if not ok:
             log.warning("delete_history_entry: delete_job no afecto filas para %s", job_id)
-        else:
-            log.info("delete_history_entry: borrado job %s de la DB", job_id)
-        filepath = job.get("filepath")
-        workdir = job.get("workdir")
-        if filepath:
-            self._secure_delete_file(str(filepath))
-        if workdir:
-            self._secure_delete_workdir(str(workdir))
-        return ok
+            return None
+        log.info("delete_history_entry: borrado job %s de la DB", job_id)
+        return job.get("filepath"), job.get("workdir")
 
     def clear_all_history(self) -> int:
         rows = self.db.get_deletable_jobs()
