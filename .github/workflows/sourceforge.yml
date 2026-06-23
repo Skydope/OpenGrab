@@ -1,0 +1,32 @@
+name: sourceforge
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download release assets
+        run: gh release download ${{ github.ref_name }} --dir artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Wait for parallel build workflows
+        run: sleep 120
+
+      - name: Upload to SourceForge
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          ssh-keyscan -t ed25519 frs.sourceforge.net >> ~/.ssh/known_hosts 2>/dev/null
+          echo "${{ secrets.SOURCEFORGE_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -i ~/.ssh/id_ed25519 skydope@frs.sourceforge.net \
+            "mkdir -p /home/frs/project/opengrab/${{ github.ref_name }}"
+          scp -i ~/.ssh/id_ed25519 artifacts/* skydope@frs.sourceforge.net:/home/frs/project/opengrab/${{ github.ref_name }}/
+          echo "Upload completed to SourceForge: ${{ github.ref_name }}"
