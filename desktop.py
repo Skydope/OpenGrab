@@ -14,6 +14,7 @@ están factorizadas para testearse sin levantar uvicorn ni abrir navegadores rea
 
 from __future__ import annotations
 
+import logging
 import os
 import socket
 import sys
@@ -29,6 +30,7 @@ os.environ.setdefault("OPENGRAB_DESKTOP", "1")
 _HEALTH_TIMEOUT = 10.0
 _lock_handle: object = None
 _server_error: Exception | None = None
+_log = logging.getLogger("opengrab.desktop")
 
 
 def _msgbox(text: str, title: str = "OpenGrab", icon: str = "error") -> None:
@@ -156,15 +158,60 @@ def _serve(port: int) -> None:
         _server_error = exc
 
 
+def _webview2_runtime_installed() -> bool:
+    """True si el runtime de WebView2 (Evergreen) está instalado en el sistema.
+
+    Consulta el registro de Windows buscando la key de EdgeUpdate para el runtime
+    o los canales de Edge (Beta/Dev/Canary). Misma lógica que pywebview internamente
+    en ``winforms._is_chromium()``, pero sin la dependencia de pythonnet/.NET.
+    """
+    import winreg
+
+    builds: list[tuple[str, str]] = [
+        ("{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}", "WebView2 Runtime"),
+        ("{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}", "Edge Beta"),
+        ("{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}", "Edge Dev"),
+        ("{65C35B14-6C1D-4122-AC46-7148CC9D6497}", "Edge Canary"),
+    ]
+
+    for guid, _desc in builds:
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                key_path = rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{guid}"
+                with winreg.OpenKey(hive, key_path) as key:
+                    pv, _ = winreg.QueryValueEx(key, "pv")
+                    major = int(str(pv).split(".")[0])
+                    if major >= 86:  # mínimo para WebView2
+                        _log.debug("WebView2 encontrado: %s v%s", _desc, pv)
+                        return True
+            except (OSError, ValueError, IndexError):
+                continue
+
+    return False
+
+
 def _webview2_available() -> bool:
-    """True si el runtime de WebView2 está disponible para pywebview."""
+    """True si podemos abrir una ventana nativa con WebView2 + pywebview.
+
+    Verifica tres condiciones:
+    1. Estamos en Windows (única plataforma con WebView2).
+    2. pythonnet + webview son importables (los DLLs nativos están disponibles).
+    3. El runtime de WebView2 está instalado en el sistema (registro).
+    """
     if sys.platform != "win32":
         return False
+
     try:
-        import webview
+        import webview  # noqa: F401
         from webview.platforms.edgechromium import EdgeChrome  # noqa: F401
-    except ImportError:
+    except ImportError as exc:
+        _log.warning("webview2_available: falló import de pywebview: %s", exc)
         return False
+
+    if not _webview2_runtime_installed():
+        _log.warning("webview2_available: runtime de WebView2 no encontrado")
+        return False
+
     return True
 
 
@@ -178,6 +225,7 @@ def _open_ui_window(port: int) -> None:
             webview.create_window("OpenGrab", url, width=980, height=720)
             webview.start()
         except Exception:  # noqa: BLE001 — degradar a navegador
+            _log.exception("webview falló, abriendo en navegador")
             webbrowser.open(url)
     else:
         webbrowser.open(url)

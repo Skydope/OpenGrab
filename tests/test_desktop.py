@@ -125,6 +125,7 @@ def test_webview2_unavailable_non_windows(monkeypatch):
 
 def test_webview2_available_when_edgechromium_importable(monkeypatch):
     monkeypatch.setattr(desktop.sys, "platform", "win32")
+    monkeypatch.setattr(desktop, "_webview2_runtime_installed", lambda: True)
 
     fake_webview = types.ModuleType("webview")
     fake_edge = types.ModuleType("webview.platforms.edgechromium")
@@ -141,6 +142,27 @@ def test_webview2_available_when_edgechromium_importable(monkeypatch):
     monkeypatch.setitem(sys.modules, "webview.platforms.edgechromium", fake_edge)
 
     assert desktop._webview2_available() is True
+
+
+def test_webview2_unavailable_when_runtime_missing(monkeypatch):
+    monkeypatch.setattr(desktop.sys, "platform", "win32")
+    monkeypatch.setattr(desktop, "_webview2_runtime_installed", lambda: False)
+
+    fake_webview = types.ModuleType("webview")
+    fake_edge = types.ModuleType("webview.platforms.edgechromium")
+
+    class _FakeEdgeChrome:
+        pass
+
+    fake_edge.EdgeChrome = _FakeEdgeChrome
+    fake_webview.platforms = types.ModuleType("webview.platforms")
+    fake_webview.platforms.edgechromium = fake_edge
+
+    monkeypatch.setitem(sys.modules, "webview", fake_webview)
+    monkeypatch.setitem(sys.modules, "webview.platforms", fake_webview.platforms)
+    monkeypatch.setitem(sys.modules, "webview.platforms.edgechromium", fake_edge)
+
+    assert desktop._webview2_available() is False
 
 
 def test_webview2_unavailable_when_edgechromium_missing(monkeypatch):

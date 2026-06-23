@@ -13,13 +13,14 @@ import os
 import sys
 
 datas, binaries, hiddenimports = [], [], []
-for pkg in ("yt_dlp", "pydantic", "pydantic_core"):
+for pkg in ("yt_dlp", "pydantic", "pydantic_core", "pythonnet", "clr_loader", "webview"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
     hiddenimports += h
 
 hiddenimports += collect_submodules("uvicorn")
+hiddenimports += collect_submodules("webview")
 hiddenimports += ["anyio._backends._asyncio"]
 
 # UI embebida.
