@@ -23,6 +23,9 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
+# Flag de modo desktop — debe setearse antes de cualquier import de config.
+os.environ.setdefault("OPENGRAB_DESKTOP", "1")
+
 _HEALTH_TIMEOUT = 10.0
 _lock_handle: object = None
 _server_error: Exception | None = None
@@ -53,12 +56,41 @@ def _setup_env(port: int) -> None:
     os.environ.setdefault("OPENGRAB_HOST", "127.0.0.1")
     os.environ.setdefault("OPENGRAB_PORT", str(port))
     os.environ.setdefault("OPENGRAB_NO_AUTH", "1")
-    import config
+    # Resolver OPENGRAB_DIR ANTES de importar config. OUT_DIR se computa
+    # a nivel de módulo — si no seteamos la variable a tiempo, usa el
+    # fallback "./downloads" (relativo al CWD) en vez del directorio desktop.
+    if "OPENGRAB_DIR" not in os.environ:
+        import configparser
 
-    default_dir = config._ini.get("download_dir", "")
-    if not default_dir:
-        default_dir = str(Path.home() / "Downloads" / "OpenGrab")
-    os.environ.setdefault("OPENGRAB_DIR", default_dir)
+        # Misma ruta de INI que config._load_ini().
+        if sys.platform == "win32":
+            base = Path(os.environ.get(
+                "APPDATA", str(Path.home() / "AppData" / "Roaming")
+            ))
+        else:
+            base = Path(os.environ.get(
+                "XDG_CONFIG_HOME", str(Path.home() / ".config")
+            ))
+        ini_path = os.environ.get(
+            "OPENGRAB_CONFIG", str(base / "OpenGrab" / "config.ini")
+        )
+
+        default_dir = ""
+        try:
+            cp = configparser.ConfigParser()
+            cp.read(ini_path, encoding="utf-8")
+            if "opengrab" in cp:
+                default_dir = cp["opengrab"].get("download_dir", "")
+        except Exception:
+            pass
+
+        if not default_dir:
+            default_dir = str(Path.home() / "Downloads" / "OpenGrab")
+
+        os.environ["OPENGRAB_DIR"] = default_dir
+        # Nota: NO importamos config acá — lo hará _serve() cuando arranque la
+        # app. Para ese momento OPENGRAB_DIR ya está en el entorno y OUT_DIR
+        # tomará el valor correcto.
 
 
 def acquire_single_instance(name: str = "OpenGrab_SingleInstance") -> bool:

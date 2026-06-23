@@ -216,3 +216,42 @@ def test_prepend_to_path_idempotent(tmp_path, monkeypatch):
 def test_engine_dir_honors_override(monkeypatch):
     monkeypatch.setenv("OPENGRAB_ENGINE_DIR", "/tmp/some/engine")
     assert engine_update._engine_dir() == Path("/tmp/some/engine")
+
+
+# ------------------------ bootstrap (tasks 1.1-1.13) ----------------------- #
+def test_bootstrap_without_ini_download_dir(monkeypatch, tmp_path):
+    """desktop.py sin ini → fallback ~/Downloads/OpenGrab aunque env no esté."""
+    # Sin OPENGRAB_DIR en env
+    monkeypatch.delenv("OPENGRAB_DIR", raising=False)
+    # Sin ini (configparser no encuentra archivo)
+    monkeypatch.setenv("OPENGRAB_CONFIG", str(tmp_path / "no-existe.ini"))
+    desktop._setup_env(12345)
+    import os
+
+    assert "Downloads" in os.environ["OPENGRAB_DIR"]
+    assert os.environ["OPENGRAB_DIR"].endswith("OpenGrab")
+
+
+def test_bootstrap_respects_env_override(monkeypatch, tmp_path):
+    """OPENGRAB_DIR en env tiene prioridad sobre ini y default."""
+    monkeypatch.setenv("OPENGRAB_DIR", "/my/custom/folder")
+    # Un ini existe pero no debería importaren este caso
+    ini_path = tmp_path / "config.ini"
+    ini_path.write_text("[opengrab]\ndownload_dir = /ini/folder\n", encoding="utf-8")
+    monkeypatch.setenv("OPENGRAB_CONFIG", str(ini_path))
+    desktop._setup_env(12345)
+    import os
+
+    assert os.environ["OPENGRAB_DIR"] == "/my/custom/folder"
+
+
+def test_bootstrap_resolves_ini_when_no_env(monkeypatch, tmp_path):
+    """Sin env, usa download_dir del ini."""
+    monkeypatch.delenv("OPENGRAB_DIR", raising=False)
+    ini_path = tmp_path / "config.ini"
+    ini_path.write_text("[opengrab]\ndownload_dir = /from/ini/folder\n", encoding="utf-8")
+    monkeypatch.setenv("OPENGRAB_CONFIG", str(ini_path))
+    desktop._setup_env(12345)
+    import os
+
+    assert os.environ["OPENGRAB_DIR"] == "/from/ini/folder"

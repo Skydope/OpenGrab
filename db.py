@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Estados que cuentan como "en curso" (se marcan interrupted al reiniciar).
 ACTIVE_STATUSES = ("queued", "starting", "downloading", "processing")
@@ -68,6 +68,12 @@ CREATE TABLE IF NOT EXISTS downloaded_urls (
     job_id        TEXT REFERENCES jobs(id),
     downloaded_at INTEGER NOT NULL,
     PRIMARY KEY (extractor, video_id)
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key     TEXT PRIMARY KEY,
+    value   TEXT NOT NULL,
+    updated INTEGER NOT NULL
 );
 """
 
@@ -359,6 +365,29 @@ class Database:
                 (int(time.time()), channel_id),
             )
             self._conn.commit()
+
+    # ------------------------------------------------------------------ #
+    # Settings runtime
+    # ------------------------------------------------------------------ #
+    def get_setting(self, key: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM settings WHERE key=?", (key,)
+            ).fetchone()
+        return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated) VALUES (?, ?, ?)",
+                (key, value, int(time.time())),
+            )
+            self._conn.commit()
+
+    def get_all_settings(self) -> dict[str, str]:
+        with self._lock:
+            rows = self._conn.execute("SELECT key, value FROM settings").fetchall()
+        return {row["key"]: row["value"] for row in rows}
 
     # ------------------------------------------------------------------ #
     # Migración desde el history.json viejo

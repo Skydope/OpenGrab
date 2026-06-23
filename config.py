@@ -58,6 +58,26 @@ def _load_ini() -> dict[str, str]:
 
 _ini = _load_ini()
 
+# Mapeo de keys de settings a variables de entorno (para el resolver).
+_SETTING_ENV: dict[str, str] = {
+    "max_jobs": "OPENGRAB_MAX_JOBS",
+    "max_total_mb": "OPENGRAB_MAX_TOTAL_MB",
+    "max_size_mb": "OPENGRAB_MAX_SIZE_MB",
+    "history_max": "OPENGRAB_HISTORY_MAX",
+}
+
+# Defaults para el resolver (usados cuando ninguna fuente tiene el valor).
+_DEFAULTS: dict[str, str | int] = {
+    "max_jobs": 2,
+    "max_total_mb": 0,
+    "max_size_mb": 0,
+    "history_max": 500,
+    "quality_default": "best",
+    "theme": "auto",
+    "library_dir": _ini.get("download_dir", ""),
+    "name_template": "{title}",
+}
+
 
 def _ini_int(key: str, default: int) -> int:
     raw = _ini.get(key, "")
@@ -106,6 +126,7 @@ MAX_SIZE_MB = _int_env("OPENGRAB_MAX_SIZE_MB", _ini_int("max_size_mb", 0), min_v
 MAX_TOTAL_MB = _int_env("OPENGRAB_MAX_TOTAL_MB", _ini_int("max_total_mb", 0), min_val=0)
 
 TRUST_XFF = os.environ.get("OPENGRAB_TRUST_XFF", "").strip() == "1"
+IS_DESKTOP = os.environ.get("OPENGRAB_DESKTOP", "").strip() == "1"
 DB_PATH = OUT_DIR / "opengrab.db"
 HISTORY_FILE = OUT_DIR / ".opengrab_history.json"
 HISTORY_MAX = 500

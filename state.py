@@ -5,6 +5,7 @@ import atexit
 import logging
 import os
 import shutil
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -13,6 +14,8 @@ from typing import Any
 
 from db import Database
 from models import Job
+
+import config
 
 log = logging.getLogger("opengrab")
 
@@ -30,7 +33,26 @@ class AppState:
         self.jobs: dict[str, Job] = {}
         self.job_events: dict[str, asyncio.Event] = {}
         self.running_tasks: set[asyncio.Task[None]] = set()
+        self._finalize_lock = threading.Lock()
         atexit.register(self.db.close)
+
+    # ------------------------------------------------------------------ #
+    # Settings resolver (env > ini > tabla > default)
+    # ------------------------------------------------------------------ #
+    def resolve(self, key: str, default: Any, cast: type = str) -> tuple[Any, str]:
+        """Resuelve una setting con precedencia env > ini > tabla > default.
+
+        Devuelve (valor, origin) donde origin ∈ {env, ini, table, default}.
+        """
+        env_key = config._SETTING_ENV.get(key)
+        if env_key and env_key in os.environ:
+            return cast(os.environ[env_key]), "env"
+        if key in config._ini:
+            return cast(config._ini[key]), "ini"
+        v = self.db.get_setting(key)
+        if v is not None:
+            return cast(v), "table"
+        return default, "default"
 
     # ------------------------------------------------------------------ #
     # Job completion

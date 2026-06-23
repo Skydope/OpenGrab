@@ -383,3 +383,84 @@ def test_batch_req_accepts_urls_and_quality():
     req_empty = BatchReq(urls=[])
     assert req_empty.urls == []
     assert req_empty.quality == "best"
+
+
+# ------------------------------- settings --------------------------------- #
+def test_get_setting_returns_none_when_not_exists(db):
+    result = db.get_setting("max_jobs")
+    assert result is None
+
+
+def test_set_and_get_setting(db):
+    db.set_setting("max_jobs", "4")
+    result = db.get_setting("max_jobs")
+    assert result == "4"
+
+
+def test_set_setting_updates_existing(db):
+    db.set_setting("quality_default", "best")
+    db.set_setting("quality_default", "720p")
+    result = db.get_setting("quality_default")
+    assert result == "720p"
+
+
+def test_get_all_settings_empty(db):
+    result = db.get_all_settings()
+    assert result == {}
+
+
+def test_get_all_settings_returns_all(db):
+    db.set_setting("max_jobs", "2")
+    db.set_setting("quality_default", "best")
+    db.set_setting("theme", "dark")
+    result = db.get_all_settings()
+    assert result == {"max_jobs": "2", "quality_default": "best", "theme": "dark"}
+
+
+def test_set_setting_updates_timestamp(db):
+    db.set_setting("max_jobs", "3")
+    row = db.get_setting("max_jobs")
+    assert row is not None
+    # El valor debe ser string
+    assert isinstance(row, str)
+    assert row == "3"
+
+
+# ------------------------------- resolve() -------------------------------- #
+def test_resolve_default_when_no_source(monkeypatch, tmp_path):
+    """Sin env, sin ini, sin tabla → devuelve default."""
+    from state import AppState
+
+    monkeypatch.delenv("OPENGRAB_MAX_JOBS", raising=False)
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    val, origin = state.resolve("max_jobs", 2, int)
+    assert val == 2
+    assert origin == "default"
+
+
+def test_resolve_table_over_default(monkeypatch, tmp_path):
+    """Tabla tiene valor, sin env, sin ini → devuelve tabla."""
+    from state import AppState
+
+    monkeypatch.delenv("OPENGRAB_MAX_JOBS", raising=False)
+    db = Database(":memory:")
+    db.set_setting("max_jobs", "7")
+    state = AppState(db, tmp_path)
+    val, origin = state.resolve("max_jobs", 2, int)
+    assert val == 7
+    assert origin == "table"
+
+
+def test_resolve_casts_to_requested_type(monkeypatch, tmp_path):
+    """El casteo funciona: string en tabla → int."""
+    from state import AppState
+
+    monkeypatch.delenv("OPENGRAB_MAX_JOBS", raising=False)
+    db = Database(":memory:")
+    db.set_setting("max_jobs", "7")
+    state = AppState(db, tmp_path)
+    val, origin = state.resolve("max_jobs", 2, int)
+    assert val == 7
+    assert origin == "table"
+    assert isinstance(val, int)
