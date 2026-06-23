@@ -454,6 +454,12 @@ async def api_open_folder(
     folder = str(Path(job.filepath).parent)
     if sys.platform == "win32":
         os.startfile(folder)
+    elif sys.platform == "darwin":
+        import subprocess
+        subprocess.run(["open", folder], check=False)
+    else:
+        import subprocess
+        subprocess.run(["xdg-open", folder], check=False)
     return JSONResponse({"ok": True, "folder": folder})
 
 
@@ -765,4 +771,6 @@ async def index() -> HTMLResponse:
         "__FORMATS_JSON__", _json.dumps(FORMATS).replace("</", "<\\/")
     )
     html = html.replace("__VERSION__", VERSION)
+    from config import IS_DESKTOP
+    html = html.replace("__IS_DESKTOP__", "true" if IS_DESKTOP else "false")
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})

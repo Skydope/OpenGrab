@@ -15,6 +15,7 @@
     <span class="tag"><span class="dot"></span>self-hosted · yt-dlp</span>
     <button class="theme-btn" @click="toggleTheme" :aria-label="theme==='dark'?'Tema claro':'Tema oscuro'"
             x-text="theme==='dark'?'☀️':'🌙'"></button>
+    <button class="theme-btn" @click="openSettings()" title="Configuración">⚙️</button>
   </header>
 
   <!-- Auth card -->
@@ -340,6 +341,35 @@
     </div>
   </div>
 
+  <!-- Settings -->
+  <div class="tools-section" x-show="authenticated" x-cloak>
+    <div class="toggle-label-lg"
+         role="button" tabindex="0" :aria-expanded="settingsOpen"
+         @click="toggleSettings"
+         @keydown.enter.prevent="toggleSettings"
+         @keydown.space.prevent="toggleSettings"
+         x-text="settingsOpen ? 'configuración ▾' : 'configuración ▸'"></div>
+    <div x-show="settingsOpen">
+      <div x-show="!settings.length" class="muted-sm">Cargando…</div>
+      <template x-for="s in settings" :key="s.key">
+        <div class="set-row" x-show="isDesktop || s.scope !== 'desktop'">
+          <span class="set-label" x-text="s.key"></span>
+          <span class="set-origin muted-sm" x-show="s.locked"
+                :title="'Origen: ' + s.origin + ' (no editable)'">🔒</span>
+          <input x-show="!s.locked && s.scope !== 'desktop'" type="text"
+                 x-model="s._editValue" @keydown.enter="saveSetting(s)">
+          <span x-show="s.locked || s.scope === 'desktop'" class="set-value muted-sm"
+                x-text="s.value"></span>
+          <button x-show="!s.locked && s.scope !== 'desktop'" class="btn-sm"
+                  @click="saveSetting(s)">Guardar</button>
+        </div>
+      </template>
+      <div class="set-note muted-sm" x-show="settings.length">
+        🔒 = origen env/ini, no editable desde la UI.
+      </div>
+    </div>
+  </div>
+
   <div class="toast" :class="{show: toast.show, success: toast.type === 'success'}">
     <span x-text="toast.message"></span>
     <button @click="undoDelete" x-show="toast.type === 'pending'">Deshacer</button>
@@ -475,6 +505,38 @@ document.addEventListener('alpine:init', () => {
     newChannelUrl: "",
     newChannelQuality: "best",
     newChannelInterval: 60,
+
+    // ── Settings ──────────────────────────────
+    isDesktop: "__IS_DESKTOP__" === "true",
+    settingsOpen: false,
+    settings: [],
+
+    async openSettings() {
+      this.settingsOpen = true;
+      if (!this.settings.length) {
+        const r = await fetch("/api/settings");
+        if (r.ok) { this.settings = await r.json(); }
+      }
+    },
+    toggleSettings() {
+      if (this.settingsOpen) { this.settingsOpen = false; }
+      else { this.openSettings(); }
+    },
+    async saveSetting(s) {
+      if (s.locked) return;
+      const r = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [s.key]: s._editValue }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d.updated && d.updated.includes(s.key)) {
+          s.value = s._editValue;
+          s.origin = "table";
+        }
+      }
+    },
 
     // ── Batch Playlist Download ────────────────
     batchJobIds: [],

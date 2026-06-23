@@ -584,3 +584,132 @@ def test_cleanup_storage_keeps_recent_workdirs(dl_state):
 
     result = dl_state.cleanup_storage(max_age_hours=24)
     assert wd.exists()
+
+
+# -------------------- _resolve_template (Phase 3.5-3.7) --------------------- #
+def test_resolve_template_all_7_tokens(tmp_path):
+    """Los 7 tokens se expanden correctamente desde info dict."""
+    from state import AppState
+    from db import Database
+
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    info = {
+        "title": "Mi Video",
+        "uploader": "Canal Prueba",
+        "upload_date": "20250623",
+        "extractor_key": "Youtube",
+        "id": "abc123",
+        "resolution": "1920x1080",
+        "formats": [{"vcodec": "avc1", "filesize": 1000, "resolution": "1920x1080"}],
+    }
+    result = state._resolve_template("{title}/{channel}/{upload_year}/{resolution}", info, "mp4")
+    parts = result.parts
+    assert "Mi Video" in parts
+    assert "Canal Prueba" in parts
+    assert "2025" in parts
+    assert result.suffix == ".mp4"
+
+
+def test_resolve_template_title_empty_fallback_to_video(tmp_path):
+    """Si title está vacío, se reemplaza por 'video'."""
+    from state import AppState
+    from db import Database
+
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    info = {"title": "", "uploader": "Ch", "upload_date": "", "formats": []}
+    result = state._resolve_template("{title}", info, "mp4")
+    assert result.stem == "video"
+
+
+def test_resolve_template_sanitizes_illegal_chars(tmp_path):
+    """Chars ilegales se remueven, espacios colapsados, max 120."""
+    from state import AppState
+    from db import Database
+
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    info = {
+        "title": "Video\x00con\bin\x1fchars\x7fy espacios   dobles",
+        "uploader": "canal/nasty?file*name",
+        "upload_date": "",
+        "formats": [],
+    }
+    result = state._resolve_template("{title}/{channel}", info, "mp4")
+    name = result.name
+    # No debe contener chars ilegales
+    assert "\x00" not in name
+    assert "/" not in name
+    assert "?" not in name
+    assert "*" not in name
+    assert "  " not in name
+
+
+def test_resolve_template_truncates_segments_at_120(tmp_path):
+    """Segmentos de más de 120 chars se truncan."""
+    from state import AppState
+    from db import Database
+
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    long_title = "A" * 200
+    info = {"title": long_title, "uploader": "Ch", "upload_date": "", "formats": []}
+    result = state._resolve_template("{title}", info, "mp4")
+    assert len(result.stem) <= 120
+
+
+def test_resolve_template_date_format(tmp_path):
+    """upload_date se formatea como YYYY-MM-DD."""
+    from state import AppState
+    from db import Database
+
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    info = {
+        "title": "Vid",
+        "upload_date": "20250623",
+        "uploader": "Ch",
+        "formats": [],
+    }
+    result = state._resolve_template("{upload_date}", info, "mp4")
+    assert result.stem == "2025-06-23"
+
+
+# ------------------------- _deduplicate (3.8) ------------------------------- #
+def test_deduplicate_no_collision_returns_same(tmp_path):
+    """Sin colisión, devuelve el mismo path."""
+    from state import AppState
+    from db import Database
+
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    target = tmp_path / "video.mp4"
+    result = state._deduplicate(target)
+    assert result == target
+
+
+def test_deduplicate_one_collision_adds_1(tmp_path):
+    """Una colisión → appende ' (1)'."""
+    from state import AppState
+    from db import Database
+
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    (tmp_path / "video.mp4").write_bytes(b"existing")
+    result = state._deduplicate(tmp_path / "video.mp4")
+    assert result.name == "video (1).mp4"
+
+
+def test_deduplicate_multiple_collisions_sequential(tmp_path):
+    """Colisiones secuenciales → ' (1)', ' (2)', ' (3)'."""
+    from state import AppState
+    from db import Database
+
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    base = tmp_path / "video.mp4"
+    base.write_bytes(b"0")
+    (tmp_path / "video (1).mp4").write_bytes(b"1")
+    result = state._deduplicate(base)
+    assert result.name == "video (2).mp4"

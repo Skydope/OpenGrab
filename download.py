@@ -316,22 +316,27 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
 
         _enforce_size(final, max_size_mb)
 
+        # Desktop finalize: mueve a library_dir si corresponde
+        state._finalize_desktop(job_id, workdir, final, info, quality)
+
+        # Usar filepath actualizado por _finalize_desktop (puede haber cambiado)
         title = _safe_name(info.get("title", "video"))
-        ext = final.suffix.lstrip(".")
+        ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
+        mime = "audio/mpeg" if is_audio else "video/mp4"
         job.status = "done"
         job.percent = 100.0
-        job.filepath = str(final)
-        job.filename = f"{title}.{ext}"
-        job.mime = "audio/mpeg" if is_audio else "video/mp4"
+        job.filepath = job.filepath or str(final)
+        job.filename = job.filepath and Path(job.filepath).name or f"{title}.{ext}"
+        job.mime = mime
         job.title = title
-        log.info("job %s: completado → %s", job_id, f"{title}.{ext}")
+        log.info("job %s: completado → %s", job_id, job.filepath)
         state.complete_job(
             job_id,
             title=title,
-            filename=f"{title}.{ext}",
-            filepath=str(final),
+            filename=job.filename or f"{title}.{ext}",
+            filepath=job.filepath,
             mime=job.mime,
-            size=final.stat().st_size,
+            size=Path(job.filepath).stat().st_size if job.filepath else 0,
             thumbnail=info.get("thumbnail"),
         )
         extractor_key = info.get("extractor_key") or info.get("extractor")

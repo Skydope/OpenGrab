@@ -4,6 +4,7 @@ import asyncio
 import atexit
 import logging
 import os
+import re
 import shutil
 import threading
 import time
@@ -444,3 +445,144 @@ class AppState:
                 )
                 self.running_tasks.add(task)
                 task.add_done_callback(self.running_tasks.discard)
+
+    # ------------------------------------------------------------------ #
+    # Name template resolution (Phase 3)
+    # ------------------------------------------------------------------ #
+    _ILLEGAL_CHARS = re.compile(r'[\x00-\x1f\x7f\\/:*?"<>|]')
+
+    def _resolve_template(
+        self, template: str, info: dict[str, Any], ext: str
+    ) -> Path:
+        """Resuelve name_template expandiendo los 7 tokens.
+
+        Tokens: {title} {channel} {upload_year} {upload_date} {extractor}
+                {video_id} {resolution}
+
+        Cada segmento del path se sanitiza: illegal chars -> removidos,
+        espacios colapsados, max 120 chars. Si {title} queda vacío o es
+        puro whitespace, se reemplaza por "video". Si luego de sanitizar
+        el segmento queda vacío, se remueve (los demás tokens compilan).
+        """
+        # Fecha de upload
+        upload_date = ""
+        upload_year = ""
+        if "upload_date" in info:
+            raw = str(info["upload_date"])[:8]
+            if len(raw) == 8 and raw.isdigit():
+                upload_date = f"{raw[0:4]}-{raw[4:6]}-{raw[6:8]}"
+                upload_year = raw[0:4]
+
+        # Resolución del mejor formato
+        resolution = ""
+        formats: list[dict[str, Any]] = info.get("formats") or []
+        for f in formats:
+            if f.get("vcodec") != "none" and f.get("filesize"):
+                resolution = f.get("resolution") or ""
+                break
+
+        replacements: dict[str, str] = {
+            "{title}":      str(info.get("title") or "").strip(),
+            "{channel}":    str(info.get("uploader") or info.get("channel") or "").strip(),
+            "{upload_year}": upload_year,
+            "{upload_date}": upload_date,
+            "{extractor}":  str(info.get("extractor_key") or info.get("extractor") or "").strip(),
+            "{video_id}":   str(info.get("id") or "").strip(),
+            "{resolution}": resolution,
+        }
+
+        def _sanitize_segment(segment: str) -> str:
+            # Quitar chars ilegales de文件名
+            seg = self._ILLEGAL_CHARS.sub("", segment)
+            # Colapsar whitespace
+            seg = re.sub(r"\s+", " ", seg).strip()
+            # Truncar a 120
+            if len(seg) > 120:
+                seg = seg[:120].rstrip()
+            return seg
+
+        # Armar el path relativo
+        parts = []
+        for part in template.replace("\\", "/").split("/"):
+            part = part.strip()
+            if not part:
+                continue
+            # Expandir tokens en este segmento
+            expanded = part
+            for token, value in replacements.items():
+                if token in expanded:
+                    expanded = expanded.replace(token, value)
+            # Si {title} quedó vacío → "video"
+            if "{title}" in template and expanded.strip() == "":
+                expanded = "video"
+            sanitized = _sanitize_segment(expanded)
+            if sanitized:
+                parts.append(sanitized)
+
+        if not parts:
+            parts = ["video"]
+
+        # Agregar extensión al último segmento
+        last = parts[-1] if parts else "video"
+        parts[-1] = f"{last}.{ext.lstrip('.')}"
+        return Path(*parts)
+
+    def _deduplicate(self, path: Path) -> Path:
+        """Si path existe, appende " (1)", " (2)", ... hasta nombre libre."""
+        if not path.exists():
+            return path
+        stem = path.stem
+        suffix = path.suffix
+        parent = path.parent
+        counter = 1
+        while True:
+            candidate = parent / f"{stem} ({counter}){suffix}"
+            if not candidate.exists():
+                return candidate
+            counter += 1
+
+    def _finalize_desktop(
+        self,
+        job_id: str,
+        workdir: Path,
+        final: Path,
+        info: dict[str, Any],
+        quality: str,
+    ) -> None:
+        """Mueve el archivo de workdir a library_dir con name_template.
+
+        Solo para modo desktop (IS_DESKTOP=True). Adquiere _finalize_lock
+        para serializar movimientos concurrentes. Solo mueve si el archivo
+        no está ya en library_dir (evita duplicado si desktop_finalize se llama
+        dos veces).
+        """
+        if not config.IS_DESKTOP:
+            return
+        with self._finalize_lock:
+            library_dir_raw, _ = self.resolve("library_dir", "", str)
+            if not library_dir_raw:
+                library_dir_raw, _ = self.resolve("name_template", "{title}", str)
+            library_dir = Path(library_dir_raw).resolve()
+            template, _ = self.resolve("name_template", "{title}", str)
+
+            ext = final.suffix.lstrip(".") or ("mp3" if quality == "audio" else "mp4")
+            relative = self._resolve_template(template, info, ext)
+            target = library_dir / relative
+            target = self._deduplicate(target)
+
+            if target.exists() and target.samefile(final):
+                # Ya está en su lugar
+                return
+
+            try:
+                library_dir.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(final), str(target))
+                log.info("desktop_finalize: %s -> %s", final.name, target)
+                # Update job.filepath so the API serves from the right place
+                job = self.jobs.get(job_id)
+                if job:
+                    job.filepath = str(target)
+            except OSError as exc:
+                log.warning("desktop_finalize: falló movimiento %s -> %s: %s",
+                            final, target, exc)
+                # No propagar — la descarga ya está completa en workdir
