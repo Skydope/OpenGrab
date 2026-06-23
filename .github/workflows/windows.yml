@@ -1,0 +1,66 @@
+name: windows
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python deps
+        run: pip install -e ".[desktop,build]"
+
+      - name: Download ffmpeg
+        run: |
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-tmp
+          $ffmpegDir = Get-ChildItem -Directory ffmpeg-tmp | Select-Object -First 1
+          Copy-Item "$($ffmpegDir.FullName)\bin\ffmpeg.exe" vendor\ffmpeg.exe
+
+      - name: Download WebView2 bootstrapper
+        run: |
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "vendor\MicrosoftEdgeWebview2Setup.exe"
+
+      - name: Generate wizard images
+        run: |
+          python -c "
+          from PIL import Image, ImageDraw
+
+          def make_wizard(w, h, out):
+              img = Image.new('RGB', (w, h), (28, 33, 43))
+              draw = ImageDraw.Draw(img)
+              cx, cy = w // 2, h // 2
+              s = min(w, h) // 3
+              draw.polygon([
+                  (cx - s // 2, cy - s // 2),
+                  (cx - s // 2, cy + s // 2),
+                  (cx + s // 2, cy),
+              ], fill=(232, 160, 44))
+              img.save(out)
+
+          make_wizard(164, 314, 'vendor/wizard-image.bmp')
+          make_wizard(55, 55, 'vendor/wizard-small.bmp')
+          "
+
+      - name: Build with PyInstaller
+        run: pyinstaller OpenGrab.spec --noconfirm
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --version=6.4.2 --no-progress
+
+      - name: Compile Setup.exe
+        run: iscc opengrab.iss
+
+      - name: Upload Setup.exe to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist\OpenGrab-Setup.exe
