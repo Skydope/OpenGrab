@@ -1,6 +1,6 @@
 [project]
 name = "opengrab"
-version = "1.8.0"
+version = "1.9.0"
 requires-python = ">=3.12"
 description = "Self-hosted YouTube downloader — paste a URL, get an MP4"
 dependencies = [

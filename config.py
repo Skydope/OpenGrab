@@ -110,7 +110,7 @@ DB_PATH = OUT_DIR / "opengrab.db"
 HISTORY_FILE = OUT_DIR / ".opengrab_history.json"
 HISTORY_MAX = 500
 
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 
 FORMATS = {
     "best":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bv*+ba/b",

@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — 2026-06-23
+
+### Added
+
+- **Panel de historial**: lista de descargas completadas (con thumbnail), borrado
+  de entradas individuales (`DELETE /api/history/{id}`) y limpieza total
+  (`DELETE /api/history`). El borrado de la fila en SQLite es síncrono e
+  instantáneo; el borrado seguro del archivo y del workdir corre en background
+  para no bloquear la respuesta.
+- **Gestión de almacenamiento**: `GET /api/storage` (uso total, desglose por
+  workdir, archivos sueltos y tamaño de la DB), `POST /api/storage/cleanup`
+  (por antigüedad, con `dry_run`) y `POST /api/storage/cleanup-all`.
+- **Descarga de playlist por lotes**: `GET /api/playlist` lista los videos de una
+  playlist (`extract_flat`), `POST /api/playlist/download` encola hasta 100 URLs
+  (cada una pasa por el gate SSRF-safe), `GET /api/jobs/batch-status` devuelve el
+  estado combinado (memoria + DB) y un **dispatch loop** despacha la cola en
+  background. La UI agrega selección de videos y polling de progreso por lote.
+
+### Fixed
+
+- **Descarga fantasma de jobs fallidos**: un job que fallaba solo mutaba el estado
+  en memoria; en SQLite quedaba `queued` y, con el dispatch loop nuevo, se
+  re-despachaba tras `evict_once` (~1h). Ahora `_run_download` persiste
+  `status='error'` en la DB.
+- **El batch podía exceder `MAX_JOBS`**: el dispatch loop despachaba `MAX_JOBS`
+  jobs por tick sin contar las descargas ya activas (manuales o de un batch
+  previo). Ahora descuenta `count_active_jobs()`, tratando `MAX_JOBS` como techo
+  de concurrencia real.
+
+### Changed
+
+- Mensajes de error del path de playlist traducidos al español (antes mezclaban
+  inglés con el resto de la UI).
+
+### Internal
+
+- Test de `dispatch_loop` (`marks_starting`) corregido: pasaba en vacío porque el
+  fake era async sobre un `asyncio.to_thread` (callable síncrono); ahora el fake
+  es síncrono, se drenan las tasks y hay un guard anti-vacuo.
+- El docstring del secure-delete documenta sus límites en SSD/CoW (no es borrado
+  forense garantizado fuera de HDD magnético).
+
 ## [1.8.0] — 2026-06-22
 
 ### Added
@@ -312,6 +354,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting: 30/min default, 10/min on `/api/info`, 5/min on `/api/jobs`
 - Graceful fallback if static files are missing
 
+[1.9.0]: https://github.com/skydope/opengrab/releases/tag/v1.9.0
+[1.8.0]: https://github.com/skydope/opengrab/releases/tag/v1.8.0
 [1.2.0]: https://github.com/skydope/opengrab/releases/tag/v1.2.0
 [1.1.0]: https://github.com/skydope/opengrab/releases/tag/v1.1.0
 [1.0.0]: https://github.com/skydope/opengrab/releases/tag/v1.0.0
