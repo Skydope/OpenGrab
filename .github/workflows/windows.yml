@@ -60,7 +60,12 @@ jobs:
       - name: Compile Setup.exe
         run: iscc opengrab.iss
 
-      - name: Upload Setup.exe to release
+      - name: Package portable zip
+        run: Compress-Archive -Path dist\OpenGrab\* -DestinationPath dist\OpenGrab-portable.zip
+
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist\OpenGrab-Setup.exe
+          files: |
+            dist\OpenGrab-Setup.exe
+            dist\OpenGrab-portable.zip
