@@ -389,7 +389,13 @@ class AppState:
         while True:
             await asyncio.sleep(2.0)
             cfg = _sys.modules["config"]
-            queued = self.db.get_queued(limit=cfg.MAX_JOBS)
+            # MAX_JOBS es un techo de CONCURRENCIA, no de despachos-por-tick. Si ya
+            # hay descargas activas (manuales o de un batch anterior), descontamos
+            # esos slots; si no, mezclar manual + batch excederia el limite.
+            slots = cfg.MAX_JOBS - self.count_active_jobs()
+            if slots <= 0:
+                continue
+            queued = self.db.get_queued(limit=slots)
             for job_dict in queued:
                 job_id = job_dict["id"]
                 if job_id in self.jobs:

@@ -113,6 +113,45 @@ class TestDispatchLoopBasic:
         assert len(dispatch_state.jobs) == 3  # 1 pre-existing + 2 new
 
     @pytest.mark.asyncio
+    async def test_dispatch_loop_accounts_for_active_jobs(self, dispatch_state, monkeypatch):
+        """MAX_JOBS es un techo de concurrencia: dispatch_loop debe descontar los
+        jobs ya activos (p.ej. una descarga manual en curso), no despachar
+        MAX_JOBS nuevos encima de ellos."""
+        seed_queued_jobs(dispatch_state, count=3)
+
+        # Simular 1 descarga manual ya activa (en state.jobs, status 'downloading').
+        already = Job(id="manual-active", created=0.0)
+        already.status = "downloading"
+        dispatch_state.jobs["manual-active"] = already
+
+        monkeypatch.setattr("config.MAX_JOBS", 2)
+        monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
+
+        call_count = 0
+
+        async def fake_sleep(delay):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                raise asyncio.CancelledError("stop after one tick")
+
+        with patch("asyncio.sleep", side_effect=fake_sleep):
+            try:
+                await dispatch_state.dispatch_loop()
+            except asyncio.CancelledError:
+                pass
+
+        # Con MAX_JOBS=2 y 1 activo, solo queda 1 slot -> 1 batch despachado.
+        starting_jobs = [
+            j for j in dispatch_state.db.get_active_jobs()
+            if j["status"] == "starting"
+        ]
+        assert len(starting_jobs) == 1, (
+            f"esperaba 1 despacho (2 - 1 activo), hubo {len(starting_jobs)}"
+        )
+        assert dispatch_state.count_active_jobs() == 2  # nunca excede MAX_JOBS
+
+    @pytest.mark.asyncio
     async def test_dispatch_loop_marks_starting_before_adding_to_jobs(self, dispatch_state, monkeypatch):
         """DB should show status='starting' BEFORE job is added to state.jobs."""
         seed_queued_jobs(dispatch_state, count=2)
