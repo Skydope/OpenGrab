@@ -40,9 +40,8 @@ def test_current_usage_bytes_counts_files(app_state):
 
 
 def test_max_total_mb_refuses_new_job(client, app_state, monkeypatch):
-    import routes
-
-    monkeypatch.setattr(routes, "MAX_TOTAL_MB", 1)  # budget 1 MB
+    # api_create_job now uses state.resolve("max_total_mb")
+    monkeypatch.setattr(type(app_state), "resolve", lambda self, k, d, t=int: (1, "env") if k == "max_total_mb" else (d, "default"))
     (app_state.out_dir / "fill.bin").write_bytes(b"x" * (2 * 1024 * 1024))  # 2 MB
 
     r = client.post(
@@ -52,9 +51,7 @@ def test_max_total_mb_refuses_new_job(client, app_state, monkeypatch):
 
 
 def test_max_total_mb_allows_under_budget(client, app_state, monkeypatch):
-    import routes
-
-    monkeypatch.setattr(routes, "MAX_TOTAL_MB", 100)  # 100 MB
+    monkeypatch.setattr(type(app_state), "resolve", lambda self, k, d, t=int: (100, "env") if k == "max_total_mb" else (d, "default"))
     monkeypatch.setattr("routes._run_download", lambda *a, **kw: None)
     r = client.post(
         "/api/jobs", json={"url": "https://youtu.be/abc", "quality": "best"}
@@ -64,13 +61,15 @@ def test_max_total_mb_allows_under_budget(client, app_state, monkeypatch):
 
 # ------------------------------- config ---------------------------------- #
 def test_limits_default_unlimited(monkeypatch):
-    import sys
+    import config as _config
 
+    # Clear ini values so defaults apply (env vars already deleted by conftest)
     monkeypatch.delenv("OPENGRAB_MAX_TOTAL_MB", raising=False)
     monkeypatch.delenv("OPENGRAB_MAX_SIZE_MB", raising=False)
-    if "config" in sys.modules:
-        del sys.modules["config"]
-    import config
-
-    assert config.MAX_TOTAL_MB == 0
-    assert config.MAX_SIZE_MB == 0
+    _config._ini.pop("max_total_mb", None)
+    _config._ini.pop("max_size_mb", None)
+    # Force reload of the computed constants
+    _config.MAX_TOTAL_MB = _config._int_env("OPENGRAB_MAX_TOTAL_MB", _config._ini_int("max_total_mb", 0), min_val=0)
+    _config.MAX_SIZE_MB = _config._int_env("OPENGRAB_MAX_SIZE_MB", _config._ini_int("max_size_mb", 0), min_val=0)
+    assert _config.MAX_TOTAL_MB == 0
+    assert _config.MAX_SIZE_MB == 0

@@ -41,12 +41,10 @@ class TestDispatchLoopBasic:
     @pytest.mark.asyncio
     async def test_dispatch_loop_respects_max_jobs_limit(self, dispatch_state, monkeypatch):
         """dispatch_loop should only start up to MAX_JOBS concurrent downloads."""
-        # Set up: seed 5 queued jobs
         seed_queued_jobs(dispatch_state, count=5)
 
-        # Patch MAX_JOBS to 2 (patch at source: config module)
-        monkeypatch.setattr("config.MAX_JOBS", 2)
-        # Mock _run_download to not actually run (it's imported from download inside dispatch_loop)
+        # Mock resolve() to return max_jobs=2 regardless of env/ini/table
+        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (2, "env") if k == "max_jobs" else (d, "default"))
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         # Make asyncio.sleep succeed on first call (so loop body runs), fail on second (stop loop)
@@ -87,7 +85,7 @@ class TestDispatchLoopBasic:
         # Pre-populate state.jobs with one of the job_ids
         dispatch_state.jobs["queued-001"] = Job(id="queued-001", created=0.0)
 
-        monkeypatch.setattr("config.MAX_JOBS", 5)
+        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (5, "env") if k == "max_jobs" else (d, "default"))
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         call_count = 0
@@ -124,7 +122,7 @@ class TestDispatchLoopBasic:
         already.status = "downloading"
         dispatch_state.jobs["manual-active"] = already
 
-        monkeypatch.setattr("config.MAX_JOBS", 2)
+        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (2, "env") if k == "max_jobs" else (d, "default"))
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         call_count = 0
@@ -162,7 +160,7 @@ class TestDispatchLoopBasic:
         """
         seed_queued_jobs(dispatch_state, count=2)
 
-        monkeypatch.setattr("config.MAX_JOBS", 5)
+        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (5, "env") if k == "max_jobs" else (d, "default"))
 
         # Track order: we want to verify that when _run_download is called,
         # the job is already marked 'starting' in DB
@@ -209,8 +207,13 @@ class TestDispatchLoopStorage:
         """When storage is full, dispatch_loop should mark job as error with 'Almacenamiento lleno'."""
         seed_queued_jobs(dispatch_state, count=1)
 
-        monkeypatch.setattr("config.MAX_JOBS", 5)
-        monkeypatch.setattr("config.MAX_TOTAL_MB", 1)  # Set tiny limit
+        def mock_resolve(self, key, default, cast=int):
+            if key == "max_jobs":
+                return (5, "env")
+            if key == "max_total_mb":
+                return (1, "env")
+            return (default, "default")
+        monkeypatch.setattr(type(dispatch_state), "resolve", mock_resolve)
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         # Mock current_usage_bytes to return full
@@ -244,7 +247,7 @@ class TestDispatchLoopSecondTick:
         """Second call to dispatch_loop should not dispatch jobs already in state.jobs."""
         seed_queued_jobs(dispatch_state, count=4)
 
-        monkeypatch.setattr("config.MAX_JOBS", 10)
+        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (10, "env") if k == "max_jobs" else (d, "default"))
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         # We'll let the loop run 2 ticks by making sleep fail with CancelledError

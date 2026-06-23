@@ -179,10 +179,10 @@ def test_run_download_file_not_found(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T7 ----
 def test_run_download_size_enforcement(dl_state, monkeypatch):
-    import download
     from download import _run_download
 
-    monkeypatch.setattr(download, "MAX_SIZE_MB", 1)
+    # _run_download ahora usa state.resolve("max_size_mb") en vez de config.MAX_SIZE_MB
+    monkeypatch.setattr(type(dl_state), "resolve", lambda self, k, d, t=int: (1, "env") if k == "max_size_mb" else (d, "default"))
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t7")
