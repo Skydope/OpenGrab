@@ -10,9 +10,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -76,7 +76,7 @@ jobs:
           ./appimagetool AppDir OpenGrab-x86_64.AppImage
 
       - name: Upload AppImage to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: OpenGrab-x86_64.AppImage
 
@@ -85,9 +85,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -173,6 +173,6 @@ jobs:
           zip -r ../OpenGrab-macos.zip OpenGrab.app/
 
       - name: Upload zip to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: OpenGrab-macos.zip

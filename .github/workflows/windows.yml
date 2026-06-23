@@ -10,9 +10,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -64,7 +64,7 @@ jobs:
         run: Compress-Archive -Path dist\OpenGrab\* -DestinationPath dist\OpenGrab-portable.zip
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist\OpenGrab-Setup.exe
