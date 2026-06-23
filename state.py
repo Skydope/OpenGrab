@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from config import MAX_JOBS, MAX_TOTAL_MB
+
 from db import Database
 from models import Job
 
@@ -382,16 +382,19 @@ class AppState:
     # Batch dispatch loop (playlist download)
     # ------------------------------------------------------------------ #
     async def dispatch_loop(self) -> None:
+        import sys as _sys
+
         from download import _run_download
 
         while True:
             await asyncio.sleep(2.0)
-            queued = self.db.get_queued(limit=MAX_JOBS)
+            cfg = _sys.modules["config"]
+            queued = self.db.get_queued(limit=cfg.MAX_JOBS)
             for job_dict in queued:
                 job_id = job_dict["id"]
                 if job_id in self.jobs:
                     continue
-                if MAX_TOTAL_MB and self.current_usage_bytes() >= MAX_TOTAL_MB * 1024 * 1024:
+                if cfg.MAX_TOTAL_MB and self.current_usage_bytes() >= cfg.MAX_TOTAL_MB * 1024 * 1024:
                     self.db.update_job(job_id, status="error", error="Almacenamiento lleno")
                     continue
                 self.db.update_job(job_id, status="starting")
