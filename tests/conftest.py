@@ -11,6 +11,35 @@ _OPENGRAB_MODULES = ("app", "config", "models", "download", "routes", "state", "
 
 
 @pytest.fixture(autouse=True)
+def _reset_settings_table():
+    """Limpia la tabla ``settings`` antes de cada test.
+
+    La DB de tests vive en disco (``_test_downloads/opengrab.db``) y se
+    comparte entre tests de la sesión. Sin esto, un ``set_setting()`` en un
+    test se filtra a los siguientes (p.ej. ``library_dir`` filtrado al
+    ``_finalize_desktop`` del test siguiente, que resolvía a un tempdir ya
+    borrado en vez de caer al fallback).
+
+    Setup-clearing (antes del yield): protege tanto leaks cross-test como
+    residuo de una corrida anterior que crasheó a mitad (el cleanup de
+    sesión solo borra _test_downloads en salida limpia).
+    """
+    import sqlite3
+
+    db_path = Path(__file__).parent / "_test_downloads" / "opengrab.db"
+    if db_path.exists():
+        try:
+            con = sqlite3.connect(str(db_path), timeout=5)
+            con.execute("DELETE FROM settings")
+            con.commit()
+            con.close()
+        except sqlite3.OperationalError as e:
+            if "no such table" not in str(e):
+                raise
+    yield
+
+
+@pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     monkeypatch.setenv("OPENGRAB_HOST", "127.0.0.1")
     monkeypatch.setenv("OPENGRAB_PORT", "8880")
