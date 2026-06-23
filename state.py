@@ -26,11 +26,9 @@ class AppState:
         self,
         db: Database,
         out_dir: Path,
-        history_max: int = 500,
     ) -> None:
         self.db = db
         self.out_dir = out_dir
-        self.history_max = history_max
         self.jobs: dict[str, Job] = {}
         self.job_events: dict[str, asyncio.Event] = {}
         self.running_tasks: set[asyncio.Task[None]] = set()
@@ -348,7 +346,7 @@ class AppState:
             self.job_events.pop(jid, None)
         if to_delete:
             log.info("evacuados %d jobs viejos de memoria", len(to_delete))
-        self.db.prune_history(keep=self.history_max)
+        self.db.prune_history(keep=self.resolve("history_max", 500, int)[0])
         return len(to_delete)
 
     async def evict_loop(self) -> None:

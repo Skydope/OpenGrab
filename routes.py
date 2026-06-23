@@ -21,7 +21,6 @@ from slowapi import Limiter
 
 from config import (
     FORMATS,
-    HISTORY_MAX,
     TOKEN,
     TRUST_XFF,
     VERSION,
@@ -427,7 +426,8 @@ async def api_history(
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
     try:
-        entries = state.get_history(limit=max(1, min(limit, HISTORY_MAX)))
+        history_max = state.resolve("history_max", 500, int)[0]
+        entries = state.get_history(limit=max(1, min(limit, history_max)))
         return JSONResponse(
             entries,
             headers={"Cache-Control": "no-store, no-cache, must-revalidate"},

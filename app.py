@@ -40,7 +40,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from config import DB_PATH, HISTORY_MAX, HOST, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
+from config import DB_PATH, HOST, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
 from db import Database
 from routes import limiter, router
 from state import AppState
@@ -57,7 +57,7 @@ log = logging.getLogger("opengrab")
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     db = Database(DB_PATH)
-    state = AppState(db, OUT_DIR, history_max=HISTORY_MAX)
+    state = AppState(db, OUT_DIR)
     state.cleanup_old_workdirs()
 
     interrupted = db.mark_interrupted()
@@ -69,7 +69,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
             except OSError:
                 pass
 
-    db.prune_history(keep=HISTORY_MAX)
+    db.prune_history(keep=state.resolve("history_max", 500, int)[0])
 
     _app.state.opengrab = state
 
