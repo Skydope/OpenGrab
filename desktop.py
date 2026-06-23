@@ -23,6 +23,10 @@ import time
 import urllib.request
 import webbrowser
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pystray
 
 # Flag de modo desktop — debe setearse antes de cualquier import de config.
 os.environ.setdefault("OPENGRAB_DESKTOP", "1")
@@ -31,7 +35,7 @@ _HEALTH_TIMEOUT = 10.0
 _lock_handle: object = None
 _server_error: Exception | None = None
 _log = logging.getLogger("opengrab.desktop")
-_tray_icon: object = None  # pystray.Icon, seteado por _system_tray()
+_tray_icon: "pystray.Icon | None" = None  # seteado por _system_tray()
 
 
 def _setup_logging() -> None:
@@ -217,9 +221,11 @@ def _webview2_runtime_installed() -> bool:
     como WOW6432Node: el bootstrapper oficial de 32-bit escribe en WOW6432Node, y
     Python 64-bit no redirige automáticamente.
     """
+    if sys.platform != "win32":
+        return False
     import winreg
 
-    _hklm_roots = (
+    _hklm_roots: tuple[str, ...] = (
         r"SOFTWARE\Microsoft\EdgeUpdate\Clients",
         r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients",
     )
