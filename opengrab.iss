@@ -95,6 +95,8 @@ english.Password=Password (empty = no password):
 english.DownloadFolderPageTitle=Download folder
 english.DownloadFolderPageDesc=Videos will be saved in this folder.
 english.AutoStart=Start with &Windows
+english.WebView2Failed=WebView2 Runtime was not installed correctly.%n%nOpenGrab will continue to work in your browser.%n%nFor the native window, reinstall WebView2 from:%nhttps://go.microsoft.com/fwlink/p/?LinkId=2124703
+spanish.WebView2Failed=El WebView2 Runtime no se instaló correctamente.%n%nOpenGrab seguirá funcionando en el navegador.%n%nPara tener la ventana nativa, reinstalá WebView2 desde:%nhttps://go.microsoft.com/fwlink/p/?LinkId=2124703
 
 [Code]
 var
@@ -109,14 +111,31 @@ begin
 end;
 
 function WebView2Installed(): Boolean;
+var
+  Version: string;
+  Major: Integer;
+  Paths: array of string;
+  I: Integer;
 begin
   Result := False;
-  if RegKeyExists(HKEY_LOCAL_MACHINE,
-    'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}') then
-    Result := True;
-  if RegKeyExists(HKEY_CURRENT_USER,
-    'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}') then
-    Result := True;
+  Paths := [
+    'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+    'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+  ];
+
+  for I := 0 to GetArrayLength(Paths)-1 do
+  begin
+    if RegQueryStringValue(HKEY_LOCAL_MACHINE, Paths[I], 'pv', Version) or
+       RegQueryStringValue(HKEY_CURRENT_USER, Paths[I], 'pv', Version) then
+    begin
+      Major := StrToIntDef(Copy(Version, 1, Pos('.', Version) - 1), 0);
+      if Major >= 86 then
+      begin
+        Result := True;
+        Exit;
+      end;
+    end;
+  end;
 end;
 
 procedure InitializeWizard();
@@ -247,5 +266,12 @@ begin
     WriteConfig();
     if not IsRecommended then
       SetAutoStart(PageAutoStart.Values[0]);
+
+    { Validar que el bootstrapper de WebView2 se instaló correctamente }
+    if WizardIsTaskSelected('webview2') then
+    begin
+      if not WebView2Installed() then
+        MsgBox(CustomMessage('WebView2Failed'), mbInformation, MB_OK);
+    end;
   end;
 end;
