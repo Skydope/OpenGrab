@@ -113,7 +113,7 @@ class TestEvictOnce:
 
         loop_state.evict_once(cutoff_age=3600)
         assert len(calls) == 1
-        assert calls[0] == loop_state.history_max
+        assert calls[0] == loop_state.resolve("history_max", 500, int)[0]
 
     def test_eviction_count_matches_removed(self, loop_state):
         """El valor de retorno refleja exactamente cuantos jobs se borraron."""

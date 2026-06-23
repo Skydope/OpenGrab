@@ -129,6 +129,11 @@ def resource_path(rel: str) -> Path:
     return base / rel
 
 
+def set_ini(key: str, value: str) -> None:
+    """Actualiza una key en el INI en memoria (para que ``resolve()`` la vea)."""
+    _ini[key] = value
+
+
 def _get_version() -> str:
     import tomllib
 

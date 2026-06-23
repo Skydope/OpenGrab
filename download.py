@@ -8,7 +8,7 @@ import socket
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 from urllib.parse import urlparse
 
 import yt_dlp  # type: ignore[import-untyped]
@@ -174,7 +174,7 @@ def _friendly_error(exc: Exception) -> str:
 # --------------------------------------------------------------------------- #
 # yt-dlp wrappers
 # --------------------------------------------------------------------------- #
-def _fetch_info(url: str) -> Dict[str, Any]:
+def _fetch_info(url: str) -> dict[str, Any]:
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -188,7 +188,7 @@ def _fetch_info(url: str) -> Dict[str, Any]:
     return info  # type: ignore[no-any-return]
 
 
-def _fetch_playlist(url: str) -> Dict[str, Any]:
+def _fetch_playlist(url: str) -> dict[str, Any]:
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -269,7 +269,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
     if evt is None:
         raise RuntimeError("job event no encontrado")
 
-    def hook(d: Dict[str, Any]) -> None:
+    def hook(d: dict[str, Any]) -> None:
         if evt is None:
             return
         status = d.get("status")
@@ -299,7 +299,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
     fmt = FORMATS.get(quality, FORMATS["best"])
     if max_size_mb and not is_audio:
         fmt += f"[filesize_approx<{max_size_mb}M]"
-    opts: Dict[str, Any] = {
+    opts: dict[str, Any] = {
         "format": fmt,
         "outtmpl": outtmpl,
         "noplaylist": True,

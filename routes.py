@@ -13,7 +13,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -21,6 +21,7 @@ from slowapi import Limiter
 
 from config import (
     FORMATS,
+    IS_DESKTOP,
     TOKEN,
     TRUST_XFF,
     VERSION,
@@ -138,7 +139,7 @@ async def api_info(
     for f in raw_formats:
         if f.get("vcodec") == "none" and f.get("acodec") == "none":
             continue
-        fmt: Dict[str, Any] = {
+        fmt: dict[str, Any] = {
             "format_id": f.get("format_id", ""),
             "ext": f.get("ext", ""),
             "resolution": f.get("resolution") or "",
@@ -451,10 +452,18 @@ async def api_open_folder(
         os.startfile(folder)
     elif sys.platform == "darwin":
         import subprocess
-        subprocess.run(["open", folder], check=False)
+
+        try:
+            subprocess.run(["open", folder], check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            log.warning("api_open_folder: falló open %s", folder)
     else:
         import subprocess
-        subprocess.run(["xdg-open", folder], check=False)
+
+        try:
+            subprocess.run(["xdg-open", folder], check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            log.warning("api_open_folder: falló xdg-open %s", folder)
     return JSONResponse({"ok": True, "folder": folder})
 
 
@@ -655,9 +664,9 @@ async def api_put_settings(
         # Persist: table + ini
         state.db.set_setting(key, str_value)
         _write_setting_to_ini(key, str_value)
-        # Actualizar config._ini en memoria para que resolve() lo vea
-        import config as _config
-        _config._ini[key] = str_value
+        from config import set_ini
+
+        set_ini(key, str_value)
         updated.append(key)
     if errors and not updated:
         raise HTTPException(400, {"error": "todas las keys fallaron", "details": errors})
@@ -760,6 +769,5 @@ async def index() -> HTMLResponse:
         "__FORMATS_JSON__", _json.dumps(FORMATS).replace("</", "<\\/")
     )
     html = html.replace("__VERSION__", VERSION)
-    from config import IS_DESKTOP
     html = html.replace("__IS_DESKTOP__", "true" if IS_DESKTOP else "false")
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
