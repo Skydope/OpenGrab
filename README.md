@@ -11,7 +11,7 @@
   > Self-hosted video & audio downloader — paste a URL from any site, get an MP4. Wraps yt-dlp (1800+ sites) + ffmpeg behind a clean web UI.
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-1.9.0-green.svg)]()
+  [![Version](https://img.shields.io/badge/version-1.10.0-green.svg)]()
   [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
   [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker)](https://hub.docker.com)
 
@@ -46,6 +46,7 @@
 - [Desktop App](#desktop-app)
 - [Usage](#usage)
 - [Architecture](#architecture)
+- [Security Model](#security-model)
 - [Environment Variables](#environment-variables)
 - [API Reference](#api-reference)
 - [Nginx (TLS)](#nginx-tls)
@@ -73,6 +74,7 @@ Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (engine that supports
 - **Human-friendly error messages** with a retry button for failed downloads
 - **yt-dlp hot-swap** — update the download engine from the UI or on desktop start, without rebuilding
 - Configurable limits: max concurrent jobs, max file size, total disk budget
+- **Layered SSRF protection** — app-level DNS validation blocks private IPs, loopback, and cloud metadata endpoints; optional host-level egress firewall closes DNS rebinding at the network layer
 - **Pinned yt-dlp** in the image for reproducible builds; kept fresh via Dependabot. Optional opt-in auto-update on container start (`OPENGRAB_AUTOUPDATE=1`) for when you need the latest fix immediately
 - Production-ready **nginx reverse proxy** config with TLS, SSE-friendly settings, and security headers
 - **Windows desktop app** — native window via pywebview + WebView2, system tray, single-instance, installer wizard (Spanish/English)
@@ -196,6 +198,97 @@ opengrab/
 - **SSE over WebSockets.** Progress updates use `asyncio.Event` with a 2-second timeout polling loop. Simpler than WebSockets, zero extra dependencies.
 - **RAM + SQLite state.** Job state (progress, speed, ETA) lives in-memory for real-time SSE delivery. State transitions (queued → downloading → done) are persisted to SQLite (WAL mode). History reads come from the database. Old in-memory jobs are evicted after 1 hour.
 - **Offline-first frontend.** Alpine.js is embedded (~43KB), CSS uses variables for theming. No CDN calls, works entirely on LAN.
+
+---
+
+## Security Model
+
+OpenGrab employs a **2-layer SSRF defense** because it acts as a proxy: yt-dlp makes HTTP requests from your server to arbitrary URLs.
+
+### Layer 1 — App-level DNS validation (`download.py`)
+
+The gate function `_is_safe_url()` runs before every URL reaches yt-dlp:
+
+1. **Scheme lock**: only `http` and `https` (blocks `file://`, `ftp://`, `javascript:`, `data:`)
+2. **Hostname blocklist**: `localhost`, `0.0.0.0`, `::1`, `.local`, `.localhost`
+3. **IP literal check**: if the URL contains an IP address, validates against:
+   - Private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
+   - Loopback (`127.0.0.0/8`, `::1`)
+   - Link-local (`169.254.0.0/16` — includes cloud metadata `169.254.169.254`)
+   - Reserved, multicast, unspecified
+4. **DNS resolution**: if the URL has a domain name, resolves **all** IPs (A + AAAA) with
+   `getaddrinfo` and validates each. This closes the classic bypass where a domain like
+   `evil.com` has an A record pointing to `10.0.0.5`.
+5. **Strict on failure**: if DNS resolution fails, the request is blocked — a transient
+   false negative is safer than a silent SSRF bypass. ULA IPv6 (`fc00::/7`) and
+   IPv4-mapped IPv6 (`::ffff:10.0.0.5`) are covered by `is_private` (CPython 3.12+).
+
+Error messages are differentiated: "no se pudo resolver el host" (DNS failure) vs
+"el host resuelve a una IP privada o reservada" (SSRF attempt).
+
+> [!NOTE]
+> Layer 1 cannot fully prevent DNS rebinding (TOCTOU). Between the gate's DNS resolution
+> and yt-dlp's own connection, a malicious DNS server could change the answer. Layer 2
+> closes this gap.
+
+### Layer 2 — Host-level egress firewall (optional, recommended)
+
+For defense in depth, block the container's egress to private ranges at the network level:
+
+```bash
+# Preview the rules before applying
+sudo ./scripts/egress-lockdown.sh --dry-run
+
+# Apply to DOCKER-USER chain (scoped to the OpenGrab container only)
+sudo ./scripts/egress-lockdown.sh --apply
+
+# Optional: log blocked attempts (rate-limited, kern.log)
+sudo ./scripts/egress-lockdown.sh --apply --log
+
+# Verify
+sudo ./scripts/egress-lockdown.sh --list
+
+# Remove
+sudo ./scripts/egress-lockdown.sh --remove
+```
+
+**Design decisions:**
+- Rules live in the **host's** `DOCKER-USER` chain (evaluated before Docker's own rules).
+  No `NET_ADMIN` capability needed in the container — the existing non-root `USER opengrab`
+  model is preserved. Works with Docker rootless as long as iptables runs on the host.
+- **Scoped by container subnet** (detected via `docker inspect`). Only blocks traffic from
+  the OpenGrab container — your other homelab services (Grafana, Home Assistant, etc.)
+  are not affected.
+- The container's own subnet is **exempted** (`RETURN` rule) to allow gateway access
+  (NAT to internet) and peer communication.
+- `127.0.0.0/8` is **not blocked** — Docker's embedded DNS resolver lives at
+  `127.0.0.11` inside the container's network namespace and doesn't traverse DOCKER-USER.
+  Loopback SSRF is already covered by Layer 1.
+
+**IPv6:** the script adds `ip6tables` rules for ULA (`fc00::/7`), link-local
+(`fe80::/10`), and loopback (`::1`) if Docker has IPv6 enabled. As a simpler
+alternative for a video downloader (CDN delivery is IPv4 in practice), disable
+IPv6 on the container by uncommenting in `docker-compose.yml`:
+
+```yaml
+sysctls:
+  - net.ipv6.conf.all.disable_ipv6=1
+```
+
+> [!WARNING]
+> `DOCKER-USER` rules are ephemeral — they're lost when you recreate the Docker
+> network or restart the Docker daemon. Re-run `--apply` (it's idempotent) or tie
+> it to a systemd hook that fires after `docker.service`.
+
+### Summary
+
+| Threat | Layer 1 (app) | Layer 2 (network) |
+|--------|--------------|-------------------|
+| IP literal to private range | Blocked | Dropped |
+| Domain → private IP | Blocked (DNS resolve) | Dropped |
+| DNS rebinding | Not covered (TOCTOU) | Dropped |
+| `file://`, `ftp://`, etc. | Blocked (scheme lock) | — |
+| Cloud metadata (`169.254.169.254`) | Blocked (link-local) | Dropped |
 
 ---
 

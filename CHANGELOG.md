@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] — 2026-06-23
+
+### Security
+
+- **SSRF por DNS cerrado (capa 1).** El gate `_is_safe_url` ahora resuelve DNS
+  (`getaddrinfo` con `AF_UNSPEC`) y valida todas las IPs (A + AAAA) contra las
+  reglas de bloqueo. Antes solo chequeaba IPs literales en la URL; un dominio
+  con registro A apuntando a `169.254.169.254` o `10.0.0.5` pasaba derecho porque
+  `ipaddress.ip_address()` lanzaba `ValueError` y el gate retornaba `True`.
+  Ahora se resuelve y se bloquea si cualquiera de las IPs cae en rangos privados,
+  loopback, link-local (metadata cloud), reservados, multicast o unspecified.
+  Política **strict on DNS failure**: si la resolución falla, bloquea con mensaje
+  "no se pudo resolver el host" (distinto de "resuelve a IP privada").
+- **Egress firewall en DOCKER-USER (capa 2).** Script `scripts/egress-lockdown.sh`
+  que inserta reglas DROP en la chain `DOCKER-USER` del host, scopeadas por la
+  subnet del contenedor, sin afectar otros contenedores del homelab. Cierra el
+  TOCTOU/DNS-rebinding residual entre la resolución de capa 1 y la conexión real
+  de yt-dlp. Sin `127.0.0.0/8` (respeta el DNS embebido de Docker en
+  `127.0.0.11`). Idempotente (`-C` check), con `--dry-run`, `--log` y `--remove`.
+
+### Added
+
+- `scripts/egress-lockdown.sh`: firewall egress scopeado por contenedor.
+- 14 tests de loops de fondo en `tests/test_state.py`: 8 de `evict_once`, 1 de
+  `evict_loop`, 5 de `watch_loop` (dispatch, dedup por downloaded/active/interval,
+  error handling). Mismo patrón que `test_dispatch.py`.
+
+### Changed
+
+- `_is_safe_url` ahora devuelve `tuple[bool, str]`; los 4 endpoints que la llaman
+  propagan el `reason` al usuario en vez de un mensaje hardcodeado.
+- CI: el job `typecheck` ahora matrixea Python `["3.12", "3.13", "3.14"]` (antes
+  pineaba solo 3.13). Errores de mypy específicos de 3.14 ya no se escapan a CI.
+
 ## [1.9.0] — 2026-06-23
 
 ### Added
