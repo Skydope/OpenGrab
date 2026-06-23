@@ -85,15 +85,21 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     task = asyncio.create_task(state.evict_loop())
     watch_task = asyncio.create_task(state.watch_loop())
+    dispatch_task = asyncio.create_task(state.dispatch_loop())
     yield
     task.cancel()
     watch_task.cancel()
+    dispatch_task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
     try:
         await watch_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await dispatch_task
     except asyncio.CancelledError:
         pass
     db.close()

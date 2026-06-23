@@ -378,3 +378,165 @@ def test_api_storage_cleanup(client):
     data = r.json()
     assert "cleaned" in data
     assert "freed_bytes" in data
+
+
+# ------------------------- batch playlist download ---------------------------- #
+def test_batch_download_creates_queued_jobs(client, app_state):
+    """POST /api/playlist/download with 3 URLs creates 3 jobs in DB with status queued."""
+    urls = [
+        "https://youtube.com/watch?v=abc1",
+        "https://youtube.com/watch?v=abc2",
+        "https://youtube.com/watch?v=abc3",
+    ]
+    r = client.post("/api/playlist/download", json={"urls": urls, "quality": "720p"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["queued"] == 3
+    assert len(data["job_ids"]) == 3
+    assert data["skipped"] == []
+
+    # Verify jobs are in DB with status queued (NOT in state.jobs)
+    for job_id in data["job_ids"]:
+        job = app_state.db.get_job(job_id)
+        assert job is not None
+        assert job["status"] == "queued"
+        assert job["url"] in urls
+        assert job["quality"] == "720p"
+        # state.jobs should NOT have these yet (dispatch_loop handles that)
+        assert job_id not in app_state.jobs
+
+
+def test_batch_download_caps_at_100_urls(client, app_state):
+    """POST with 150 URLs returns 100 queued, 50 skipped with reason 'limite de batch (100)'."""
+    # Create 150 URLs
+    urls = [f"https://youtube.com/watch?v=video{i:03d}" for i in range(150)]
+    r = client.post("/api/playlist/download", json={"urls": urls, "quality": "best"})
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["queued"] == 100
+    assert len(data["job_ids"]) == 100
+    assert len(data["skipped"]) == 50
+
+    # All skipped should have reason "limite de batch (100)"
+    for skip in data["skipped"]:
+        assert skip["reason"] == "limite de batch (100)"
+        assert "youtube.com" in skip["url"]
+
+
+def test_batch_download_invalid_urls_skipped(client):
+    """POST with invalid URLs returns them in skipped list."""
+    urls = [
+        "https://youtube.com/watch?v=valid1",
+        "not-a-url",
+        "ftp://invalid-scheme.com/video",
+        "https://youtube.com/watch?v=valid2",
+    ]
+    r = client.post("/api/playlist/download", json={"urls": urls, "quality": "best"})
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["queued"] == 2
+    assert len(data["skipped"]) == 2
+
+    skipped_urls = {s["url"] for s in data["skipped"]}
+    assert "not-a-url" in skipped_urls
+    assert "ftp://invalid-scheme.com/video" in skipped_urls
+
+    for skip in data["skipped"]:
+        assert skip["reason"] == "URL invalida"
+
+
+def test_batch_download_invalid_quality_returns_400(client):
+    """POST with invalid quality returns 400."""
+    r = client.post(
+        "/api/playlist/download",
+        json={"urls": ["https://youtube.com/watch?v=abc"], "quality": "invalid"},
+    )
+    assert r.status_code == 400
+
+
+def test_batch_download_rate_limited(client):
+    """Three fast POSTs to /api/playlist/download: first two succeed, third gets 429 (2/min limit)."""
+    import time
+
+    urls = ["https://youtube.com/watch?v=batch1"]
+
+    # First two requests should succeed
+    r1 = client.post("/api/playlist/download", json={"urls": urls, "quality": "best"})
+    assert r1.status_code == 200
+
+    r2 = client.post("/api/playlist/download", json={"urls": urls, "quality": "best"})
+    assert r2.status_code == 200
+
+    # Third request immediately should be rate limited (2/min limit)
+    r3 = client.post("/api/playlist/download", json={"urls": urls, "quality": "best"})
+    assert r3.status_code == 429
+
+
+# ------------------------- batch status endpoint ----------------------------- #
+def test_batch_status_returns_mixed_memory_and_db(client, app_state):
+    """batch-status returns jobs from both state.jobs (memory) and DB."""
+    from models import Job
+
+    # Create a job in state.jobs (like a running download)
+    job_in_memory = Job(id="memory-job", created=1000.0)
+    job_in_memory.status = "downloading"
+    job_in_memory.percent = 42.0
+    job_in_memory.speed = "1.5MB/s"
+    job_in_memory.eta = "00:30"
+    job_in_memory.error = ""
+    job_in_memory.filename = "video1.mp4"
+    job_in_memory.title = "Video One"
+    app_state.jobs["memory-job"] = job_in_memory
+
+    # Create a job only in DB (finished/completed)
+    db_job_id = "db-job-123"
+    app_state.db.insert_job(db_job_id, "https://youtube.com/watch?v=abc", "720p")
+    app_state.db.update_job(
+        db_job_id,
+        status="done",
+        title="Video Two",
+        filename="video2.mp4",
+        completed=99999,
+    )
+
+    # batch-status should return both
+    r = client.get("/api/jobs/batch-status?ids=memory-job,db-job-123")
+    assert r.status_code == 200
+    data = r.json()
+
+    assert len(data) == 2
+
+    # Find each job's data
+    memory_data = next((j for j in data if j["job_id"] == "memory-job"), None)
+    db_data = next((j for j in data if j["job_id"] == "db-job-123"), None)
+
+    assert memory_data is not None
+    assert memory_data["status"] == "downloading"
+    assert memory_data["percent"] == 42.0
+    assert memory_data["speed"] == "1.5MB/s"
+    assert memory_data["eta"] == "00:30"
+    assert memory_data["error"] == ""
+    assert memory_data["filename"] == "video1.mp4"
+    assert memory_data["title"] == "Video One"
+
+    assert db_data is not None
+    assert db_data["status"] == "done"
+    assert db_data["percent"] == 100.0
+    assert db_data["filename"] == "video2.mp4"
+    assert db_data["title"] == "Video Two"
+
+
+def test_batch_status_unknown_ids_returns_empty(client, app_state):
+    """batch-status with unknown IDs still returns results (not 404)."""
+    r = client.get("/api/jobs/batch-status?ids=unknown1,unknown2")
+    assert r.status_code == 200
+    data = r.json()
+
+    # Should return the unknown IDs with empty/default status
+    assert len(data) == 2
+
+    unknown_ids = {j["job_id"] for j in data}
+    assert unknown_ids == {"unknown1", "unknown2"}
+

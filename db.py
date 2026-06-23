@@ -150,6 +150,18 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
+    def get_jobs(self, job_ids: list[str]) -> list[dict[str, Any]]:
+        """Fetch multiple jobs by ID in a single query. Returns empty list if none found."""
+        if not job_ids:
+            return []
+        placeholders = ", ".join("?" * len(job_ids))
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM jobs WHERE id IN ({placeholders})",
+                job_ids,
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_active_jobs(self) -> list[dict[str, Any]]:
         placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)
         with self._lock:
@@ -234,6 +246,14 @@ class Database:
             rows = self._conn.execute(
                 "SELECT id, filepath, workdir FROM jobs "
                 "WHERE status IN ('done', 'error', 'interrupted')"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_queued(self, limit: int) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM jobs WHERE status='queued' ORDER BY created LIMIT ?",
+                (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
 

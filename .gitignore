@@ -12,6 +12,9 @@ improve.md
 .pytest_cache/
 tests/_test_downloads/
 
+# SDD artifacts
+.atl/
+
 # PyInstaller / build de escritorio
 build/
 dist/

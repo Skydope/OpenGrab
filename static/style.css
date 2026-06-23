@@ -325,3 +325,108 @@
   /* Copy button — pop animation */
   @keyframes copy-pop{0%{transform:scale(1)} 50%{transform:scale(1.25)} 100%{transform:scale(1)}}
   .copy-btn.copied{animation:copy-pop .3s ease}
+
+  /* Batch playlist download progress */
+  .batch-progress{
+    margin-top:18px;
+    background:var(--ink);
+    border:1px solid var(--line);
+    border-radius:8px;
+    overflow:hidden;
+  }
+  .batch-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 14px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel-2);
+  }
+  .batch-title{
+    font-family:var(--mono);
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--muted);
+  }
+  .batch-count{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--amber);
+  }
+  .batch-grid{
+    max-height:320px;
+    overflow:auto;
+  }
+  .batch-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:8px 14px;
+    border-bottom:1px solid var(--line);
+    font-family:var(--mono);
+    font-size:13px;
+  }
+  .batch-row:last-child{border-bottom:0}
+  .batch-row:hover{background:var(--hover-row)}
+  .batch-status-icon{font-size:14px; flex:none; width:20px; text-align:center}
+  .batch-row.status-done .batch-status-icon{color:var(--ok)}
+  .batch-row.status-error .batch-status-icon{color:var(--danger)}
+  .batch-row.status-interrupted .batch-status-icon{color:var(--amber)}
+  .batch-row.status-downloading .batch-status-icon,
+  .batch-row.status-processing .batch-status-icon,
+  .batch-row.status-starting .batch-status-icon{color:var(--amber)}
+  .batch-title-cell{
+    flex:1;
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:var(--text);
+  }
+  .batch-row.status-due .batch-title-cell,
+  .batch-row.status-error .batch-title-cell{color:var(--faint)}
+  .batch-progress-bar{
+    width:80px;
+    height:6px;
+    background:var(--line);
+    border-radius:3px;
+    overflow:hidden;
+    flex:none;
+  }
+  .batch-progress-bar i{
+    display:block;
+    height:100%;
+    background:var(--amber);
+    border-radius:3px;
+    transition:width .3s ease;
+  }
+  .batch-pct{
+    font-size:11px;
+    color:var(--muted);
+    width:36px;
+    flex:none;
+    text-align:right;
+  }
+  .batch-speed{
+    font-size:11px;
+    color:var(--muted);
+    width:60px;
+    flex:none;
+    text-align:right;
+  }
+  .batch-eta{
+    font-size:11px;
+    color:var(--muted);
+    width:50px;
+    flex:none;
+    text-align:right;
+  }
+  .batch-error{
+    font-size:11px;
+    color:var(--danger);
+    flex:1;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }

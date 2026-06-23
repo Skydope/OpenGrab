@@ -34,3 +34,8 @@ class Job(BaseModel):
     downloaded: int = 0
     total: int = 0
     title: str = ""
+
+
+class BatchReq(BaseModel):
+    urls: list[str]
+    quality: str = "best"

@@ -130,6 +130,37 @@
       </div>
     </div>
 
+    <!-- Batch progress display -->
+    <div x-show="batchJobIds.length > 0" x-transition.duration.200ms class="batch-progress">
+      <div class="batch-header">
+        <span class="batch-title">Descarga en lote</span>
+        <span class="batch-count" x-text="Object.keys(batchJobs).length + ' / ' + batchJobIds.length"></span>
+      </div>
+      <div class="batch-grid">
+        <template x-for="jobId in batchJobIds" :key="jobId">
+          <div class="batch-row" :class="'status-' + (batchJobs[jobId]?.status || 'queued')">
+            <span class="batch-status-icon" x-text="{
+              'queued': '⏳',
+              'starting': '⏳',
+              'downloading': '↓',
+              'processing': '⚙',
+              'done': '✓',
+              'error': '✗',
+              'interrupted': '⚠'
+            }[batchJobs[jobId]?.status || 'queued']"></span>
+            <span class="batch-title-cell" x-text="batchJobs[jobId]?.title || jobId" :title="batchJobs[jobId]?.filename || ''"></span>
+            <div class="batch-progress-bar" x-show="batchJobs[jobId]?.status === 'downloading' || batchJobs[jobId]?.status === 'processing'">
+              <i :style="'width:' + (batchJobs[jobId]?.percent || 0) + '%'"></i>
+            </div>
+            <span class="batch-pct" x-text="(batchJobs[jobId]?.percent || 0).toFixed(0) + '%'" x-show="batchJobs[jobId]?.status === 'downloading' || batchJobs[jobId]?.status === 'processing'"></span>
+            <span class="batch-speed" x-text="batchJobs[jobId]?.speed || ''" x-show="batchJobs[jobId]?.speed"></span>
+            <span class="batch-eta" x-text="batchJobs[jobId]?.eta || ''" x-show="batchJobs[jobId]?.eta"></span>
+            <span class="batch-error" x-show="batchJobs[jobId]?.status === 'error'" x-text="batchJobs[jobId]?.error || 'Error'"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <div class="mt-18">
       <button @click="download" :disabled="!meta || downloading" class="btn-block">Descargar</button>
     </div>
@@ -445,6 +476,13 @@ document.addEventListener('alpine:init', () => {
     newChannelQuality: "best",
     newChannelInterval: 60,
 
+    // ── Batch Playlist Download ────────────────
+    batchJobIds: [],
+    batchJobs: {},      // {jobId: {status, percent, speed, eta, error, filename, title}}
+    batchPollTimer: null,
+    batchDone: false,
+    batchStartTime: null,
+
     // ── Inspect ───────────────────────────────
     classifyUrl(u) {
       const hasV = /[?&]v=/.test(u);
@@ -553,41 +591,101 @@ document.addEventListener('alpine:init', () => {
       this.resetUI();
       this.downloading = true;
       this.addLine("$", "playlist: " + selected.length + " videos");
-      let ok = 0, fail = 0;
-      for (let i = 0; i < selected.length; i++) {
-        const v = selected[i];
-        const n = i + 1;
-        try {
-          if (!v || !v.url) { fail++; continue; }
-          this.addLine("$", "[" + n + "/" + selected.length + "] iniciando: " + (v.title || "—"));
-          let r = await fetch("/api/jobs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: v.url, quality: this.quality }),
-          });
-          if (r.status === 429) {
-            this.addLine("›", "limite de velocidad, esperando 20s…");
-            await new Promise(resolve => setTimeout(resolve, 20000));
-            r = await fetch("/api/jobs", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: v.url, quality: this.quality }),
-            });
-          }
-          if (!r.ok) throw new Error((await r.json()).detail || "No se pudo crear el job.");
-          const { job_id } = await r.json();
-          await this.waitJob(job_id, v.title);
-          ok++;
-        } catch (err) {
-          this.addLine("✗", (err && err.message) || "Error inesperado", "err");
-          fail++;
+
+      // Collect URLs for batch download
+      const urls = selected.map(v => v.url);
+
+      try {
+        const r = await fetch("/api/playlist/download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls: urls, quality: this.quality }),
+        });
+
+        if (r.status === 429) {
+          this.errorMsg = "Rate limit exceeded, try in a minute";
+          this.downloading = false;
+          return;
         }
-        if (i < selected.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        if (r.status === 507) {
+          this.errorMsg = "Storage full";
+          this.downloading = false;
+          return;
         }
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          this.errorMsg = data.detail || "Error starting batch download";
+          this.downloading = false;
+          return;
+        }
+
+        const data = await r.json();
+        this.batchJobIds = data.job_ids || [];
+        this.batchStartTime = Date.now();
+        this.batchDone = false;
+        this.batchJobs = {};
+
+        // Start polling
+        this.batchPollTimer = setInterval(() => this.pollBatchStatus(), 2000);
+        // Initial poll immediately
+        this.pollBatchStatus();
+
+      } catch (err) {
+        this.errorMsg = "Network error";
+        this.downloading = false;
       }
-      this.addLine(ok > 0 ? "✓" : "✗", "completado: " + ok + " ok, " + fail + " fallidos", ok > 0 ? "ok" : "err");
-      this.downloading = false;
+    },
+
+    pollBatchStatus() {
+      if (this.batchDone || !this.batchJobIds.length) return;
+
+      // Safety timeout check
+      if (this.batchStartTime && Date.now() - this.batchStartTime > 60 * 60 * 1000) {
+        this.batchDone = true;
+        if (this.batchPollTimer) {
+          clearInterval(this.batchPollTimer);
+          this.batchPollTimer = null;
+        }
+        // Show warning but still show final status
+      }
+
+      const ids = this.batchJobIds.join(",");
+      fetch(`/api/jobs/batch-status?ids=${ids}`, {credentials: 'include'})
+        .then(r => r.json())
+        .then(jobs => {
+          jobs.forEach(j => {
+            this.batchJobs[j.job_id] = j;
+          });
+
+          // Check if all terminal
+          const allTerminal = this.batchJobIds.every(id => {
+            const job = this.batchJobs[id];
+            return job && ['done', 'error', 'interrupted'].includes(job.status);
+          });
+
+          if (allTerminal) {
+            this.batchDone = true;
+            if (this.batchPollTimer) {
+              clearInterval(this.batchPollTimer);
+              this.batchPollTimer = null;
+            }
+            // Summary
+            const ok = this.batchJobIds.filter(id => this.batchJobs[id]?.status === 'done').length;
+            const fail = this.batchJobIds.filter(id => this.batchJobs[id]?.status === 'error').length;
+            const skipped = this.batchJobIds.filter(id => this.batchJobs[id]?.status === 'interrupted').length;
+            this.addLine(
+              fail === 0 ? "✓" : "✗",
+              `completado: ${ok} ok, ${fail} fallidos, ${skipped} omitidos`,
+              fail === 0 ? "ok" : "err"
+            );
+            this.downloading = false;
+            if (this.historyLoaded) this.loadHistory();
+          }
+        })
+        .catch(err => {
+          console.error('Batch status poll failed:', err);
+        });
+    },
       if (this.historyLoaded) this.loadHistory();
     },
 
@@ -746,6 +844,15 @@ document.addEventListener('alpine:init', () => {
       this.playlistVideos = [];
       this.formats = [];
       this.showFormats = false;
+      // Clear batch state
+      if (this.batchPollTimer) {
+        clearInterval(this.batchPollTimer);
+        this.batchPollTimer = null;
+      }
+      this.batchJobIds = [];
+      this.batchJobs = {};
+      this.batchDone = false;
+      this.batchStartTime = null;
     },
 
     async openFolder(jobId) {

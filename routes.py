@@ -36,7 +36,7 @@ from download import (
     _run_download,
     _sanitize_url,
 )
-from models import AuthReq, ChannelReq, Job, JobReq
+from models import AuthReq, BatchReq, ChannelReq, Job, JobReq
 from state import AppState
 
 log = logging.getLogger("opengrab")
@@ -187,6 +187,99 @@ async def api_playlist(
     except Exception as exc:
         raise HTTPException(502, f"No se pudo leer la playlist: {exc}")
     return JSONResponse(info)
+
+
+@router.post("/api/playlist/download")
+@limiter.limit("2/minute")
+async def api_batch_download(
+    request: Request,
+    req: BatchReq,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> dict[str, Any]:
+    # Validate quality
+    if req.quality not in FORMATS:
+        raise HTTPException(400, "Calidad invalida.")
+    # Validate each URL
+    skipped = []
+    valid_urls = []
+    for url in req.urls:
+        if not _is_safe_url(url.strip()):
+            skipped.append({"url": url, "reason": "URL invalida"})
+        else:
+            valid_urls.append(url.strip())
+    # Cap at 100
+    if len(valid_urls) > 100:
+        for url in valid_urls[100:]:
+            skipped.append({"url": url, "reason": "limite de batch (100)"})
+        valid_urls = valid_urls[:100]
+    # Insert into DB (queued only, NOT state.jobs)
+    job_ids = []
+    for url in valid_urls:
+        job_id = uuid.uuid4().hex[:12]
+        state.db.insert_job(job_id, url, req.quality)
+        job_ids.append(job_id)
+    return {"job_ids": job_ids, "queued": len(job_ids), "skipped": skipped}
+
+
+@router.get("/api/jobs/batch-status")
+async def api_batch_status(
+    request: Request,
+    ids: str,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    id_list = [i.strip() for i in ids.split(",") if i.strip()]
+    in_memory = {}
+    missing = []
+    for job_id in id_list:
+        if job_id in state.jobs:
+            job = state.jobs[job_id]
+            in_memory[job_id] = {
+                "job_id": job_id,
+                "status": job.status,
+                "percent": job.percent,
+                "speed": job.speed,
+                "eta": job.eta,
+                "error": job.error,
+                "filename": job.filename,
+                "title": job.title,
+            }
+        else:
+            missing.append(job_id)
+    # Batch DB query for missing
+    db_results = {}
+    if missing:
+        rows = state.db.get_jobs(missing)
+        for row in rows:
+            d = dict(row)
+            db_results[d["id"]] = {
+                "job_id": d["id"],
+                "status": d["status"],
+                "percent": 100.0 if d["status"] == "done" else 0.0,
+                "speed": "",
+                "eta": "",
+                "error": d.get("error") or "",
+                "filename": d.get("filename") or "",
+                "title": d.get("title") or "",
+            }
+    # Combine: memory jobs first, then DB jobs that weren't in memory
+    result = list(in_memory.values()) + [v for k, v in db_results.items() if k not in in_memory]
+    # Add unknown IDs with empty status
+    found_ids = set(in_memory.keys()) | set(db_results.keys())
+    for job_id in missing:
+        if job_id not in found_ids:
+            result.append({
+                "job_id": job_id,
+                "status": "",
+                "percent": 0.0,
+                "speed": "",
+                "eta": "",
+                "error": "",
+                "filename": "",
+                "title": "",
+            })
+    return JSONResponse(result)
 
 
 @router.post("/api/jobs")

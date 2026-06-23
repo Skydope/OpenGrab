@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from config import MAX_JOBS, MAX_TOTAL_MB
 from db import Database
 from models import Job
 
@@ -376,3 +377,29 @@ class AppState:
                             )
                     except Exception:
                         log.exception("watch: error en canal %s", ch["url"])
+
+    # ------------------------------------------------------------------ #
+    # Batch dispatch loop (playlist download)
+    # ------------------------------------------------------------------ #
+    async def dispatch_loop(self) -> None:
+        from download import _run_download
+
+        while True:
+            await asyncio.sleep(2.0)
+            queued = self.db.get_queued(limit=MAX_JOBS)
+            for job_dict in queued:
+                job_id = job_dict["id"]
+                if job_id in self.jobs:
+                    continue
+                if MAX_TOTAL_MB and self.current_usage_bytes() >= MAX_TOTAL_MB * 1024 * 1024:
+                    self.db.update_job(job_id, status="error", error="Almacenamiento lleno")
+                    continue
+                self.db.update_job(job_id, status="starting")
+                self.jobs[job_id] = Job(id=job_id, created=time.time())
+                self.job_events[job_id] = asyncio.Event()
+                loop = asyncio.get_running_loop()
+                task = asyncio.create_task(
+                    asyncio.to_thread(_run_download, self, job_id, job_dict["url"], job_dict["quality"], loop)
+                )
+                self.running_tasks.add(task)
+                task.add_done_callback(self.running_tasks.discard)

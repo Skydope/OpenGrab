@@ -283,3 +283,103 @@ def test_get_deletable_jobs_returns_correct_set(db):
     jobs = db.get_deletable_jobs()
     ids = {j["id"] for j in jobs}
     assert ids == {"x", "y"}
+
+
+# ------------------------------ get_queued -------------------------------- #
+def test_get_queued_returns_oldest_first(db):
+    """get_queued returns the oldest queued jobs first, respecting limit."""
+    db.insert_job("oldest", "u", "best", created=100.0)
+    db.insert_job("middle", "u", "best", created=200.0)
+    db.insert_job("newest", "u", "best", created=300.0)
+    result = db.get_queued(2)
+    assert len(result) == 2
+    assert [r["id"] for r in result] == ["oldest", "middle"]
+
+
+def test_get_queued_respects_limit(db):
+    """get_queued returns exactly `limit` jobs when enough queued jobs exist."""
+    for i in range(5):
+        db.insert_job(f"job{i}", "u", "best", created=float(i * 100))
+    result = db.get_queued(3)
+    assert len(result) == 3
+
+
+def test_get_queued_empty(db):
+    """get_queued returns empty list when no queued jobs exist."""
+    db.insert_job("done1", "u", "best", status="done")
+    db.insert_job("done2", "u", "best", status="error")
+    result = db.get_queued(10)
+    assert result == []
+
+
+def test_get_queued_only_returns_queued(db):
+    """get_queued ignores jobs with non-queued statuses."""
+    db.insert_job("queued1", "u", "best", status="queued", created=100.0)
+    db.insert_job("done1", "u", "best", status="done", created=200.0)
+    db.insert_job("downloading1", "u", "best", status="downloading", created=300.0)
+    db.insert_job("queued2", "u", "best", status="queued", created=400.0)
+    result = db.get_queued(10)
+    ids = [r["id"] for r in result]
+    assert "queued1" in ids
+    assert "queued2" in ids
+    assert "done1" not in ids
+    assert "downloading1" not in ids
+
+
+# ------------------------------ get_jobs (batch fetch) ------------------------------ #
+def test_get_jobs_returns_multiple_by_id(db):
+    """get_jobs fetches multiple jobs by ID in a single query."""
+    db.insert_job("job1", "https://x.com/1", "720p")
+    db.insert_job("job2", "https://x.com/2", "best")
+    db.insert_job("job3", "https://x.com/3", "480p")
+    db.update_job("job2", status="done", completed=999)
+
+    result = db.get_jobs(["job1", "job2", "job3"])
+    assert len(result) == 3
+    ids = {r["id"] for r in result}
+    assert ids == {"job1", "job2", "job3"}
+
+
+def test_get_jobs_returns_empty_for_unknown_ids(db):
+    """get_jobs returns empty list when no jobs match the IDs."""
+    db.insert_job("existing", "https://x.com/1", "best")
+    result = db.get_jobs(["nonexistent1", "nonexistent2"])
+    assert result == []
+
+
+def test_get_jobs_returns_partial_matches(db):
+    """get_jobs returns only the jobs that exist among requested IDs."""
+    db.insert_job("exists1", "https://x.com/1", "best")
+    db.insert_job("exists2", "https://x.com/2", "best")
+    result = db.get_jobs(["exists1", "missing", "exists2"])
+    assert len(result) == 2
+    ids = {r["id"] for r in result}
+    assert ids == {"exists1", "exists2"}
+
+
+def test_get_jobs_empty_input(db):
+    """get_jobs returns empty list when given an empty list of IDs."""
+    db.insert_job("job1", "https://x.com/1", "best")
+    result = db.get_jobs([])
+    assert result == []
+
+
+# ------------------------------ BatchReq --------------------------------- #
+def test_batch_req_accepts_urls_and_quality():
+    """BatchReq model accepts urls list and quality string with default 'best'."""
+    from models import BatchReq
+
+    # Test with explicit quality
+    req = BatchReq(urls=["https://youtu.be/abc", "https://youtu.be/xyz"], quality="720p")
+    assert req.urls == ["https://youtu.be/abc", "https://youtu.be/xyz"]
+    assert req.quality == "720p"
+
+    # Test with default quality
+    req_default = BatchReq(urls=["https://youtu.be/abc"])
+    assert req_default.urls == ["https://youtu.be/abc"]
+    assert req_default.quality == "best"
+
+    # Test with empty urls list
+    req_empty = BatchReq(urls=[])
+    assert req_empty.urls == []
+    assert req_empty.quality == "best"
