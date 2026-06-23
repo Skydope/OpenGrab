@@ -560,9 +560,10 @@ class AppState:
             return
         with self._finalize_lock:
             library_dir_raw, _ = self.resolve("library_dir", "", str)
-            if not library_dir_raw:
-                library_dir_raw, _ = self.resolve("name_template", "{title}", str)
-            library_dir = Path(library_dir_raw).resolve()
+            if library_dir_raw:
+                library_dir = Path(library_dir_raw).resolve()
+            else:
+                library_dir = self.out_dir.resolve()
             template, _ = self.resolve("name_template", "{title}", str)
 
             ext = final.suffix.lstrip(".") or ("mp3" if quality == "audio" else "mp4")

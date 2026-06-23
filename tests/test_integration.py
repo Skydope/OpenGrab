@@ -79,3 +79,43 @@ def test_finalize_desktop_moves_file(client, app_state, monkeypatch):
     assert expected.exists(), f"Expected {expected} to exist, library_dir contents: {list(library_dir.iterdir())}"
     assert not video_file.exists(), "Original file should have been moved"
     assert job.filepath == str(expected)
+
+
+def test_finalize_desktop_empty_library_dir_falls_back_to_out_dir(
+    client, app_state, monkeypatch
+):
+    """Sin library_dir: el fallback debe usar out_dir, NO el name_template.
+
+    Regresión: antes el fallback resolvía name_template ("{title}") y lo usaba
+    como directorio de librería, creando un dir literal "{title}/".
+    """
+    import config
+    import tempfile
+    from models import Job
+
+    workdir = Path(tempfile.mkdtemp(prefix="opengrab_work_"))
+    video_file = workdir / "video.mp4"
+    video_file.write_bytes(b"fake video content")
+
+    monkeypatch.setattr(config, "IS_DESKTOP", True)
+    # NO seteamos library_dir -> debe caer al fallback (out_dir).
+    # Precondición explícita: order-independent ante leaks de otros tests.
+    assert app_state.resolve("library_dir", "", str)[0] == ""
+    app_state.db.set_setting("name_template", "{title}")
+
+    job = Job(id="finalize-fallback", created=time.time())
+    job.filepath = str(video_file)
+    app_state.jobs["finalize-fallback"] = job
+
+    info = {"title": "Test Video", "ext": "mp4"}
+    app_state._finalize_desktop("finalize-fallback", workdir, video_file, info, "best")
+
+    expected = app_state.out_dir.resolve() / "Test Video.mp4"
+    assert expected.exists(), (
+        f"Esperaba {expected}; out_dir contiene: "
+        f"{list(app_state.out_dir.resolve().iterdir())}"
+    )
+    assert job.filepath == str(expected)
+    # No debe existir un directorio literal "{title}" en ningún lado
+    assert not (app_state.out_dir.resolve() / "{title}").exists()
+    assert "{title}" not in job.filepath
