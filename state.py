@@ -97,6 +97,17 @@ class AppState:
     # ------------------------------------------------------------------ #
     @staticmethod
     def _secure_delete_file(filepath: str) -> None:
+        """Sobrescribe el archivo (0x00 / 0xFF / random) y lo borra.
+
+        CAVEAT: el overwrite in-place solo da garantias reales sobre medios que
+        reescriben el mismo sector (HDD magnetico). En SSD/NVMe (wear-leveling),
+        filesystems copy-on-write (Btrfs, ZFS, APFS) o con snapshots, los datos
+        viejos pueden persistir en bloques no mapeados que estas pasadas no tocan.
+        En esos medios esto reduce la recuperacion casual pero NO es un borrado
+        forense garantizado; para eso hace falta cifrado en reposo o TRIM/secure-erase
+        a nivel de dispositivo. Mantenemos las 3 pasadas porque no hacen daño y
+        ayudan en el caso HDD, sin venderlas como mas de lo que son.
+        """
         path = Path(filepath)
         if not path.is_file():
             return
