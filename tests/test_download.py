@@ -449,6 +449,35 @@ def test_run_download_does_not_record_on_error(dl_state, monkeypatch):
     assert not dl_state.db.is_downloaded("youtube", "abc123")
 
 
+def test_run_download_persists_error_status_to_db(dl_state, monkeypatch):
+    """Un job que falla debe quedar status='error' en la DB, no 'queued'.
+
+    Si quedara 'queued', el dispatch_loop lo re-despacharia tras evict_once
+    (regresion: descarga fantasma ~1h despues de un fallo manual).
+    """
+    import config
+    from download import _run_download
+
+    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
+    loop = asyncio.new_event_loop()
+
+    jid = _make_job(dl_state, "err-persist")
+    assert dl_state.db.get_job(jid)["status"] == "queued"
+
+    def boom(*a, **kw):
+        raise RuntimeError("403 Forbidden")
+
+    with patch("download.yt_dlp.YoutubeDL", side_effect=boom):
+        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+    loop.close()
+
+    j = dl_state.db.get_job(jid)
+    assert j["status"] == "error"
+    assert j["error"]  # mensaje friendly no vacio
+    # Y, lo importante: ya no es candidato para el dispatch_loop.
+    assert jid not in [r["id"] for r in dl_state.db.get_queued(limit=10)]
+
+
 # --------------------- secure delete ----------------------------------- #
 def test_secure_delete_file_three_pass(tmp_path):
     from state import AppState

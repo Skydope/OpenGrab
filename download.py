@@ -342,6 +342,13 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
     except Exception as exc:
         job.status = "error"
         job.error = _friendly_error(exc)
+        # Persistir el error en la DB. Si no lo hacemos, un job manual que falla
+        # queda 'queued' en SQLite (insert_job lo dejo asi y complete_job nunca corre),
+        # y el dispatch_loop lo re-despacha cuando evict_once lo saca de memoria (~1h).
+        try:
+            state.db.update_job(job_id, status="error", error=job.error)
+        except Exception:
+            log.exception("job %s: no se pudo persistir estado 'error' en DB", job_id)
         loop.call_soon_threadsafe(evt.set)
         log.error("job %s: falló", job_id, exc_info=True)
     finally:
