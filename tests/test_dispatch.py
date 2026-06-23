@@ -153,7 +153,13 @@ class TestDispatchLoopBasic:
 
     @pytest.mark.asyncio
     async def test_dispatch_loop_marks_starting_before_adding_to_jobs(self, dispatch_state, monkeypatch):
-        """DB should show status='starting' BEFORE job is added to state.jobs."""
+        """DB should show status='starting' BEFORE _run_download is invoked.
+
+        _run_download se ejecuta via asyncio.to_thread, que espera un callable
+        SINCRONO. Si el fake es async, to_thread crea la corrutina y nadie la
+        awaitea -> el dict queda vacio y el assert pasa en vacio. Por eso el fake
+        es sync y al final drenamos las tasks despachadas antes de afirmar.
+        """
         seed_queued_jobs(dispatch_state, count=2)
 
         monkeypatch.setattr("config.MAX_JOBS", 5)
@@ -162,8 +168,8 @@ class TestDispatchLoopBasic:
         # the job is already marked 'starting' in DB
         db_status_at_download_time = {}
 
-        async def fake_run_download(state, job_id, url, quality, loop):
-            # Check DB status at the moment _run_download starts
+        def fake_run_download(state, job_id, url, quality, loop):
+            # Check DB status at the moment _run_download starts (corre en un thread).
             job = state.db.get_job(job_id)
             db_status_at_download_time[job_id] = job["status"]
 
@@ -183,6 +189,13 @@ class TestDispatchLoopBasic:
             except asyncio.CancelledError:
                 pass
 
+        # Drenar las tasks despachadas (asyncio.to_thread) ya con el sleep real
+        # restaurado, para que el fake sincrono corra antes de afirmar.
+        if dispatch_state.running_tasks:
+            await asyncio.gather(*dispatch_state.running_tasks, return_exceptions=True)
+
+        # Guardia anti-vacuo: tiene que haberse invocado _run_download.
+        assert db_status_at_download_time, "_run_download no se invoco para ningun job"
         # Verify that for each dispatched job, DB already showed 'starting'
         for job_id, status in db_status_at_download_time.items():
             assert status == "starting", f"Job {job_id} had status '{status}' in DB, expected 'starting'"
