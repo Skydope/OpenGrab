@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import configparser
 import json as _json
 import logging
 import os
@@ -21,8 +22,6 @@ from slowapi import Limiter
 from config import (
     FORMATS,
     HISTORY_MAX,
-    MAX_JOBS,
-    MAX_TOTAL_MB,
     TOKEN,
     TRUST_XFF,
     VERSION,
@@ -298,15 +297,17 @@ async def api_create_job(
         )
     if req.quality not in FORMATS:
         raise HTTPException(400, "Calidad invalida.")
-    if state.count_active_jobs() >= MAX_JOBS:
+    max_jobs = state.resolve("max_jobs", 2, int)[0]
+    if state.count_active_jobs() >= max_jobs:
         raise HTTPException(
             429,
-            f"Limite de {MAX_JOBS} descarga(s) simultanea(s). Espera que termine una.",
+            f"Limite de {max_jobs} descarga(s) simultanea(s). Espera que termine una.",
         )
-    if MAX_TOTAL_MB and state.current_usage_bytes() >= MAX_TOTAL_MB * 1024 * 1024:
+    max_total_mb = state.resolve("max_total_mb", 0, int)[0]
+    if max_total_mb and state.current_usage_bytes() >= max_total_mb * 1024 * 1024:
         raise HTTPException(
             507,
-            f"Almacenamiento lleno (limite {MAX_TOTAL_MB} MB). "
+            f"Almacenamiento lleno (limite {max_total_mb} MB). "
             "Borra descargas anteriores antes de seguir.",
         )
 
@@ -544,6 +545,128 @@ async def api_engine_update(
 
     result = await asyncio.to_thread(engine_update.check_and_update, True)
     return JSONResponse(result)
+
+
+# --------------------------------------------------------------------------- #
+# Settings catalog + API
+# --------------------------------------------------------------------------- #
+# (key → (type, scope, default)). scope: "runtime" | "desktop".
+_SETTING_CATALOG: dict[str, tuple[str, str, Any]] = {
+    "max_jobs":       ("int",    "runtime", 2),
+    "max_total_mb":   ("int",    "runtime", 0),
+    "max_size_mb":    ("int",    "runtime", 0),
+    "history_max":    ("int",    "runtime", 500),
+    "quality_default":("string", "desktop", "best"),
+    "theme":          ("string", "desktop", "auto"),
+    "library_dir":    ("string", "desktop", ""),
+    "name_template":  ("string", "desktop", "{title}"),
+}
+
+
+def _write_setting_to_ini(key: str, value: str) -> bool:
+    """Escribe key=value en el ini de OpenGrab. Crea dir+archivo si no existen.
+
+    Devuelve True si se escribió ok o False si falló (e.g. FS read-only).
+    """
+    try:
+        if sys.platform == "win32":
+            base = Path(os.environ.get(
+                "APPDATA", str(Path.home() / "AppData" / "Roaming")
+            ))
+        else:
+            base = Path(os.environ.get(
+                "XDG_CONFIG_HOME", str(Path.home() / ".config")
+            ))
+        ini_path = Path(os.environ.get(
+            "OPENGRAB_CONFIG", str(base / "OpenGrab" / "config.ini")
+        ))
+        ini_path.parent.mkdir(parents=True, exist_ok=True)
+        cp = configparser.ConfigParser()
+        if ini_path.exists():
+            cp.read(ini_path, encoding="utf-8")
+        if "opengrab" not in cp:
+            cp["opengrab"] = {}
+        cp["opengrab"][key] = value
+        cp.write(open(ini_path, "w", encoding="utf-8"))
+        return True
+    except Exception:
+        return False
+
+
+@router.get("/api/settings")
+async def api_get_settings(
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    """Devuelve el catálogo completo de settings con valor actual y metadata."""
+    catalog = []
+    for key, (vtype, scope, default) in _SETTING_CATALOG.items():
+        val, origin = state.resolve(key, default, str)
+        # Cast para la respuesta
+        if vtype == "int":
+            try:
+                val = int(val)
+            except (ValueError, TypeError):
+                val = default
+        locked = origin in ("env", "ini")
+        catalog.append({
+            "key": key,
+            "value": val,
+            "origin": origin,
+            "locked": locked,
+            "scope": scope,
+        })
+    return JSONResponse(catalog)
+
+
+@router.put("/api/settings")
+@limiter.limit("10/minute")
+async def api_put_settings(
+    request: Request,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    """Actualiza settings. Keys locked (origin=env/ini) retornan 400."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "JSON invalido.")
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Body debe ser un dict {key: value}.")
+    errors: dict[str, str] = {}
+    updated: list[str] = []
+    for key, raw_value in body.items():
+        if key not in _SETTING_CATALOG:
+            errors[key] = "key desconocida"
+            continue
+        vtype, scope, default = _SETTING_CATALOG[key]
+        # Check locked
+        _, origin = state.resolve(key, default, str)
+        if origin in ("env", "ini"):
+            errors[key] = f"locked (origin={origin})"
+            continue
+        # Cast and validate
+        casted: Any = None
+        try:
+            if vtype == "int":
+                casted = int(raw_value)
+                str_value = str(casted)
+            else:
+                str_value = str(raw_value)
+                casted = str_value
+        except (ValueError, TypeError):
+            errors[key] = f"tipo invalido: esperado {vtype}"
+            continue
+        # Persist: table + ini
+        state.db.set_setting(key, str_value)
+        _write_setting_to_ini(key, str_value)
+        # Actualizar config._ini en memoria para que resolve() lo vea
+        import config as _config
+        _config._ini[key] = str_value
+        updated.append(key)
+    if errors and not updated:
+        raise HTTPException(400, {"error": "todas las keys fallaron", "details": errors})
+    return JSONResponse({"ok": True, "updated": updated, "errors": errors if errors else None})
 
 
 # --------------------------------------------------------------------------- #

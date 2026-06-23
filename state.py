@@ -415,17 +415,15 @@ class AppState:
     # Batch dispatch loop (playlist download)
     # ------------------------------------------------------------------ #
     async def dispatch_loop(self) -> None:
-        import sys as _sys
-
         from download import _run_download
 
         while True:
             await asyncio.sleep(2.0)
-            cfg = _sys.modules["config"]
+            max_jobs = self.resolve("max_jobs", 2, int)[0]
             # MAX_JOBS es un techo de CONCURRENCIA, no de despachos-por-tick. Si ya
             # hay descargas activas (manuales o de un batch anterior), descontamos
             # esos slots; si no, mezclar manual + batch excederia el limite.
-            slots = cfg.MAX_JOBS - self.count_active_jobs()
+            slots = max_jobs - self.count_active_jobs()
             if slots <= 0:
                 continue
             queued = self.db.get_queued(limit=slots)
@@ -433,7 +431,8 @@ class AppState:
                 job_id = job_dict["id"]
                 if job_id in self.jobs:
                     continue
-                if cfg.MAX_TOTAL_MB and self.current_usage_bytes() >= cfg.MAX_TOTAL_MB * 1024 * 1024:
+                max_total_mb = self.resolve("max_total_mb", 0, int)[0]
+                if max_total_mb and self.current_usage_bytes() >= max_total_mb * 1024 * 1024:
                     self.db.update_job(job_id, status="error", error="Almacenamiento lleno")
                     continue
                 self.db.update_job(job_id, status="starting")

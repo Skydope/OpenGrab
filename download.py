@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import yt_dlp  # type: ignore[import-untyped]
 
-from config import FORMATS, MAX_SIZE_MB, resource_path
+from config import FORMATS, resource_path
 from state import AppState
 
 log = logging.getLogger("opengrab")
@@ -214,6 +214,7 @@ def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> list[dict[
 def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: asyncio.AbstractEventLoop) -> None:
     job = state.jobs[job_id]
     workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
+    max_size_mb, _ = state.resolve("max_size_mb", 0, int)
     job.workdir = str(workdir)
     evt = state.job_events.get(job_id)
     if evt is None:
@@ -247,8 +248,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
     is_audio = quality == "audio"
     outtmpl = str(workdir / "%(title)s.%(ext)s")
     fmt = FORMATS.get(quality, FORMATS["best"])
-    if MAX_SIZE_MB and not is_audio:
-        fmt += f"[filesize_approx<{MAX_SIZE_MB}M]"
+    if max_size_mb and not is_audio:
+        fmt += f"[filesize_approx<{max_size_mb}M]"
     opts: Dict[str, Any] = {
         "format": fmt,
         "outtmpl": outtmpl,
@@ -313,7 +314,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         if not final.exists():
             raise RuntimeError(f"Archivo no encontrado: {final}")
 
-        _enforce_size(final, MAX_SIZE_MB)
+        _enforce_size(final, max_size_mb)
 
         title = _safe_name(info.get("title", "video"))
         ext = final.suffix.lstrip(".")

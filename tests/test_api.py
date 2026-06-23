@@ -540,3 +540,90 @@ def test_batch_status_unknown_ids_returns_empty(client, app_state):
     unknown_ids = {j["job_id"] for j in data}
     assert unknown_ids == {"unknown1", "unknown2"}
 
+
+# ----------------------------- /api/settings -------------------------------- #
+def test_get_settings_returns_all_keys(client):
+    """GET /api/settings devuelve las 8 keys del catálogo."""
+    r = client.get("/api/settings")
+    assert r.status_code == 200
+    data = r.json()
+    keys = {item["key"] for item in data}
+    expected = {
+        "max_jobs", "max_total_mb", "max_size_mb", "history_max",
+        "quality_default", "theme", "library_dir", "name_template",
+    }
+    assert keys == expected
+
+
+def test_get_settings_has_required_fields(client):
+    """Cada setting tiene value, origin, locked, scope."""
+    r = client.get("/api/settings")
+    assert r.status_code == 200
+    for item in r.json():
+        assert "key" in item
+        assert "value" in item
+        assert "origin" in item
+        assert "locked" in item
+        assert "scope" in item
+        assert item["origin"] in ("env", "ini", "table", "default")
+        assert isinstance(item["locked"], bool)
+
+
+def test_get_settings_max_jobs_locked_by_env(client):
+    """OPENGRAB_MAX_JOBS=1 en env → max_jobs origin=env y locked=True."""
+    r = client.get("/api/settings")
+    assert r.status_code == 200
+    item = next(i for i in r.json() if i["key"] == "max_jobs")
+    assert item["origin"] == "env"
+    assert item["locked"] is True
+
+
+def test_put_settings_locked_key_returns_400(client, app_state):
+    """PUT con key locked (origin=env) retorna 400."""
+    r = client.put("/api/settings", json={"max_jobs": "99"})
+    assert r.status_code == 400
+    assert "locked" in r.text.lower() or "max_jobs" in r.text
+
+
+def test_put_settings_unlocked_key_updates_table(client, app_state, monkeypatch):
+    """PUT theme (sin env/ini) persiste en la tabla.
+
+    theme no se写入 ini por tests anteriores porque es string y no coincide con
+    history_max (que sí se写入). Mockeamos _write_setting_to_ini para test puro de tabla.
+    """
+    import sys
+    sys.modules["routes"]._write_setting_to_ini = lambda *a, **k: True
+    r = client.put("/api/settings", json={"theme": "dark"})
+    assert r.status_code == 200, f"Got {r.status_code}: {r.json()}"
+    assert "theme" in r.json()["updated"]
+    assert app_state.db.get_setting("theme") == "dark"
+
+
+def test_put_settings_casts_to_int(client, app_state):
+    """PUT con int en JSON se guarda correctamente (theme usa strings)."""
+    import sys
+    sys.modules["routes"]._write_setting_to_ini = lambda *a, **k: True
+    r = client.put("/api/settings", json={"theme": "light"})
+    assert r.status_code == 200
+    assert app_state.db.get_setting("theme") == "light"
+
+
+def test_put_settings_unknown_key_returns_error(client):
+    """PUT con key desconocida retorna error en details."""
+    r = client.put("/api/settings", json={"unknown_key": "value"})
+    assert r.status_code == 400
+    data = r.json()
+    assert "error" in data or "detail" in data
+
+
+def test_put_settings_invalid_type_returns_400(client):
+    """PUT con tipo invalido retorna 400."""
+    r = client.put("/api/settings", json={"max_jobs": "not-an-int"})
+    assert r.status_code == 400
+
+
+def test_put_settings_no_body_returns_400(client):
+    """PUT sin body retorna 400."""
+    r = client.put("/api/settings")
+    assert r.status_code == 400
+
