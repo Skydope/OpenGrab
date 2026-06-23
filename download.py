@@ -125,7 +125,7 @@ def _enforce_size(path: Path, max_mb: int) -> None:
 
 
 def _safe_name(name: str) -> str:
-    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+    name = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", name)
     name = re.sub(r"[^\w \t.\-()\[\]]", "", name, flags=re.UNICODE).strip()
     return (name or "video")[:120]
 

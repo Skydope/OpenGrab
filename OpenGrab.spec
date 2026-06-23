@@ -65,6 +65,8 @@ if _site:
 
 # UI embebida.
 datas += [("static", "static")]
+# pyproject.toml para que config._get_version() lo encuentre en el binario.
+datas += [("pyproject.toml", ".")]
 
 # ffmpeg bundleado. El nombre depende de la plataforma (.exe en Windows).
 _ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"

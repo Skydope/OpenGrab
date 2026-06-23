@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json as _json
 import logging
 import shutil
 from collections.abc import AsyncIterator
@@ -41,7 +40,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from config import DB_PATH, HISTORY_FILE, HISTORY_MAX, HOST, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
+from config import DB_PATH, HISTORY_MAX, HOST, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
 from db import Database
 from routes import limiter, router
 from state import AppState
@@ -69,15 +68,6 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 shutil.rmtree(wd, ignore_errors=True)
             except OSError:
                 pass
-
-    if HISTORY_FILE.exists():
-        try:
-            entries = _json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-            imported = db.import_history_json(entries)
-            if imported:
-                log.info("Migrados %d jobs del history.json a SQLite", imported)
-        except (OSError, _json.JSONDecodeError):
-            pass
 
     db.prune_history(keep=HISTORY_MAX)
 

@@ -359,7 +359,9 @@ def main() -> int:
         return 0
 
     _setup_logging()
-    _log.info("OpenGrab desktop v1.9.0 iniciado — %s", sys.platform)
+    from config import VERSION
+
+    _log.info("OpenGrab desktop v%s iniciado — %s", VERSION, sys.platform)
 
     # Hot-swap de yt-dlp ANTES de importar app (que importa download → yt_dlp).
     try:

@@ -128,21 +128,7 @@ MAX_TOTAL_MB = _int_env("OPENGRAB_MAX_TOTAL_MB", _ini_int("max_total_mb", 0), mi
 TRUST_XFF = os.environ.get("OPENGRAB_TRUST_XFF", "").strip() == "1"
 IS_DESKTOP = os.environ.get("OPENGRAB_DESKTOP", "").strip() == "1"
 DB_PATH = OUT_DIR / "opengrab.db"
-HISTORY_FILE = OUT_DIR / ".opengrab_history.json"
 HISTORY_MAX = 500
-
-VERSION = "1.9.0"
-
-FORMATS = {
-    "best":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bv*+ba/b",
-    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
-             "best[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b[height<=1080]",
-    "720p":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
-             "best[height<=720][ext=mp4]/bv*[height<=720]+ba/b[height<=720]",
-    "480p":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/"
-             "best[height<=480][ext=mp4]/bv*[height<=480]+ba/b[height<=480]",
-    "audio": "bestaudio/best",
-}
 
 
 def resource_path(rel: str) -> Path:
@@ -154,6 +140,30 @@ def resource_path(rel: str) -> Path:
     """
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
     return base / rel
+
+
+def _get_version() -> str:
+    import tomllib
+
+    pyproject = resource_path("pyproject.toml")
+    if pyproject.exists():
+        with open(pyproject, "rb") as f:
+            return str(tomllib.load(f)["project"]["version"])
+    return "0.0.0"
+
+
+VERSION = _get_version()
+
+FORMATS = {
+    "best":  "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bv*+ba/b",
+    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
+             "best[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b[height<=1080]",
+    "720p":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
+             "best[height<=720][ext=mp4]/bv*[height<=720]+ba/b[height<=720]",
+    "480p":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/"
+             "best[height<=480][ext=mp4]/bv*[height<=480]+ba/b[height<=480]",
+    "audio": "bestaudio/best",
+}
 
 
 _STATIC_DIR = resource_path("static")

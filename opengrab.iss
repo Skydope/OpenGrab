@@ -7,7 +7,7 @@
 [Setup]
 AppId={{8F3A1C92-7B5E-4D12-A6F8-9E2B0D4C8A71}
 AppName=OpenGrab
-AppVersion=1.9.0
+AppVersion=1.10.0
 AppPublisher=OpenGrab
 AppPublisherURL=https://github.com/Skydope/OpenGrab
 AppSupportURL=https://github.com/Skydope/OpenGrab/issues

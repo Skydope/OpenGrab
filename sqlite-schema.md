@@ -112,14 +112,6 @@ Se llama en el lifespan al arrancar. Si el proceso anterior murió con jobs acti
 
 Se llama desde `AppState.evict_once()` cada 5 minutos con `keep=HISTORY_MAX` (500).
 
-### Migración
-
-| Método | Qué hace |
-|--------|----------|
-| `import_history_json(entries)` | Importa el `history.json` legacy como jobs `done`. Idempotente: solo inserta si la tabla `jobs` está vacía. Campos faltantes (thumbnail en entradas pre-v1.6.0) quedan `NULL`. |
-
-Se llama en el lifespan si `HISTORY_FILE` existe. One-shot.
-
 ### Dedup (watch mode, API lista, sin cablear)
 
 | Método | Qué hace |
@@ -194,14 +186,4 @@ Crash recovery (startup):
 - El lock se adquiere en cada operación pública de `Database`. Como son infrecuentes (máx ~5/min en creación, ~1 por descarga), la contención es negligible.
 - WAL permite lecturas concurrentes con escrituras sin bloquear.
 
----
 
-## Migración desde JSON legacy
-
-1. El lifespan detecta `HISTORY_FILE` (`.opengrab_history.json`).
-2. Si existe, lo carga con `json.loads`.
-3. Llama `db.import_history_json(entries)`:
-   - Si `jobs` ya tiene filas → no-op (idempotente).
-   - Si está vacía → inserta cada entrada como job `done`.
-   - Campos sin thumbnail (pre-v1.6.0) quedan `NULL`.
-4. El JSON **no se borra** — queda como vestigial por si se necesita downgradear.
