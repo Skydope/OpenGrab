@@ -162,10 +162,16 @@ def _webview2_runtime_installed() -> bool:
     """True si el runtime de WebView2 (Evergreen) está instalado en el sistema.
 
     Consulta el registro de Windows buscando la key de EdgeUpdate para el runtime
-    o los canales de Edge (Beta/Dev/Canary). Misma lógica que pywebview internamente
-    en ``winforms._is_chromium()``, pero sin la dependencia de pythonnet/.NET.
+    o los canales de Edge (Beta/Dev/Canary). Para HKLM prueba tanto el path nativo
+    como WOW6432Node: el bootstrapper oficial de 32-bit escribe en WOW6432Node, y
+    Python 64-bit no redirige automáticamente.
     """
     import winreg
+
+    _hklm_roots = (
+        r"SOFTWARE\Microsoft\EdgeUpdate\Clients",
+        r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients",
+    )
 
     builds: list[tuple[str, str]] = [
         ("{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}", "WebView2 Runtime"),
@@ -176,16 +182,20 @@ def _webview2_runtime_installed() -> bool:
 
     for guid, _desc in builds:
         for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
-            try:
-                key_path = rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{guid}"
-                with winreg.OpenKey(hive, key_path) as key:
-                    pv, _ = winreg.QueryValueEx(key, "pv")
-                    major = int(str(pv).split(".")[0])
-                    if major >= 86:  # mínimo para WebView2
-                        _log.debug("WebView2 encontrado: %s v%s", _desc, pv)
-                        return True
-            except (OSError, ValueError, IndexError):
-                continue
+            if hive == winreg.HKEY_LOCAL_MACHINE:
+                roots = _hklm_roots
+            else:
+                roots = (r"Software\Microsoft\EdgeUpdate\Clients",)
+            for root in roots:
+                try:
+                    with winreg.OpenKey(hive, rf"{root}\{guid}") as key:
+                        pv, _ = winreg.QueryValueEx(key, "pv")
+                        major = int(str(pv).split(".")[0])
+                        if major >= 86:  # mínimo para WebView2
+                            _log.debug("WebView2 encontrado: %s v%s", _desc, pv)
+                            return True
+                except (OSError, ValueError, IndexError):
+                    continue
 
     return False
 
@@ -245,13 +255,20 @@ def _get_tray_image() -> object:
 
 
 def _system_tray(port: int) -> None:
-    """Bandeja del sistema. Bloquea hasta que el usuario elige Salir."""
+    """Bandeja del sistema. Bloquea hasta que el usuario elige Salir.
+
+    La reapertura de ventana usa el navegador en vez de webview nativa porque
+    pywebview 6.x requiere ejecutar ``webview.start()`` en el thread principal,
+    que está ocupado con el mensaje pump del tray. La primera apertura sí usa
+    ventana nativa (ver ``main()``).
+    """
     import pystray
 
     image = _get_tray_image()
+    url = f"http://127.0.0.1:{port}"
 
     def _on_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
-        threading.Thread(target=_open_ui_window, args=(port,), daemon=True).start()
+        webbrowser.open(url)
 
     def _on_exit(icon: pystray.Icon, item: pystray.MenuItem) -> None:
         icon.stop()
@@ -305,8 +322,13 @@ def main() -> int:
             )
         return 1
 
-    # Abrir ventana en thread y mostrar bandeja del sistema (bloqueante).
-    threading.Thread(target=_open_ui_window, args=(port,), daemon=True).start()
+    # pywebview 6.x requiere webview.start() en el thread principal.
+    # Abrimos la ventana nativa primero; cuando el usuario la cierra, el tray
+    # toma el control del mensaje pump. Reapertura desde tray → navegador.
+    if _webview2_available():
+        _open_ui_window(port)
+    else:
+        webbrowser.open(f"http://127.0.0.1:{port}")
     _system_tray(port)
     return 0
 
