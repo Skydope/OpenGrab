@@ -33,6 +33,54 @@ _server_error: Exception | None = None
 _log = logging.getLogger("opengrab.desktop")
 
 
+def _setup_logging() -> None:
+    """Configura logging a archivo para modo desktop (console=False).
+
+    Escribe a ``%TEMP%\\opengrab.log`` con rotación (5 MB, 3 backups).
+    Si hay consola visible, también emite a stderr.
+    Debe llamarse **antes** de ``_serve()`` para que uvicorn herede la config.
+    """
+    import logging.handlers
+
+    log_dir = Path(os.environ.get("TEMP", str(Path.home())))
+    log_path = log_dir / "opengrab.log"
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    # Manejador existente (basicConfig de app.py) → lo pateamos
+    for h in list(root.handlers):
+        root.removeHandler(h)
+
+    fh = logging.handlers.RotatingFileHandler(
+        str(log_path),
+        encoding="utf-8",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+    )
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)-5s [%(name)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    root.addHandler(fh)
+
+    # StreamHandler solo si hay TTY (console=True en PyInstaller)
+    try:
+        if sys.stdout and hasattr(sys.stdout, "fileno") and os.isatty(sys.stdout.fileno()):
+            sh = logging.StreamHandler()
+            sh.setLevel(logging.INFO)
+            sh.setFormatter(logging.Formatter("%(levelname)s [%(name)s] %(message)s"))
+            root.addHandler(sh)
+    except (OSError, AttributeError):
+        pass
+
+    # Silenciar access log de uvicorn (ruido)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+
 def _msgbox(text: str, title: str = "OpenGrab", icon: str = "error") -> None:
     """Muestra un MessageBox. En modo ``--windowed``, ``print()`` no se ve."""
     if sys.platform != "win32":
@@ -152,7 +200,7 @@ def _serve(port: int) -> None:
             app,
             host="127.0.0.1",
             port=port,
-            log_config={"version": 1},
+            log_config=None,
         )
     except Exception as exc:
         _server_error = exc
@@ -294,6 +342,9 @@ def main() -> int:
             "OpenGrab", "info",
         )
         return 0
+
+    _setup_logging()
+    _log.info("OpenGrab desktop v1.9.0 iniciado — %s", sys.platform)
 
     # Hot-swap de yt-dlp ANTES de importar app (que importa download → yt_dlp).
     try:
