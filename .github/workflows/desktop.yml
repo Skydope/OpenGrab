@@ -20,17 +20,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libayatana-appindicator3-1
+            libayatana-appindicator3-1 \
+            ffmpeg
+          cp $(which ffmpeg) vendor/ffmpeg
 
       - name: Install Python deps
         run: pip install -e ".[desktop,build]"
-
-      - name: Bundle ffmpeg
-        run: |
-          curl -fsSL -o ffmpeg.tar.xz \
-            "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-          tar xf ffmpeg.tar.xz
-          cp ffmpeg-*-amd64-static/ffmpeg vendor/ffmpeg
 
       - name: Build with PyInstaller
         run: pyinstaller OpenGrab.spec --noconfirm

@@ -55,7 +55,7 @@ jobs:
         run: pyinstaller OpenGrab.spec --noconfirm
 
       - name: Install Inno Setup
-        run: choco install innosetup -y --version=6.4.2 --no-progress
+        run: choco install innosetup -y --no-progress
 
       - name: Compile Setup.exe
         run: iscc opengrab.iss
