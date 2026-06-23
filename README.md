@@ -175,7 +175,7 @@ opengrab/
 ├── db.py               # SQLite data layer (WAL, crash recovery)
 ├── models.py           # Pydantic models
 ├── download.py         # yt-dlp wrappers + error mapping
-├── routes.py           # API endpoints (APIRouter, 13 endpoints)
+├── routes.py           # API endpoints (APIRouter, 26 endpoints)
 ├── desktop.py          # Windows desktop launcher (pywebview)
 ├── engine_update.py    # yt-dlp hot-swap via PyPI wheel
 ├── static/
@@ -227,6 +227,8 @@ All `/api/*` endpoints require authentication unless `OPENGRAB_NO_AUTH=1`. If `O
 - `?token=<token>` query parameter
 - `opengrab_token` HTTP-only cookie (set by `POST /api/auth`, 30-day expiry)
 
+### Core
+
 | Method | Path | Rate Limit | Description |
 |--------|------|------------|-------------|
 | `GET` | `/` | — | Web UI |
@@ -234,13 +236,52 @@ All `/api/*` endpoints require authentication unless `OPENGRAB_NO_AUTH=1`. If `O
 | `POST` | `/api/auth` | — | Authenticate and receive cookie — body: `{"token":"..."}` |
 | `POST` | `/api/logout` | — | Clear auth cookie |
 | `GET` | `/api/info?url=...` | 10/min | Fetch video metadata + available formats |
-| `GET` | `/api/playlist?url=...` | 10/min | Fetch playlist entries |
 | `POST` | `/api/jobs` | 5/min | Create download job — body: `{"url":"...", "quality":"best"}` |
 | `GET` | `/api/jobs/{id}/events` | — | SSE progress stream for a job |
 | `GET` | `/api/jobs/{id}/file` | — | Download the completed file |
 | `POST` | `/api/jobs/{id}/open-folder` | — | Open file explorer to downloaded file |
 | `POST` | `/api/engine/update` | 2/min | Force yt-dlp hot-swap |
+
+### Playlist & Batch
+
+| Method | Path | Rate Limit | Description |
+|--------|------|------------|-------------|
+| `GET` | `/api/playlist?url=...` | 10/min | Fetch playlist entries |
+| `POST` | `/api/playlist/download` | 2/min | Enqueue up to 100 playlist URLs — body: `{"urls":[...], "quality":"best"}` |
+| `GET` | `/api/jobs/batch-status?ids=...` | — | Status for multiple batch jobs (comma-separated IDs) |
+
+### History
+
+| Method | Path | Rate Limit | Description |
+|--------|------|------------|-------------|
 | `GET` | `/api/history?limit=20` | — | Download history as JSON |
+| `DELETE` | `/api/history/{job_id}` | — | Delete single history entry (file + workdir securely wiped in background) |
+| `DELETE` | `/api/history` | 5/min | Clear all history (deletes files from disk) |
+
+### Storage
+
+| Method | Path | Rate Limit | Description |
+|--------|------|------------|-------------|
+| `GET` | `/api/storage` | — | Total usage, workdir breakdown, loose files, DB size |
+| `POST` | `/api/storage/cleanup` | 5/min | Delete old workdirs — body: `{"max_age_hours":24}` |
+| `POST` | `/api/storage/cleanup-all` | 3/min | Delete all workdirs |
+
+### Settings
+
+| Method | Path | Rate Limit | Description |
+|--------|------|------------|-------------|
+| `GET` | `/api/settings` | — | Catalog of all settings with current values and metadata |
+| `PUT` | `/api/settings` | 10/min | Update settings — body: `{"max_jobs":3, ...}` |
+
+### Channels (Watch Mode)
+
+| Method | Path | Rate Limit | Description |
+|--------|------|------------|-------------|
+| `GET` | `/api/channels` | — | List all channels (enabled and disabled) |
+| `POST` | `/api/channels` | 10/min | Add channel — body: `{"url":"...", "quality":"best", "interval_minutes":60}` |
+| `PUT` | `/api/channels/{id}` | 10/min | Update channel fields (title, quality, interval, enabled) |
+| `DELETE` | `/api/channels/{id}` | 10/min | Delete channel |
+| `POST` | `/api/channels/{id}/check` | 5/min | Force a manual check for new videos |
 
 ### `POST /api/jobs`
 

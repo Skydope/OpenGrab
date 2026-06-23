@@ -586,3 +586,4 @@ class AppState:
                 log.warning("desktop_finalize: falló movimiento %s -> %s: %s",
                             final, target, exc)
                 # No propagar — la descarga ya está completa en workdir
+        return

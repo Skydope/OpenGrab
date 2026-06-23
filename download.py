@@ -259,8 +259,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         "progress_hooks": [hook],
         "merge_output_format": "mp4",
         "postprocessors": [],
-        # Robustez universal: reintentos ante extractors/redes frágiles (sitios duros,
-        # HLS fragmentado, rate limits). No es específico de ninguna plataforma.
+        # Reintentos para extractors/redes frágiles (HLS fragmentado, rate limits).
         "extractor_retries": 3,
         "fragment_retries": 5,
         "retries": 5,
