@@ -603,18 +603,18 @@ document.addEventListener('alpine:init', () => {
         });
 
         if (r.status === 429) {
-          this.errorMsg = "Rate limit exceeded, try in a minute";
+          this.errorMsg = "Demasiadas solicitudes. Espera un minuto.";
           this.downloading = false;
           return;
         }
         if (r.status === 507) {
-          this.errorMsg = "Storage full";
+          this.errorMsg = "Almacenamiento lleno.";
           this.downloading = false;
           return;
         }
         if (!r.ok) {
           const data = await r.json().catch(() => ({}));
-          this.errorMsg = data.detail || "Error starting batch download";
+          this.errorMsg = data.detail || "No se pudo iniciar la descarga por lotes.";
           this.downloading = false;
           return;
         }
@@ -631,7 +631,7 @@ document.addEventListener('alpine:init', () => {
         this.pollBatchStatus();
 
       } catch (err) {
-        this.errorMsg = "Network error";
+        this.errorMsg = "Error de red. Revisa tu conexión y reintenta.";
         this.downloading = false;
       }
     },
