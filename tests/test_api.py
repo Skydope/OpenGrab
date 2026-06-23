@@ -443,8 +443,10 @@ def test_batch_download_invalid_urls_skipped(client):
     assert "not-a-url" in skipped_urls
     assert "ftp://invalid-scheme.com/video" in skipped_urls
 
+    # El reason ahora viene del gate (no un literal hardcodeado): ambos casos
+    # fallan en el chequeo de esquema/formato http(s).
     for skip in data["skipped"]:
-        assert skip["reason"] == "URL invalida"
+        assert "http(s)" in skip["reason"]
 
 
 def test_batch_download_invalid_quality_returns_400(client):

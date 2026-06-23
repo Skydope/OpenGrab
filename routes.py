@@ -125,11 +125,9 @@ async def api_info(
     _: None = Depends(require_auth),
 ) -> JSONResponse:
     url = url.strip()
-    if not _is_safe_url(url):
-        raise HTTPException(
-            400, "Pega un enlace http(s) valido. Si el sitio no anda, proba "
-            "'Actualizar motor' o revisa el formato del link."
-        )
+    safe, reason = _is_safe_url(url)
+    if not safe:
+        raise HTTPException(400, reason)
     try:
         info = await asyncio.to_thread(_fetch_info, url)
     except Exception as exc:
@@ -176,11 +174,9 @@ async def api_playlist(
     _: None = Depends(require_auth),
 ) -> JSONResponse:
     url = url.strip()
-    if not _is_safe_url(url):
-        raise HTTPException(
-            400, "Pega un enlace http(s) valido. Si el sitio no anda, proba "
-            "'Actualizar motor' o revisa el formato del link."
-        )
+    safe, reason = _is_safe_url(url)
+    if not safe:
+        raise HTTPException(400, reason)
     try:
         info = await asyncio.to_thread(_fetch_playlist, url)
     except Exception as exc:
@@ -203,8 +199,9 @@ async def api_batch_download(
     skipped = []
     valid_urls = []
     for url in req.urls:
-        if not _is_safe_url(url.strip()):
-            skipped.append({"url": url, "reason": "URL invalida"})
+        safe, reason = _is_safe_url(url.strip())
+        if not safe:
+            skipped.append({"url": url, "reason": reason})
         else:
             valid_urls.append(url.strip())
     # Cap at 100
@@ -290,11 +287,9 @@ async def api_create_job(
     state: AppState = Depends(get_state),
 ) -> dict[str, str]:
     url = req.url.strip()
-    if not _is_safe_url(url):
-        raise HTTPException(
-            400, "Pega un enlace http(s) valido. Si el sitio no anda, proba "
-            "'Actualizar motor' o revisa el formato del link."
-        )
+    safe, reason = _is_safe_url(url)
+    if not safe:
+        raise HTTPException(400, reason)
     if req.quality not in FORMATS:
         raise HTTPException(400, "Calidad invalida.")
     max_jobs = state.resolve("max_jobs", 2, int)[0]

@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import logging
 import re
+import socket
 import sys
 import tempfile
 from pathlib import Path
@@ -30,29 +31,14 @@ log = logging.getLogger("opengrab")
 _BLOCKED_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
 
-def _is_safe_url(url: str) -> bool:
-    """True si la URL es un http(s) publico seguro de pasar a yt-dlp.
+def _is_ip_unsafe(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True si la IP es un destino que NO debe alcanzarse (anti-SSRF).
 
-    Universal en cuanto a sitio; restrictivo en cuanto a destino (anti-SSRF).
-
-    NOTA: No cubre notaciones no-estandar de IP (decimal, hex, IPv4-mapped
-    IPv6). Estos bypasses son conocidos pero de bajo riesgo en entornos
-    self-hosted. Ver tests/test_helpers.py para la cobertura exacta."""
-    try:
-        parsed = urlparse(url.strip())
-        host = parsed.hostname
-    except ValueError:
-        return False
-    if parsed.scheme not in ("http", "https") or not host:
-        return False
-    host_l = host.lower()
-    if host_l in _BLOCKED_HOSTS or host_l.endswith((".local", ".localhost")):
-        return False
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return True  # hostname de dominio normal → ok (yt-dlp resuelve y baja)
-    return not (
+    `is_private` ya cubre IPv4-mapped IPv6 (``::ffff:10.0.0.5``) y las ULA
+    IPv6 (``fc00::/7``) en CPython 3.12+, asi que no hace falta tratarlas
+    aparte.
+    """
+    return (
         ip.is_private
         or ip.is_loopback
         or ip.is_link_local
@@ -60,6 +46,69 @@ def _is_safe_url(url: str) -> bool:
         or ip.is_multicast
         or ip.is_unspecified
     )
+
+
+def _resolve_hostname(hostname: str) -> tuple[bool, str]:
+    """Resuelve un hostname y valida TODAS las IPs (A + AAAA) contra _is_ip_unsafe.
+
+    Devuelve ``(safe, reason)``. Politica strict:
+    - Si la resolucion falla (`gaierror`), bloquea: preferimos un falso
+      negativo transitorio a un bypass silencioso de SSRF.
+    - Si CUALQUIER IP resuelta es insegura, bloquea: un atacante podria
+      mezclar una IP publica con una privada en registros round-robin, y
+      yt-dlp podria conectar a cualquiera.
+
+    NOTA: queda un TOCTOU residual entre esta resolucion y la propia de
+    yt-dlp (DNS rebinding). Eso se cierra en la capa de red (egress
+    filtering en DOCKER-USER), no aca.
+    """
+    try:
+        infos = socket.getaddrinfo(hostname, None, family=socket.AF_UNSPEC)
+    except socket.gaierror:
+        return False, "no se pudo resolver el host"
+    except (UnicodeError, OSError):
+        return False, "host invalido"
+    for info in infos:
+        ip_str = info[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False, "host invalido"
+        if _is_ip_unsafe(ip):
+            return False, "el host resuelve a una IP privada o reservada"
+    return True, ""
+
+
+def _is_safe_url(url: str) -> tuple[bool, str]:
+    """``(safe, reason)`` — True si la URL es http(s) publica segura para yt-dlp.
+
+    Universal en cuanto a sitio; restrictivo en cuanto a destino (anti-SSRF).
+    Resuelve DNS y valida todas las IPs: bloquea dominios que apuntan a rangos
+    privados, loopback, link-local (incl. metadata ``169.254.169.254``) y ULA
+    IPv6, no solo IPs literales en la URL.
+    """
+    try:
+        parsed = urlparse(url.strip())
+        host = parsed.hostname
+    except ValueError:
+        return False, "URL invalida"
+    if parsed.scheme not in ("http", "https") or not host:
+        return False, (
+            "Pega un enlace http(s) valido. Si el sitio no anda, proba "
+            "'Actualizar motor' o revisa el formato del link."
+        )
+    host_l = host.lower()
+    if host_l in _BLOCKED_HOSTS or host_l.endswith((".local", ".localhost")):
+        return False, "el host apunta a un destino interno"
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # Hostname de dominio: resolver y validar todas las IPs.
+        return _resolve_hostname(host)
+    # IP literal en la URL: validar directo, sin resolver.
+    if _is_ip_unsafe(ip):
+        return False, "el host apunta a un destino interno"
+    return True, ""
 
 
 def _enforce_size(path: Path, max_mb: int) -> None:

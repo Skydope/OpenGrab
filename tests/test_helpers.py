@@ -1,7 +1,22 @@
-def test_is_safe_url_accepts_any_public_site():
+import socket
+
+
+def _fake_gai(ip: str):
+    """Factory: fake socket.getaddrinfo que resuelve cualquier host a `ip`."""
+    fam = socket.AF_INET6 if ":" in ip else socket.AF_INET
+
+    def _fake(host, port, *args, **kwargs):
+        return [(fam, socket.SOCK_STREAM, 0, "", (ip, 0))]
+
+    return _fake
+
+
+def test_is_safe_url_accepts_any_public_site(monkeypatch):
     """Universal: cualquier http(s) publico pasa (yt-dlp decide si puede extraer)."""
+    import download
     from download import _is_safe_url
 
+    monkeypatch.setattr(download.socket, "getaddrinfo", _fake_gai("93.184.216.34"))
     valid_urls = [
         # las plataformas conocidas siguen pasando
         "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -20,11 +35,15 @@ def test_is_safe_url_accepts_any_public_site():
         "https://www.youtube.com",  # dominio pelado: idem
     ]
     for url in valid_urls:
-        assert _is_safe_url(url), f"Deberia aceptar: {url}"
+        assert _is_safe_url(url)[0], f"Deberia aceptar: {url}"
 
 
 def test_is_safe_url_blocks_ssrf_and_bad_schemes():
-    """Restrictivo en destino: bloquea SSRF y esquemas no-http (defensa en profundidad)."""
+    """Restrictivo en destino: bloquea SSRF (IPs literales) y esquemas no-http.
+
+    Ninguna de estas URLs llega a resolver DNS (IP literal, host bloqueado,
+    .local o malformada), asi que no hace falta mockear getaddrinfo.
+    """
     from download import _is_safe_url
 
     blocked = [
@@ -45,7 +64,61 @@ def test_is_safe_url_blocks_ssrf_and_bad_schemes():
         "https://",                    # sin host
     ]
     for url in blocked:
-        assert not _is_safe_url(url), f"Deberia bloquear: {url}"
+        assert not _is_safe_url(url)[0], f"Deberia bloquear: {url}"
+
+
+def test_is_safe_url_blocks_domain_resolving_to_private(monkeypatch):
+    """SSRF por DNS: dominio cuyo registro A apunta a IP privada se bloquea."""
+    import download
+    from download import _is_safe_url
+
+    monkeypatch.setattr(download.socket, "getaddrinfo", _fake_gai("10.0.0.5"))
+    safe, reason = _is_safe_url("http://evil.attacker.com/")
+    assert not safe
+    assert "privada" in reason or "reservada" in reason
+
+
+def test_is_safe_url_allows_domain_resolving_to_public(monkeypatch):
+    """Dominio cuyo A apunta a IP publica se permite."""
+    import download
+    from download import _is_safe_url
+
+    monkeypatch.setattr(download.socket, "getaddrinfo", _fake_gai("8.8.8.8"))
+    safe, _reason = _is_safe_url("http://legit.example.com/")
+    assert safe
+
+
+def test_is_safe_url_blocks_on_dns_failure(monkeypatch):
+    """Strict: si la resolucion DNS falla, bloquea (no fail-open) con mensaje propio."""
+    import download
+    from download import _is_safe_url
+
+    def _boom(host, port, *args, **kwargs):
+        raise socket.gaierror("Name or service not known")
+
+    monkeypatch.setattr(download.socket, "getaddrinfo", _boom)
+    safe, reason = _is_safe_url("http://nxdomain.invalid/")
+    assert not safe
+    assert "no se pudo resolver" in reason
+
+
+def test_is_safe_url_blocks_domain_resolving_to_ipv6_ula(monkeypatch):
+    """ULA IPv6 (fc00::/7) cae en is_private; dominio que resuelve ahi se bloquea."""
+    import download
+    from download import _is_safe_url
+
+    monkeypatch.setattr(download.socket, "getaddrinfo", _fake_gai("fc00::1"))
+    safe, _reason = _is_safe_url("http://internal-v6.example/")
+    assert not safe
+
+
+def test_is_safe_url_strips_whitespace(monkeypatch):
+    import download
+    from download import _is_safe_url
+
+    monkeypatch.setattr(download.socket, "getaddrinfo", _fake_gai("93.184.216.34"))
+    assert _is_safe_url("  https://youtu.be/abc  ")[0]
+    assert not _is_safe_url("  not-a-url  ")[0]
 
 
 def test_safe_name():
@@ -56,10 +129,3 @@ def test_safe_name():
     assert _safe_name("file/name:test") == "filenametest"
     assert _safe_name("") == "video"
     assert _safe_name("a" * 200) == "a" * 120
-
-
-def test_is_safe_url_strips_whitespace():
-    from download import _is_safe_url
-
-    assert _is_safe_url("  https://youtu.be/abc  ")
-    assert not _is_safe_url("  not-a-url  ")

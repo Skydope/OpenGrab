@@ -55,6 +55,30 @@ def clean_env(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _neutralize_dns(monkeypatch):
+    """Solo intercepta la resolucion del gate SSRF, no el networking general.
+
+    El gate llama ``getaddrinfo(host, None, family=AF_UNSPEC)`` (port=None).
+    Fakeamos *solo* esa firma a una IP publica fija para que las rutas que
+    postean URLs reales pasen sin lookups de red; cualquier otra llamada
+    (con puerto, del propio test infra) delega al resolver real para no
+    colgar el teardown intentando conectar a la IP fake. Los tests que
+    prueban el bloqueo por DNS sobreescriben este atributo con su propio fake.
+    """
+    import socket
+
+    real_getaddrinfo = socket.getaddrinfo
+
+    def _fake(host, port, *args, **kwargs):
+        if port is None:  # firma del gate SSRF
+            return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0))]
+        return real_getaddrinfo(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _fake)
+    yield
+
+
 def _make_client(**extra_env):
     for mod in list(sys.modules):
         if mod in _OPENGRAB_MODULES or mod.startswith(
