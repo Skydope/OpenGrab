@@ -66,18 +66,6 @@ _SETTING_ENV: dict[str, str] = {
     "history_max": "OPENGRAB_HISTORY_MAX",
 }
 
-# Defaults para el resolver (usados cuando ninguna fuente tiene el valor).
-_DEFAULTS: dict[str, str | int] = {
-    "max_jobs": 2,
-    "max_total_mb": 0,
-    "max_size_mb": 0,
-    "history_max": 500,
-    "quality_default": "best",
-    "theme": "auto",
-    "library_dir": _ini.get("download_dir", ""),
-    "name_template": "{title}",
-}
-
 
 def _ini_int(key: str, default: int) -> int:
     raw = _ini.get(key, "")

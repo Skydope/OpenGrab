@@ -390,7 +390,7 @@ class Database:
         return {row["key"]: row["value"] for row in rows}
 
     # ------------------------------------------------------------------ #
-    # Migración desde el history.json viejo
+    # Settings runtime
     # ------------------------------------------------------------------ #
     def import_history_json(self, entries: list[dict[str, Any]]) -> int:
         """Importa el history.json legacy como jobs 'done'. Solo si `jobs` está vacía.

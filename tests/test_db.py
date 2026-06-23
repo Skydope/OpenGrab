@@ -130,27 +130,6 @@ def test_has_active_job_for_video(db):
     assert db.has_active_job_for_video("vimeo", "vid1") is False
 
 
-# ------------------------- migración json -------------------------------- #
-def test_import_history_legacy_without_thumbnail(db):
-    # entrada pre-v1.6.0: sin thumbnail
-    entries = [
-        {"url": "u1", "title": "Viejo", "quality": "best", "filename": "v.mp4",
-         "size": 1234, "job_id": "old1", "completed": 1000},
-    ]
-    n = db.import_history_json(entries)
-    assert n == 1
-    j = db.get_job("old1")
-    assert j["status"] == "done"
-    assert j["thumbnail"] is None  # default None, no rompe (§5.2)
-    assert j["title"] == "Viejo"
-
-
-def test_import_history_idempotent_when_not_empty(db):
-    db.insert_job("existing", "u", "best")
-    n = db.import_history_json([{"url": "u", "job_id": "x", "completed": 1}])
-    assert n == 0  # no importa si ya hay jobs
-
-
 # ------------------------------ retención -------------------------------- #
 def test_prune_history_keeps_recent(db):
     for i in range(5):

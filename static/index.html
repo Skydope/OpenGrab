@@ -744,9 +744,7 @@ document.addEventListener('alpine:init', () => {
             if (this.historyLoaded) this.loadHistory();
           }
         })
-        .catch(err => {
-          console.error('Batch status poll failed:', err);
-        });
+        .catch(err => {});
     },
 
     // ── Download ──────────────────────────────

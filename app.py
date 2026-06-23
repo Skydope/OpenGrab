@@ -114,17 +114,10 @@ app.add_middleware(_SecurityHeadersMiddleware)
 
 
 def _rate_limit_handler(_req: Request, _exc: Exception) -> JSONResponse:
-    resp = JSONResponse(
+    return JSONResponse(
         status_code=429,
         content={"detail": "Demasiadas solicitudes. Espera un momento."},
     )
-    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
-    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    resp.headers.setdefault(
-        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
-    )
-    return resp
 
 
 app.state.limiter = limiter

@@ -1,6 +1,6 @@
 # SQLite Schema — OpenGrab
 
-Diseño de la capa de persistencia para jobs, historial y watch mode. Versión 1 del schema.
+Diseño de la capa de persistencia para jobs, historial, watch mode y settings. Versión 2 del schema.
 
 ## Principios
 
@@ -79,6 +79,16 @@ CREATE TABLE IF NOT EXISTS downloaded_urls (
     job_id        TEXT REFERENCES jobs(id),
     downloaded_at INTEGER NOT NULL,
     PRIMARY KEY (extractor, video_id)
+);
+```
+
+### `settings` — runtime settings (persistidos en DB)
+
+```sql
+CREATE TABLE IF NOT EXISTS settings (
+    key     TEXT PRIMARY KEY,
+    value   TEXT NOT NULL,
+    updated INTEGER NOT NULL
 );
 ```
 
