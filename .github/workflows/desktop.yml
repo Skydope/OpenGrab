@@ -105,13 +105,76 @@ jobs:
           unzip -o ffmpeg.zip -d vendor/
           # evermeet names it just 'ffmpeg', already in vendor/
 
+      - name: Generate macOS icon
+        run: |
+          python -c "
+          from PIL import Image, ImageDraw
+          img = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
+          draw = ImageDraw.Draw(img)
+          draw.rounded_rectangle([64, 64, 960, 960], radius=192, fill=(28, 33, 43, 255))
+          draw.polygon([(384, 288), (384, 736), (704, 512)], fill=(232, 160, 44, 255))
+          img.save('vendor/open-grab.png')
+          "
+          mkdir -p vendor/open-grab.iconset
+          sips -z 16 16   vendor/open-grab.png --out vendor/open-grab.iconset/icon_16x16.png
+          sips -z 32 32   vendor/open-grab.png --out vendor/open-grab.iconset/icon_16x16@2x.png
+          sips -z 32 32   vendor/open-grab.png --out vendor/open-grab.iconset/icon_32x32.png
+          sips -z 64 64   vendor/open-grab.png --out vendor/open-grab.iconset/icon_32x32@2x.png
+          sips -z 128 128 vendor/open-grab.png --out vendor/open-grab.iconset/icon_128x128.png
+          sips -z 256 256 vendor/open-grab.png --out vendor/open-grab.iconset/icon_128x128@2x.png
+          sips -z 256 256 vendor/open-grab.png --out vendor/open-grab.iconset/icon_256x256.png
+          sips -z 512 512 vendor/open-grab.png --out vendor/open-grab.iconset/icon_256x256@2x.png
+          sips -z 512 512 vendor/open-grab.png --out vendor/open-grab.iconset/icon_512x512.png
+          iconutil -c icns vendor/open-grab.iconset -o vendor/open-grab.icns
+
       - name: Build with PyInstaller
         run: pyinstaller OpenGrab.spec --noconfirm
 
-      - name: Package as zip
+      - name: Create .app bundle
         run: |
+          APP="dist/OpenGrab.app"
+          mkdir -p "$APP/Contents/MacOS"
+          mkdir -p "$APP/Contents/Resources"
+          cp -r dist/OpenGrab/* "$APP/Contents/MacOS/"
+          cp vendor/open-grab.icns "$APP/Contents/Resources/"
+          cat > "$APP/Contents/Info.plist" << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>OpenGrab</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.opengrab.app</string>
+            <key>CFBundleName</key>
+            <string>OpenGrab</string>
+            <key>CFBundleDisplayName</key>
+            <string>OpenGrab</string>
+            <key>CFBundleIconFile</key>
+            <string>open-grab</string>
+            <key>CFBundleVersion</key>
+            <string>1.10.0</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.10.0</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>LSEnvironment</key>
+            <dict>
+              <key>OPENGRAB_DESKTOP</key>
+              <string>1</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
           cd dist
-          zip -r ../OpenGrab-macos.zip OpenGrab/
+          zip -r ../OpenGrab-macos.zip OpenGrab.app/
 
       - name: Upload zip to release
         uses: softprops/action-gh-release@v2
