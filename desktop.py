@@ -152,7 +152,7 @@ def _serve(port: int) -> None:
             app,
             host="127.0.0.1",
             port=port,
-            log_config={"version": 1, "disable_existing_loggers": True},
+            log_config={"version": 1},
         )
     except Exception as exc:
         _server_error = exc

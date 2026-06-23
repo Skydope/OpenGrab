@@ -23,6 +23,46 @@ hiddenimports += collect_submodules("uvicorn")
 hiddenimports += collect_submodules("webview")
 hiddenimports += ["anyio._backends._asyncio"]
 
+# --------------------------------------------------------------------------- #
+# DLLs de WebView2 / pythonnet — forzar como binaries (raíz plana de _internal/)
+# --------------------------------------------------------------------------- #
+# collect_all() clasifica los .dll como datas → preservan estructura anidada de
+# paquetes (e.g. _internal/webview/lib/foo.dll). Pero pywebview busca los DLLs en
+# sys._MEIPASS sin recursión (interop_dll_path en util.py) y pythonnet/clr_loader
+# necesita ClrLoader.dll y Python.Runtime.dll en la raíz para inicializar.
+# Forzamos binaries para que PyInstaller los copie planos.
+_site = next((p for p in sys.path if p.endswith("site-packages")), "")
+if _site:
+    _wv_lib = os.path.join(_site, "webview", "lib")
+    if os.path.isdir(_wv_lib):
+        binaries += [
+            (os.path.join(_wv_lib, "Microsoft.Web.WebView2.Core.dll"), "."),
+            (os.path.join(_wv_lib, "Microsoft.Web.WebView2.WinForms.dll"), "."),
+        ]
+        for _dll_name in ("WebBrowserInterop.x64.dll", "WebBrowserInterop.x86.dll"):
+            _p = os.path.join(_wv_lib, _dll_name)
+            if os.path.exists(_p):
+                binaries += [(_p, ".")]
+
+    # WebView2Loader.dll por arquitectura (edgechromium.py:50 agrega el dir al PATH)
+    for _arch in ("win-x64", "win-x86", "win-arm64"):
+        _p = os.path.join(_site, "webview", "lib", "runtimes", _arch, "native", "WebView2Loader.dll")
+        if os.path.exists(_p):
+            binaries += [(_p, _arch)]
+
+    # ClrLoader.dll — puente nativo pythonnet ↔ .NET
+    _clr_dir = os.path.join(_site, "clr_loader", "ffi", "dlls")
+    if os.path.isdir(_clr_dir):
+        for _arch in ("amd64", "x86"):
+            _p = os.path.join(_clr_dir, _arch, "ClrLoader.dll")
+            if os.path.exists(_p):
+                binaries += [(_p, ".")]
+
+    # Python.Runtime.dll — runtime bridge de pythonnet
+    _runtime = os.path.join(_site, "pythonnet", "runtime", "Python.Runtime.dll")
+    if os.path.exists(_runtime):
+        binaries += [(_runtime, ".")]
+
 # UI embebida.
 datas += [("static", "static")]
 
