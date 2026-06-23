@@ -25,3 +25,30 @@ services:
       # porque cualquiera puede spoofear el header y saltar los límites.
       - OPENGRAB_TRUST_XFF=${OPENGRAB_TRUST_XFF:-0}
     restart: unless-stopped
+
+    # --------------------------------------------------------------------- #
+    # Capa 2 anti-SSRF (opcional, recomendado). Defensa en profundidad sobre
+    # el gate de la app (capa 1), que resuelve DNS y bloquea destinos privados.
+    # Esta capa cierra el TOCTOU/DNS-rebinding residual a nivel de RED.
+    #
+    # El egress filtering va en el HOST (chain DOCKER-USER), no acá: no requiere
+    # CAP_NET_ADMIN ni romper el modelo de usuario no-root del contenedor.
+    # Correr en el host, tras `docker compose up -d`:
+    #
+    #     sudo ./scripts/egress-lockdown.sh --dry-run   # previsualizar
+    #     sudo ./scripts/egress-lockdown.sh --apply     # aplicar
+    #     sudo ./scripts/egress-lockdown.sh --apply --log  # + loguear intentos
+    #     sudo ./scripts/egress-lockdown.sh --list      # verificar
+    #     sudo ./scripts/egress-lockdown.sh --remove    # revertir
+    #
+    # OJO: las reglas de DOCKER-USER se pierden si recreás la red de Docker o
+    # reiniciás el daemon. Re-corré --apply (es idempotente) o atalo a un hook
+    # de systemd que dispare tras docker.service.
+    #
+    # IPv6: el script agrega reglas ip6tables si Docker tiene IPv6 habilitado.
+    # Alternativa más simple para un downloader (el CDN de video es v4 en la
+    # práctica): deshabilitar IPv6 en el contenedor descomentando:
+    #
+    # sysctls:
+    #   - net.ipv6.conf.all.disable_ipv6=1
+    # --------------------------------------------------------------------- #
