@@ -6,7 +6,7 @@ guarda en la carpeta de Descargas del usuario, hace hot-swap de yt-dlp y abre la
 crash-safe: named mutex en Windows, flock en el resto.
 
 La ventana se abre al iniciar. Al cerrarla, la app sigue viva en la bandeja del sistema
-con un menú "Abrir OpenGrab" (reabre la ventana) y "Salir" (termina el proceso).
+con un menú "Abrir OpenGrab" (reabre ventana WebView2) y "Salir" (termina el proceso).
 
 Las funciones ``_free_port``, ``_setup_env``, ``_wait_healthy`` y ``acquire_single_instance``
 están factorizadas para testearse sin levantar uvicorn ni abrir navegadores reales.
@@ -36,6 +36,7 @@ _lock_handle: object = None
 _server_error: Exception | None = None
 _log = logging.getLogger("opengrab.desktop")
 _tray_icon: pystray.Icon | None = None  # seteado por _system_tray()
+_reopen_event = threading.Event()      # señal tray → main para reopen WebView2
 
 
 def _setup_logging() -> None:
@@ -280,7 +281,9 @@ def _webview2_available() -> bool:
 
 
 def _open_ui_window(port: int) -> None:
-    """Abre la UI en un thread (no bloquea el launcher)."""
+    """Abre la UI con WebView2 (bloquea el thread caller hasta que se cierra).
+
+    Si WebView2 no está disponible o falla, abre en el navegador."""
     url = f"http://127.0.0.1:{port}"
     if _webview2_available():
         try:
@@ -311,9 +314,9 @@ def _get_tray_image() -> object:
 def _system_tray(port: int) -> None:
     """Bandeja del sistema. Corre en thread secundario (no-daemon).
 
-    Setea ``_tray_icon`` para que ``main()`` pueda llamar ``icon.stop()``
-    cuando la ventana nativa se cierra. La reapertura usa navegador porque
-    pywebview 6.x requiere el thread principal.
+    Señaliza al main thread vía ``_reopen_event`` para que abra una ventana
+    WebView2 desde el thread principal. Si pywebview no está disponible
+    (Linux/macOS), el main thread abre el navegador.
     """
     global _tray_icon
 
@@ -321,10 +324,9 @@ def _system_tray(port: int) -> None:
         import pystray
 
         image = _get_tray_image()
-        url = f"http://127.0.0.1:{port}"
 
         def _on_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
-            webbrowser.open(url)
+            _reopen_event.set()
 
         def _on_exit(icon: pystray.Icon, item: pystray.MenuItem) -> None:
             _log.info("tray: salir solicitado por usuario")
@@ -388,21 +390,29 @@ def main() -> int:
         return 1
 
     # Tray en thread no-daemon → vive independiente del main thread.
-    # pywebview 6.x requiere webview.start() en thread principal,
-    # asi que la ventana nativa bloquea aca. Al cerrarla, detenemos el tray.
+    # pywebview 6.x requiere webview.start() en thread principal.
+    # El tray señaliza al main thread vía _reopen_event para reabrir ventanas.
     tray_thread = threading.Thread(
         target=_system_tray, args=(port,), daemon=False, name="og-tray",
     )
     tray_thread.start()
 
     try:
-        if _webview2_available():
-            _log.info("abriendo ventana nativa WebView2")
+        has_webview = _webview2_available()
+        if has_webview:
             _open_ui_window(port)
             _log.info("ventana cerrada, app sigue en tray")
         else:
             webbrowser.open(f"http://127.0.0.1:{port}")
-            # Sin ventana nativa, el tray queda vivo hasta que el usuario sale
+
+        while tray_thread.is_alive():
+            if _reopen_event.wait(timeout=0.5):
+                _reopen_event.clear()
+                if has_webview:
+                    _log.info("reabriendo ventana WebView2 desde tray")
+                    _open_ui_window(port)
+                else:
+                    webbrowser.open(f"http://127.0.0.1:{port}")
     finally:
         tray_thread.join(timeout=8)
         if tray_thread.is_alive():

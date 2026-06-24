@@ -334,3 +334,42 @@ def test_app_import_does_not_configure_root_handler(monkeypatch):
     )
 
     # Restaurar: el import de app recargó todos los submódulos
+
+
+# ------------------------ tray reopen event ----------------------------- #
+def test_tray_on_open_sets_reopen_event(monkeypatch):
+    """Al hacer click en 'Abrir OpenGrab' del tray, se setea _reopen_event."""
+    import sys
+    import threading
+    import types
+
+    reopen_event = threading.Event()
+    monkeypatch.setattr(desktop, "_reopen_event", reopen_event)
+
+    actions: list[tuple[str, object]] = []
+
+    class _FakeMenuItem:
+        def __init__(self, text: str, action: object, default: bool = False) -> None:
+            actions.append((text, action))
+
+    fake_pystray = types.ModuleType("pystray")
+    fake_pystray.Menu = lambda *items: None  # type: ignore[attr-defined]
+    fake_pystray.MenuItem = _FakeMenuItem  # type: ignore[attr-defined]
+    fake_pystray.Menu.SEPARATOR = object()  # type: ignore[attr-defined]
+
+    class _FakeIcon:
+        def __init__(self, *a: object, **kw: object) -> None:
+            pass
+
+        def run(self) -> None:
+            pass
+
+    fake_pystray.Icon = _FakeIcon  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pystray", fake_pystray)
+
+    desktop._system_tray(12345)
+
+    on_open = next((a for t, a in actions if t == "Abrir OpenGrab"), None)
+    assert on_open is not None, "No se capturó el callback de 'Abrir OpenGrab'"
+    on_open(None, None)
+    assert reopen_event.is_set(), "_reopen_event debería estar seteado"
