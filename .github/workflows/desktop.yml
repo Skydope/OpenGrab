@@ -126,6 +126,12 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller OpenGrab.spec --noconfirm
 
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Create .app bundle
         run: |
           APP="dist/OpenGrab.app"
@@ -133,7 +139,7 @@ jobs:
           mkdir -p "$APP/Contents/Resources"
           cp -r dist/OpenGrab/* "$APP/Contents/MacOS/"
           cp vendor/open-grab.icns "$APP/Contents/Resources/"
-          cat > "$APP/Contents/Info.plist" << 'PLIST'
+          cat > "$APP/Contents/Info.plist" << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
             "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -150,9 +156,9 @@ jobs:
             <key>CFBundleIconFile</key>
             <string>open-grab</string>
             <key>CFBundleVersion</key>
-            <string>1.10.0</string>
+            <string>${{ steps.version.outputs.VERSION }}</string>
             <key>CFBundleShortVersionString</key>
-            <string>1.10.0</string>
+            <string>${{ steps.version.outputs.VERSION }}</string>
             <key>CFBundlePackageType</key>
             <string>APPL</string>
             <key>CFBundleInfoDictionaryVersion</key>
