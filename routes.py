@@ -32,10 +32,9 @@ from download import (
     _fetch_info,
     _fetch_playlist,
     _is_safe_url,
-    _run_download,
     _sanitize_url,
 )
-from models import AuthReq, BatchReq, ChannelReq, Job, JobReq
+from models import AuthReq, BatchReq, ChannelReq, JobReq
 from state import AppState
 
 log = logging.getLogger("opengrab")
@@ -307,16 +306,9 @@ async def api_create_job(
         )
 
     job_id = uuid.uuid4().hex[:12]
-    state.jobs[job_id] = Job(id=job_id, created=time.time())
-    state.job_events[job_id] = asyncio.Event()
     state.db.insert_job(job_id, url, req.quality)
     log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
-    loop = asyncio.get_running_loop()
-    task = asyncio.create_task(
-        asyncio.to_thread(_run_download, state, job_id, url, req.quality, loop)
-    )
-    state.running_tasks.add(task)
-    task.add_done_callback(state.running_tasks.discard)
+    state._spawn_download(job_id, url, req.quality)
     return {"job_id": job_id}
 
 
@@ -484,8 +476,7 @@ async def api_delete_history_entry(
         task = asyncio.create_task(
             asyncio.to_thread(state._secure_delete_files, filepath, workdir)
         )
-        state.running_tasks.add(task)
-        task.add_done_callback(state.running_tasks.discard)
+        state._track_task(task)
     return JSONResponse({"ok": True})
 
 

@@ -16,7 +16,7 @@ def test_rate_limiting_info(client, app_state):
 
 def test_rate_limiting_active(client, app_state, monkeypatch):
     """El rate limiting de jobs está activo (respuesta 200 o 429, no 500)."""
-    monkeypatch.setattr("routes._run_download", lambda *a, **kw: None)
+    monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
     r = client.post(
         "/api/jobs",
         json={"url": "https://youtu.be/abc", "quality": "best"},

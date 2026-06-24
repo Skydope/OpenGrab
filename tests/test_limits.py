@@ -57,7 +57,7 @@ def test_max_total_mb_refuses_new_job(client, app_state, monkeypatch):
 
 def test_max_total_mb_allows_under_budget(client, app_state, monkeypatch):
     monkeypatch.setattr(type(app_state), "resolve", _resolve_total(100))
-    monkeypatch.setattr("routes._run_download", lambda *a, **kw: None)
+    monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
     r = client.post(
         "/api/jobs", json={"url": "https://youtu.be/abc", "quality": "best"}
     )

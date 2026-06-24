@@ -89,6 +89,28 @@ class AppState:
         )
 
     # ------------------------------------------------------------------ #
+    # Task lifecycle
+    # ------------------------------------------------------------------ #
+    def _track_task(self, task: asyncio.Task[None]) -> None:
+        self.running_tasks.add(task)
+        task.add_done_callback(self.running_tasks.discard)
+
+    def _spawn_download(self, job_id: str, url: str, quality: str) -> None:
+        """Crea Job en memoria + Event y lanza _run_download en thread.
+
+        Precondicion: la fila en DB ya existe en el estado correcto.
+        """
+        from download import _run_download  # local: evita el ciclo state<->download
+
+        self.jobs[job_id] = Job(id=job_id, created=time.time())
+        self.job_events[job_id] = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        task = asyncio.create_task(
+            asyncio.to_thread(_run_download, self, job_id, url, quality, loop)
+        )
+        self._track_task(task)
+
+    # ------------------------------------------------------------------ #
     # Storage accounting
     # ------------------------------------------------------------------ #
     def current_usage_bytes(self) -> int:
@@ -361,7 +383,7 @@ class AppState:
     # Watch mode scheduler
     # ------------------------------------------------------------------ #
     async def watch_loop(self) -> None:
-        from download import _check_channel_watch, _run_download
+        from download import _check_channel_watch
 
         while True:
             await asyncio.sleep(60)
@@ -391,19 +413,12 @@ class AppState:
                             if self.db.has_active_job_for_video(v["extractor"], v["video_id"]):
                                 continue
                             job_id = uuid.uuid4().hex[:12]
-                            self.jobs[job_id] = Job(id=job_id, created=time.time())
-                            self.job_events[job_id] = asyncio.Event()
                             self.db.insert_job(job_id, v["url"], quality)
                             self.db.update_job(job_id, extractor=v["extractor"], video_id=v["video_id"])
                             log.info(
                                 "watch: nuevo video → job %s (%s)", job_id, v.get("title", "?"),
                             )
-                            loop = asyncio.get_running_loop()
-                            task = asyncio.create_task(
-                                asyncio.to_thread(_run_download, self, job_id, v["url"], quality, loop)
-                            )
-                            self.running_tasks.add(task)
-                            task.add_done_callback(self.running_tasks.discard)
+                            self._spawn_download(job_id, v["url"], quality)
                             dispatched += 1
                         if dispatched:
                             log.info(
@@ -417,8 +432,6 @@ class AppState:
     # Batch dispatch loop (playlist download)
     # ------------------------------------------------------------------ #
     async def dispatch_loop(self) -> None:
-        from download import _run_download
-
         while True:
             await asyncio.sleep(2.0)
             max_jobs = self.resolve("max_jobs", 2, int)[0]
@@ -438,14 +451,7 @@ class AppState:
                     self.db.update_job(job_id, status="error", error="Almacenamiento lleno")
                     continue
                 self.db.update_job(job_id, status="starting")
-                self.jobs[job_id] = Job(id=job_id, created=time.time())
-                self.job_events[job_id] = asyncio.Event()
-                loop = asyncio.get_running_loop()
-                task = asyncio.create_task(
-                    asyncio.to_thread(_run_download, self, job_id, job_dict["url"], job_dict["quality"], loop)
-                )
-                self.running_tasks.add(task)
-                task.add_done_callback(self.running_tasks.discard)
+                self._spawn_download(job_id, job_dict["url"], job_dict["quality"])
 
     # ------------------------------------------------------------------ #
     # Name template resolution (Phase 3)

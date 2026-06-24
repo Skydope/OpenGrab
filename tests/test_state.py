@@ -354,3 +354,56 @@ class TestWatchLoop:
         # (touch_channel no se llamo porque _check_channel_watch fallo)
         active = loop_state.db.get_active_jobs()
         assert len(active) == 0
+
+
+# --------------------------------------------------------------------------- #
+# _track_task + _spawn_download — consolidated spawn helpers
+# --------------------------------------------------------------------------- #
+
+
+class TestTrackTask:
+    """Verifica que _track_task agrega la task a running_tasks y la limpia
+    via done_callback al completar."""
+
+    def test_adds_and_discards(self, loop_state):
+        async def dummy():
+            pass
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            task = loop.create_task(dummy())
+            loop_state._track_task(task)
+
+            assert task in loop_state.running_tasks
+
+            loop.run_until_complete(task)
+            # done_callback se ejecuta en el loop — corremos un tick extra
+            loop.run_until_complete(asyncio.sleep(0))
+
+            assert task not in loop_state.running_tasks
+        finally:
+            loop.close()
+
+
+class TestSpawnDownload:
+    """Verifica que _spawn_download crea el Job en memoria, asigna un Event
+    y lanza la descarga sin tocar la DB."""
+
+    @pytest.mark.asyncio
+    async def test_creates_job_and_event(self, loop_state, monkeypatch):
+        monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
+
+        loop_state._spawn_download("test-spawn-1", "http://x.com/v", "best")
+
+        assert "test-spawn-1" in loop_state.jobs
+        job = loop_state.jobs["test-spawn-1"]
+        assert job.id == "test-spawn-1"
+        assert job.status == "queued"
+
+        assert "test-spawn-1" in loop_state.job_events
+        assert isinstance(loop_state.job_events["test-spawn-1"], asyncio.Event)
+
+        # Cleanup — la DB no fue tocada (no hay insert_job)
+        loop_state.jobs.pop("test-spawn-1", None)
+        loop_state.job_events.pop("test-spawn-1", None)
