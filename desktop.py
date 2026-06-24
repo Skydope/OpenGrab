@@ -52,10 +52,7 @@ def _setup_logging() -> None:
 
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
-
-    # Manejador existente (basicConfig de app.py) → lo pateamos
-    for h in list(root.handlers):
-        root.removeHandler(h)
+    root.handlers.clear()
 
     fh = logging.handlers.RotatingFileHandler(
         str(log_path),

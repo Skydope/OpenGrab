@@ -46,11 +46,6 @@ from db import Database
 from routes import limiter, router
 from state import AppState
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s [opengrab] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 log = logging.getLogger("opengrab")
 
 
@@ -147,6 +142,11 @@ app.include_router(router)
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [opengrab] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     log.info("OpenGrab -> http://%s:%d (salida: %s)", HOST, PORT, OUT_DIR)
     if TOKEN_WAS_GENERATED:
         log.info("Auth: token autogenerado = %s", TOKEN)

@@ -277,3 +277,60 @@ def test_bootstrap_resolves_ini_when_no_env(monkeypatch, tmp_path):
     import os
 
     assert os.environ["OPENGRAB_DIR"] == "/from/ini/folder"
+
+
+# ------------------------ logging setup ----------------------------------- #
+def test_setup_logging_adds_expected_handler(monkeypatch, tmp_path):
+    """_setup_logging agrega RotatingFileHandler (y StreamHandler opcional)."""
+    import logging
+
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    root = logging.getLogger()
+    root.handlers.clear()
+
+    desktop._setup_logging()
+
+    handlers = root.handlers
+    assert len(handlers) >= 1
+    from logging.handlers import RotatingFileHandler
+
+    has_rotating = any(isinstance(h, RotatingFileHandler) for h in handlers)
+    assert has_rotating, f"Expected RotatingFileHandler, got {[type(h).__name__ for h in handlers]}"
+
+
+def test_setup_logging_replaces_existing_handlers(monkeypatch, tmp_path):
+    """_setup_logging limpia handlers previos antes de agregar los propios."""
+    import logging
+
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    root = logging.getLogger()
+    # Simular que hay un handler previo (p.ej. basicConfig en otro contexto)
+    prev = logging.StreamHandler()
+    root.addHandler(prev)
+
+    desktop._setup_logging()
+
+    assert prev not in root.handlers
+    assert len(root.handlers) >= 1
+
+
+def test_app_import_does_not_configure_root_handler(monkeypatch):
+    """Importar app.py NO debe llamar basicConfig — el root logger queda limpio."""
+    import logging
+
+    root = logging.getLogger()
+    root.handlers.clear()
+
+    # Forzar fresh import de app
+    for m in list(sys.modules):
+        if m in ("app", "config", "db", "routes", "state", "download",
+                 "engine_update", "models"):
+            sys.modules.pop(m, None)
+
+    import app  # noqa: F401 — testea side effect de import (no basicConfig)
+
+    assert root.handlers == [], (
+        f"app module-level code configured root handlers: {root.handlers}"
+    )
+
+    # Restaurar: el import de app recargó todos los submódulos
