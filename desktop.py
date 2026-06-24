@@ -35,7 +35,7 @@ _HEALTH_TIMEOUT = 10.0
 _lock_handle: object = None
 _server_error: Exception | None = None
 _log = logging.getLogger("opengrab.desktop")
-_tray_icon: "pystray.Icon | None" = None  # seteado por _system_tray()
+_tray_icon: pystray.Icon | None = None  # seteado por _system_tray()
 
 
 def _setup_logging() -> None:
@@ -191,7 +191,7 @@ def _wait_healthy(port: int, timeout: float = _HEALTH_TIMEOUT) -> bool:
             with urllib.request.urlopen(url, timeout=1) as r:
                 if r.status == 200:
                     return True
-        except Exception:  # noqa: BLE001 — el server todavía no levantó
+        except Exception:
             time.sleep(0.2)
     return False
 
@@ -291,7 +291,7 @@ def _open_ui_window(port: int) -> None:
 
             webview.create_window("OpenGrab", url, width=980, height=720)
             webview.start()
-        except Exception:  # noqa: BLE001 — degradar a navegador
+        except Exception:
             _log.exception("webview falló, abriendo en navegador")
             webbrowser.open(url)
     else:
@@ -368,7 +368,7 @@ def main() -> int:
         import engine_update
 
         engine_update.check_and_update()
-    except Exception as exc:  # noqa: BLE001 — degradar al yt-dlp bundleado
+    except Exception as exc:
         _msgbox(f"No se pudo actualizar yt-dlp:\n{exc}", "OpenGrab", "warn")
 
     port = _free_port()

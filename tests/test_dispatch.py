@@ -8,15 +8,18 @@ These tests verify that:
 """
 
 import asyncio
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
 from db import Database
 from models import Job
 from state import AppState
+
+
+def _resolve_for(max_val: int):
+    """Monkeypatch helper for state.resolve() mocking max_jobs."""
+    return lambda self, k, d, t=int: (max_val, "env") if k == "max_jobs" else (d, "default")
 
 
 @pytest.fixture
@@ -44,7 +47,7 @@ class TestDispatchLoopBasic:
         seed_queued_jobs(dispatch_state, count=5)
 
         # Mock resolve() to return max_jobs=2 regardless of env/ini/table
-        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (2, "env") if k == "max_jobs" else (d, "default"))
+        monkeypatch.setattr(type(dispatch_state), "resolve", _resolve_for(2))
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         # Make asyncio.sleep succeed on first call (so loop body runs), fail on second (stop loop)
@@ -85,7 +88,7 @@ class TestDispatchLoopBasic:
         # Pre-populate state.jobs with one of the job_ids
         dispatch_state.jobs["queued-001"] = Job(id="queued-001", created=0.0)
 
-        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (5, "env") if k == "max_jobs" else (d, "default"))
+        monkeypatch.setattr(type(dispatch_state), "resolve", _resolve_for(5))
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         call_count = 0
@@ -122,7 +125,7 @@ class TestDispatchLoopBasic:
         already.status = "downloading"
         dispatch_state.jobs["manual-active"] = already
 
-        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (2, "env") if k == "max_jobs" else (d, "default"))
+        monkeypatch.setattr(type(dispatch_state), "resolve", _resolve_for(2))
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         call_count = 0
@@ -160,7 +163,7 @@ class TestDispatchLoopBasic:
         """
         seed_queued_jobs(dispatch_state, count=2)
 
-        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (5, "env") if k == "max_jobs" else (d, "default"))
+        monkeypatch.setattr(type(dispatch_state), "resolve", _resolve_for(5))
 
         # Track order: we want to verify that when _run_download is called,
         # the job is already marked 'starting' in DB
@@ -247,7 +250,7 @@ class TestDispatchLoopSecondTick:
         """Second call to dispatch_loop should not dispatch jobs already in state.jobs."""
         seed_queued_jobs(dispatch_state, count=4)
 
-        monkeypatch.setattr(type(dispatch_state), "resolve", lambda self, k, d, t=int: (10, "env") if k == "max_jobs" else (d, "default"))
+        monkeypatch.setattr(type(dispatch_state), "resolve", _resolve_for(10))
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         # We'll let the loop run 2 ticks by making sleep fail with CancelledError
@@ -305,7 +308,6 @@ class TestDispatchLoopLifespan:
     def test_lifespan_creates_and_cancels_dispatch_task(self, tmp_path, monkeypatch):
         """dispatch_loop task should be created on startup and cancelled on shutdown."""
         import sys
-        from pathlib import Path
 
         # Clear any cached modules to ensure fresh import
         for mod in list(sys.modules):
@@ -331,16 +333,10 @@ class TestDispatchLoopLifespan:
         import download
         monkeypatch.setattr(download, "_run_download", lambda *a, **kw: None)
 
-        from app import _lifespan, app
+        from app import app
         from fastapi.testclient import TestClient
 
         # Use TestClient which triggers lifespan on enter/exit
-        # Track whether dispatch_loop task was seen
-        dispatch_task_seen = {"started": False, "cancelled": False}
-        original_cancel = None
-
-        # We need to verify dispatch_task exists and is cancelled
-        # The simplest way: check that the task exists during lifespan
         with TestClient(app) as client:
             state = client.app.state.opengrab
             # Verify dispatch_loop is running by checking for active tasks

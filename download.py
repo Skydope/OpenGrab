@@ -374,7 +374,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         job.status = "done"
         job.percent = 100.0
         job.filepath = job.filepath or str(final)
-        job.filename = job.filepath and Path(job.filepath).name or f"{title}.{ext}"
+        job.filename = (job.filepath and Path(job.filepath).name) or f"{title}.{ext}"
         job.mime = mime
         job.title = title
         log.info("job %s: completado → %s", job_id, job.filepath)

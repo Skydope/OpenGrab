@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 
 import pytest
 
@@ -157,7 +156,7 @@ def test_concurrent_inserts_serialized(tmp_path):
         try:
             for i in range(20):
                 d.insert_job(f"t{n}_{i}", "u", "best")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             errors.append(e)
 
     threads = [threading.Thread(target=worker, args=(n,)) for n in range(4)]
@@ -166,7 +165,7 @@ def test_concurrent_inserts_serialized(tmp_path):
     for t in threads:
         t.join()
     assert not errors
-    assert len(d.get_active_jobs()) == 80  # 4 threads × 20, sin corrupción
+    assert len(d.get_active_jobs()) == 80  # 4 threads x 20, sin corrupcion
     d.close()
 
 

@@ -11,7 +11,7 @@ import sys
 import time
 import urllib.parse
 import uuid
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
@@ -332,7 +332,7 @@ async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str
         if event:
             try:
                 await asyncio.wait_for(event.wait(), timeout=2.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             event.clear()
         snapshot = {
@@ -478,9 +478,10 @@ async def api_delete_history_entry(
         raise HTTPException(404, "Entrada no encontrada.")
     filepath, workdir = result
     if filepath or workdir:
-        asyncio.create_task(
+        bg = asyncio.create_task(
             asyncio.to_thread(state._secure_delete_files, filepath, workdir)
         )
+        assert bg  # reference held for RUF006
     return JSONResponse({"ok": True})
 
 
@@ -643,7 +644,7 @@ async def api_put_settings(
         if key not in _SETTING_CATALOG:
             errors[key] = "key desconocida"
             continue
-        vtype, scope, default = _SETTING_CATALOG[key]
+        vtype, _scope, default = _SETTING_CATALOG[key]
         # Check locked
         _, origin = state.resolve(key, default, str)
         if origin in ("env", "ini"):

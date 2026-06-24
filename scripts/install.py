@@ -65,7 +65,6 @@ from rich.panel import Panel  # noqa: E402
 from rich.progress import Progress, SpinnerColumn, TextColumn  # noqa: E402
 from rich.prompt import Confirm, IntPrompt, Prompt  # noqa: E402
 from rich.table import Table  # noqa: E402
-from rich.text import Text  # noqa: E402
 
 console = Console()
 
@@ -374,7 +373,7 @@ def _mode_docker() -> None:
     console.print()
     console.print("[bold]Building and starting OpenGrab...[/]")
 
-    rc, out = _run_live(
+    rc, _out = _run_live(
         ["docker", "compose", "up", "-d", "--build"],
         "docker compose up",
         cwd=repo,
@@ -514,7 +513,6 @@ def _mode_baremetal() -> None:
 
 def _install_systemd(repo: Path, venv_dir: Path | None, config: dict[str, Any]) -> None:
     python_exe = str(venv_dir / "bin" / "python") if venv_dir else sys.executable
-    port = config.get("OPENGRAB_PORT", "8800")
     env_lines = "\n".join(
         f"Environment={k}={v}" for k, v in config.items()
     )
@@ -775,7 +773,11 @@ def main() -> None:
     except Exception:
         console.print_exception()
         console.print()
-        console.print(_panel("Unexpected error", "Please report this issue:\nhttps://github.com/Skydope/OpenGrab/issues", "red"))
+        console.print(_panel(
+            "Unexpected error",
+            "Please report this issue:\nhttps://github.com/Skydope/OpenGrab/issues",
+            "red",
+        ))
 
 
 if __name__ == "__main__":

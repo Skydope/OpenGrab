@@ -8,7 +8,6 @@ asyncio.sleep con CancelledError para detener el loop despues de N ticks.
 
 import asyncio
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest

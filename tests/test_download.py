@@ -7,9 +7,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import download
+
 from db import Database
 from models import Job
 from state import AppState
+
+
+def _resolve_max_size(mb: int):
+    """Monkeypatch helper: resolve('max_size_mb') -> mb from 'env'."""
+    return lambda self, k, d, t=int: (mb, "env") if k == "max_size_mb" else (d, "default")
 
 
 @pytest.fixture
@@ -143,7 +150,6 @@ def test_run_download_no_files(dl_state, monkeypatch):
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t5")
-    wd = Path(tempfile.mkdtemp(prefix="opengrab_", dir=dl_state.out_dir))
     info = {"title": "Ghost"}
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
@@ -182,7 +188,7 @@ def test_run_download_size_enforcement(dl_state, monkeypatch):
     from download import _run_download
 
     # _run_download ahora usa state.resolve("max_size_mb") en vez de config.MAX_SIZE_MB
-    monkeypatch.setattr(type(dl_state), "resolve", lambda self, k, d, t=int: (1, "env") if k == "max_size_mb" else (d, "default"))
+    monkeypatch.setattr(type(dl_state), "resolve", _resolve_max_size(1))
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t7")
@@ -251,7 +257,6 @@ def test_run_download_hook_percent(dl_state, monkeypatch):
 
 
 # ----------------------- A.1: mapeo de errores --------------------------- #
-import download
 
 
 def test_friendly_error_maps_403():
@@ -586,7 +591,7 @@ def test_cleanup_storage_keeps_recent_workdirs(dl_state):
     wd.mkdir()
     (wd / "f.bin").write_bytes(b"x" * 100)
 
-    result = dl_state.cleanup_storage(max_age_hours=24)
+    dl_state.cleanup_storage(max_age_hours=24)
     assert wd.exists()
 
 

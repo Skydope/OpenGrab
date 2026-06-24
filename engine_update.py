@@ -110,7 +110,7 @@ def check_and_update(force: bool = False) -> dict[str, object]:
             _install_wheel(url, engine_dir)
             _write_stamp(engine_dir)
             result.update(updated=True, version=version)
-        except Exception as exc:  # noqa: BLE001 — degradar a bundleado siempre
+        except Exception as exc:
             result["error"] = str(exc)
 
     if prepend_to_path(engine_dir):

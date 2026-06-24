@@ -1,6 +1,11 @@
 import pytest
 
 
+def _resolve_total(mb: int):
+    """Monkeypatch helper: resolve('max_total_mb') -> mb from 'env'."""
+    return lambda self, k, d, t=int: (mb, "env") if k == "max_total_mb" else (d, "default")
+
+
 # ----------------------------- per-file size ----------------------------- #
 def test_enforce_size_deletes_and_raises(tmp_path):
     from download import _enforce_size
@@ -41,7 +46,7 @@ def test_current_usage_bytes_counts_files(app_state):
 
 def test_max_total_mb_refuses_new_job(client, app_state, monkeypatch):
     # api_create_job now uses state.resolve("max_total_mb")
-    monkeypatch.setattr(type(app_state), "resolve", lambda self, k, d, t=int: (1, "env") if k == "max_total_mb" else (d, "default"))
+    monkeypatch.setattr(type(app_state), "resolve", _resolve_total(1))
     (app_state.out_dir / "fill.bin").write_bytes(b"x" * (2 * 1024 * 1024))  # 2 MB
 
     r = client.post(
@@ -51,7 +56,7 @@ def test_max_total_mb_refuses_new_job(client, app_state, monkeypatch):
 
 
 def test_max_total_mb_allows_under_budget(client, app_state, monkeypatch):
-    monkeypatch.setattr(type(app_state), "resolve", lambda self, k, d, t=int: (100, "env") if k == "max_total_mb" else (d, "default"))
+    monkeypatch.setattr(type(app_state), "resolve", _resolve_total(100))
     monkeypatch.setattr("routes._run_download", lambda *a, **kw: None)
     r = client.post(
         "/api/jobs", json={"url": "https://youtu.be/abc", "quality": "best"}

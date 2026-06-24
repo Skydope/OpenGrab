@@ -103,8 +103,11 @@ def test_no_localhost_bypass():
     import os
     os.environ["OPENGRAB_TOKEN"] = "real-token"
     os.environ.pop("OPENGRAB_NO_AUTH", None)
-    import importlib, config, routes
-    importlib.reload(config); importlib.reload(routes)
+    import importlib
+    import config
+    import routes
+    importlib.reload(config)
+    importlib.reload(routes)
 
     from starlette.requests import Request
     from fastapi import HTTPException

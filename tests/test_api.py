@@ -113,7 +113,6 @@ def test_api_jobs_file_not_done(client, app_state):
 
 
 def test_api_jobs_file_missing(client, app_state):
-    from pathlib import Path
 
     from models import Job
 
@@ -312,7 +311,6 @@ def test_api_delete_nonexistent_channel(client):
 
 
 def test_api_check_channel(client, monkeypatch):
-    from download import _check_channel_watch
 
     def fake_check(state, channel):
         return [{"url": "https://x.com/1", "extractor": "yt", "video_id": "v1", "title": "Test"}]
@@ -460,7 +458,6 @@ def test_batch_download_invalid_quality_returns_400(client):
 
 def test_batch_download_rate_limited(client):
     """Three fast POSTs to /api/playlist/download: first two succeed, third gets 429 (2/min limit)."""
-    import time
 
     urls = ["https://youtube.com/watch?v=batch1"]
 
