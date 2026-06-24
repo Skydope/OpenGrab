@@ -53,6 +53,11 @@ class AppState:
             return cast(v), "table"
         return default, "default"
 
+    def resolve_library_dir(self) -> Path:
+        """Resuelve library_dir — fuente unica para _finalize_desktop y api_job_file."""
+        raw, _ = self.resolve("library_dir", "", str)
+        return Path(raw).resolve() if raw else self.out_dir.resolve()
+
     # ------------------------------------------------------------------ #
     # Job completion
     # ------------------------------------------------------------------ #
@@ -555,11 +560,7 @@ class AppState:
         if not config.IS_DESKTOP:
             return
         with self._finalize_lock:
-            library_dir_raw, _ = self.resolve("library_dir", "", str)
-            if library_dir_raw:
-                library_dir = Path(library_dir_raw).resolve()
-            else:
-                library_dir = self.out_dir.resolve()
+            library_dir = self.resolve_library_dir()
             template, _ = self.resolve("name_template", "{title}", str)
 
             ext = final.suffix.lstrip(".") or ("mp3" if quality == "audio" else "mp4")

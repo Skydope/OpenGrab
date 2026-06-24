@@ -174,6 +174,42 @@ def test_file_serving_path_traversal_blocked(client, app_state):
     assert r.status_code == 403
 
 
+def test_api_job_file_serves_from_library_dir(client, app_state, monkeypatch):
+    """Archivo movido a library_dir custom (fuera de out_dir) es servible en desktop."""
+    import tempfile
+    from pathlib import Path
+
+    import routes as routes_mod
+    from models import Job
+
+    monkeypatch.setattr(routes_mod, "IS_DESKTOP", True)
+    lib = Path(tempfile.mkdtemp(prefix="lib_"))
+    app_state.db.set_setting("library_dir", str(lib))
+    (lib / "video.mp4").write_bytes(b"fake mp4")
+    app_state.jobs["lib403"] = Job(
+        id="lib403", status="done", filename="video.mp4",
+        filepath=str(lib / "video.mp4"), mime="video/mp4",
+    )
+    r = client.get("/api/jobs/lib403/file")
+    assert r.status_code == 200
+
+
+def test_api_job_file_outside_all_roots_blocked(client, app_state, monkeypatch):
+    """Path fuera de out_dir y library_dir sigue bloqueado (403) incluso en desktop."""
+    import tempfile
+
+    import routes as routes_mod
+    from models import Job
+
+    monkeypatch.setattr(routes_mod, "IS_DESKTOP", True)
+    app_state.db.set_setting("library_dir", tempfile.mkdtemp(prefix="lib_"))
+    app_state.jobs["evil"] = Job(
+        id="evil", status="done", filename="passwd",
+        filepath="/etc/passwd", mime="text/plain",
+    )
+    assert client.get("/api/jobs/evil/file").status_code == 403
+
+
 def test_content_disposition_unicode_filename(client, app_state):
     from models import Job
 

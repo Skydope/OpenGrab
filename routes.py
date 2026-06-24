@@ -392,7 +392,11 @@ async def api_job_file(
     path = job.filepath
     if not path:
         raise HTTPException(410, "El archivo ya no esta disponible.")
-    if not Path(path).resolve().is_relative_to(state.out_dir):
+    resolved = Path(path).resolve()
+    allowed = [state.out_dir.resolve()]
+    if IS_DESKTOP:
+        allowed.append(state.resolve_library_dir())
+    if not any(resolved.is_relative_to(root) for root in allowed):
         raise HTTPException(403, "Acceso denegado.")
     if not Path(path).exists():
         raise HTTPException(410, "El archivo ya no esta disponible.")
