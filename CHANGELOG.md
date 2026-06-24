@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.10.0] — 2026-06-24
 
 ### Documentation
 
@@ -16,42 +16,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docs/SECURITY.md` — Security policy covering SSRF defense, auth, and reporting
   - `docs/CONTRIBUTING.md` — Contribution guidelines and quality standards
   - `docs/examples/opengrab.service` — Example systemd unit file
-- **README.md** modernized with Highlights, Quick Start, and Documentation sections at the top, plus updated badges and Spanish section
-- **CHANGELOG.md** now links to docs/ for detailed documentation
-
-## [1.10.0] — 2026-06-23
-
-### Security
-
-- **SSRF por DNS cerrado (capa 1).** El gate `_is_safe_url` ahora resuelve DNS
-  (`getaddrinfo` con `AF_UNSPEC`) y valida todas las IPs (A + AAAA) contra las
-  reglas de bloqueo. Antes solo chequeaba IPs literales en la URL; un dominio
-  con registro A apuntando a `169.254.169.254` o `10.0.0.5` pasaba derecho porque
-  `ipaddress.ip_address()` lanzaba `ValueError` y el gate retornaba `True`.
-  Ahora se resuelve y se bloquea si cualquiera de las IPs cae en rangos privados,
-  loopback, link-local (metadata cloud), reservados, multicast o unspecified.
-  Política **strict on DNS failure**: si la resolución falla, bloquea con mensaje
-  "no se pudo resolver el host" (distinto de "resuelve a IP privada").
-- **Egress firewall en DOCKER-USER (capa 2).** Script `scripts/egress-lockdown.sh`
-  que inserta reglas DROP en la chain `DOCKER-USER` del host, scopeadas por la
-  subnet del contenedor, sin afectar otros contenedores del homelab. Cierra el
-  TOCTOU/DNS-rebinding residual entre la resolución de capa 1 y la conexión real
-  de yt-dlp. Sin `127.0.0.0/8` (respeta el DNS embebido de Docker en
-  `127.0.0.11`). Idempotente (`-C` check), con `--dry-run`, `--log` y `--remove`.
+- **README.md** modernized with Highlights, Quick Start, and Documentation sections at the top, plus updated badges and bilingual Spanish section
 
 ### Added
 
+- **Pre-commit hooks**: `.pre-commit-config.yaml` with ruff + shellcheck (auto) and mypy (manual). Catches format/lint issues locally before CI.
+- **`OPENGRAB_SECURE_DELETE=1`** opt-in for 3-pass file overwrite. Default is fast `os.unlink()` — avoids 3× write overhead on SSD/CoW filesystems where overwrite is theater.
+- **Tray reopens WebView2 window**: clicking "Abrir OpenGrab" from the system tray now opens a native WebView2 window (not a browser tab). Main thread coordinates with tray thread via `_reopen_event`.
 - `scripts/egress-lockdown.sh`: firewall egress scopeado por contenedor.
-- 14 tests de loops de fondo en `tests/test_state.py`: 8 de `evict_once`, 1 de
-  `evict_loop`, 5 de `watch_loop` (dispatch, dedup por downloaded/active/interval,
-  error handling). Mismo patrón que `test_dispatch.py`.
+- 14 tests de loops de fondo en `tests/test_state.py`: 8 de `evict_once`, 1 de `evict_loop`, 5 de `watch_loop`.
+- `GET /api/metrics` (auth-gated) with version, uptime, job counts, usage bytes, channels_watched.
+- `_RequestLoggingMiddleware` logging method, path, status, and duration for every request except `/health`.
+
+### Security
+
+- **SSRF por DNS cerrado (capa 1).** `_is_safe_url` now resolves DNS with `getaddrinfo` (AF_UNSPEC) and validates ALL IPs (A + AAAA) against private/loopback/link-local/reserved/multicast/unspecified ranges. Strict on DNS failure.
+- **Egress firewall en DOCKER-USER (capa 2).** `scripts/egress-lockdown.sh` inserts DROP rules in the host's `DOCKER-USER` chain, scoped by container subnet. Closes DNS rebinding TOCTOU.
+- `/api/debug/routes` now requires auth (`Depends(require_auth)`).
+
+### Fixed
+
+- System tray was explicitly killed when closing the native WebView2 window — now stays alive as documented.
+- `_finalize_desktop` fallback resolved `{title}/` literally as directory instead of `out_dir` when `library_dir` was empty.
+- `api_job_file` now validates against `out_dir` OR `resolve_library_dir()`, fixing 403 on desktop with custom library path.
+- `create_task` fire-and-forget in delete history had a fake ruff fix (`assert bg`) — now uses proper `running_tasks` tracking.
+- SourceForge upload race: `sleep 120` replaced with asset polling loop (15s interval, 15min timeout).
 
 ### Changed
 
-- `_is_safe_url` ahora devuelve `tuple[bool, str]`; los 4 endpoints que la llaman
-  propagan el `reason` al usuario en vez de un mensaje hardcodeado.
-- CI: el job `typecheck` ahora matrixea Python `["3.12", "3.13", "3.14"]` (antes
-  pineaba solo 3.13). Errores de mypy específicos de 3.14 ya no se escapan a CI.
+- `logging.basicConfig()` moved from `app.py` module level to `main()` — no longer configures handlers on import.
+- `_setup_logging()` handler removal simplified to `root.handlers.clear()`.
+- `_is_safe_url` now returns `tuple[bool, str]`; the 4 endpoints that call it propagate the `reason` to the user.
+- CI: `typecheck` job matrixes Python `["3.12", "3.13", "3.14"]` (was hardcoded to 3.13).
+
+### Internal
+
+- 3 duplicate spawn patterns consolidated into `AppState._spawn_download()` + `_track_task()`.
+- `current_usage_bytes()` now uses a 5-second TTL cache, invalidated on mutation.
+- `secure-delete` 3-pass overwrite is now opt-in (`OPENGRAB_SECURE_DELETE=1`); default is fast `unlink()`.
+- `if event:` dead code removed from SSE event handler.
+- 16 technical debt items resolved (documented in `dist/debt.md`).
 
 ## [1.9.0] — 2026-06-23
 
