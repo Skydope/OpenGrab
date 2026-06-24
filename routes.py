@@ -478,10 +478,11 @@ async def api_delete_history_entry(
         raise HTTPException(404, "Entrada no encontrada.")
     filepath, workdir = result
     if filepath or workdir:
-        bg = asyncio.create_task(
+        task = asyncio.create_task(
             asyncio.to_thread(state._secure_delete_files, filepath, workdir)
         )
-        assert bg  # reference held for RUF006
+        state.running_tasks.add(task)
+        task.add_done_callback(state.running_tasks.discard)
     return JSONResponse({"ok": True})
 
 

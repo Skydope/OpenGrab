@@ -477,7 +477,7 @@ def _mode_baremetal() -> None:
         console.print(f"  [green]✓[/] Virtual env at [bold]{venv_dir}[/]")
 
     # ── Pip install ────────────────────────────────────────────────────
-    pip_cmd = [str(venv_dir / "bin" / "pip")] if use_venv else [sys.executable, "-m", "pip"]
+    pip_cmd = [str(venv_dir / "bin" / "pip")] if venv_dir else [sys.executable, "-m", "pip"]
     pip_cmd += ["install", "-e", "."]
     rc, out = _run(pip_cmd, "Installing OpenGrab (pip install -e .)", cwd=repo)
     if rc != 0:
@@ -498,7 +498,7 @@ def _mode_baremetal() -> None:
     # ── Success ────────────────────────────────────────────────────────
     port = config.get("OPENGRAB_PORT", "8800")
     token = config.get("OPENGRAB_TOKEN", "")
-    python_exe = str(venv_dir / "bin" / "python") if use_venv else sys.executable
+    python_exe = str(venv_dir / "bin" / "python") if venv_dir else sys.executable
     console.print()
     console.print(_panel(
         "Installation Complete",
