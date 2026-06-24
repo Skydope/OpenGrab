@@ -366,6 +366,7 @@ def test_tray_on_open_sets_reopen_event(monkeypatch):
 
     fake_pystray.Icon = _FakeIcon  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "pystray", fake_pystray)
+    monkeypatch.setattr(desktop, "_get_tray_image", lambda: None)
 
     desktop._system_tray(12345)
 
