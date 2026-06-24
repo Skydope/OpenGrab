@@ -329,12 +329,11 @@ async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str
         event = state.job_events.get(job_id)
         if event is None:
             break
-        if event:
-            try:
-                await asyncio.wait_for(event.wait(), timeout=2.0)
-            except TimeoutError:
-                pass
-            event.clear()
+        try:
+            await asyncio.wait_for(event.wait(), timeout=2.0)
+        except TimeoutError:
+            pass
+        event.clear()
         snapshot = {
             "status": job.status,
             "percent": job.percent,
@@ -749,7 +748,10 @@ async def api_check_channel(
 
 
 @router.get("/api/debug/routes")
-async def api_debug_routes(request: Request) -> JSONResponse:
+async def api_debug_routes(
+    request: Request,
+    _: None = Depends(require_auth),
+) -> JSONResponse:
     routes = []
     for r in request.app.routes:
         routes.append({
