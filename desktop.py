@@ -399,9 +399,7 @@ def main() -> int:
         if _webview2_available():
             _log.info("abriendo ventana nativa WebView2")
             _open_ui_window(port)
-            _log.info("ventana cerrada, deteniendo tray")
-            if _tray_icon is not None:
-                _tray_icon.stop()
+            _log.info("ventana cerrada, app sigue en tray")
         else:
             webbrowser.open(f"http://127.0.0.1:{port}")
             # Sin ventana nativa, el tray queda vivo hasta que el usuario sale
