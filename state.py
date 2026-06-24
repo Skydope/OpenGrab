@@ -33,6 +33,9 @@ class AppState:
         self.job_events: dict[str, asyncio.Event] = {}
         self.running_tasks: set[asyncio.Task[None]] = set()
         self._finalize_lock = threading.Lock()
+        self._usage_cache: int | None = None
+        self._usage_cache_ts: float = 0.0
+        self._usage_lock = threading.Lock()
         atexit.register(self.db.close)
 
     # ------------------------------------------------------------------ #
@@ -113,7 +116,7 @@ class AppState:
     # ------------------------------------------------------------------ #
     # Storage accounting
     # ------------------------------------------------------------------ #
-    def current_usage_bytes(self) -> int:
+    def _scan_usage_bytes(self) -> int:
         total = 0
         for p in self.out_dir.rglob("*"):
             try:
@@ -121,6 +124,17 @@ class AppState:
                     total += p.stat().st_size
             except OSError:
                 pass
+        return total
+
+    def current_usage_bytes(self, max_age: float = 5.0) -> int:
+        now = time.monotonic()
+        with self._usage_lock:
+            if self._usage_cache is not None and now - self._usage_cache_ts < max_age:
+                return self._usage_cache
+        total = self._scan_usage_bytes()
+        with self._usage_lock:
+            self._usage_cache = total
+            self._usage_cache_ts = now
         return total
 
     # ------------------------------------------------------------------ #
@@ -264,6 +278,8 @@ class AppState:
                      if v.status not in ("done", "error", "interrupted")}
         self.job_events = {k: v for k, v in self.job_events.items()
                            if k in self.jobs}
+        with self._usage_lock:
+            self._usage_cache_ts = 0.0
         return count
 
     # ------------------------------------------------------------------ #
@@ -329,6 +345,8 @@ class AppState:
                 cleaned += 1
             except Exception:
                 pass
+        with self._usage_lock:
+            self._usage_cache_ts = 0.0
         return {"cleaned": cleaned, "freed_bytes": freed}
 
     def cleanup_storage_all(self) -> dict[str, Any]:
@@ -346,6 +364,8 @@ class AppState:
                 cleaned += 1
             except Exception:
                 pass
+        with self._usage_lock:
+            self._usage_cache_ts = 0.0
         return {"cleaned": cleaned, "freed_bytes": freed}
 
     # ------------------------------------------------------------------ #

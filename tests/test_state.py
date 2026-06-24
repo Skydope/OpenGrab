@@ -407,3 +407,64 @@ class TestSpawnDownload:
         # Cleanup — la DB no fue tocada (no hay insert_job)
         loop_state.jobs.pop("test-spawn-1", None)
         loop_state.job_events.pop("test-spawn-1", None)
+
+
+# --------------------------------------------------------------------------- #
+# current_usage_bytes — TTL cache
+# --------------------------------------------------------------------------- #
+
+
+class TestUsageCache:
+    """Verifica que current_usage_bytes cachea el scan con TTL y lo invalida
+    al final de los metodos de borrado masivo."""
+
+    def test_cold_cache_scans(self, loop_state):
+        (loop_state.out_dir / "a.bin").write_bytes(b"x" * 100)
+        assert loop_state.current_usage_bytes() == 100
+
+    def test_cached_within_ttl(self, loop_state, monkeypatch):
+        calls = []
+        monkeypatch.setattr(loop_state, "_scan_usage_bytes",
+                            lambda: calls.append(1) or 42)
+
+        assert loop_state.current_usage_bytes() == 42
+        assert len(calls) == 1
+
+        assert loop_state.current_usage_bytes() == 42
+        assert len(calls) == 1  # cached, no second scan
+
+    def test_rescans_after_ttl_expiry(self, loop_state, monkeypatch):
+        calls = []
+        monkeypatch.setattr(loop_state, "_scan_usage_bytes",
+                            lambda: calls.append(1) or 42)
+        t0 = 0.0
+        monkeypatch.setattr("time.monotonic", lambda: t0)
+
+        assert loop_state.current_usage_bytes(max_age=1.0) == 42
+        assert len(calls) == 1
+
+        t0 = 2.0  # TTL expired
+        assert loop_state.current_usage_bytes(max_age=1.0) == 42
+        assert len(calls) == 2  # re-scanned
+
+    def test_scan_usage_bytes_counts_recursive(self, loop_state):
+        (loop_state.out_dir / "a.bin").write_bytes(b"x" * 100)
+        sub = loop_state.out_dir / "sub"
+        sub.mkdir()
+        (sub / "b.bin").write_bytes(b"x" * 200)
+        assert loop_state._scan_usage_bytes() >= 300
+
+    def test_invalidated_after_clear_history(self, loop_state, monkeypatch):
+        calls = []
+        monkeypatch.setattr(loop_state, "_scan_usage_bytes",
+                            lambda: calls.append(1) or 42)
+
+        assert loop_state.current_usage_bytes() == 42
+        assert len(calls) == 1
+
+        # Simular clear_all_history — el metodo invalida el cache
+        with loop_state._usage_lock:
+            loop_state._usage_cache_ts = 0.0
+
+        assert loop_state.current_usage_bytes() == 42
+        assert len(calls) == 2  # re-scanned tras invalidar
