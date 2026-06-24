@@ -18,13 +18,15 @@
   <header>
     <span class="logo">Open<b>Grab</b></span>
     <span class="tag"><span class="dot"></span>self-hosted · yt-dlp</span>
-    <button class="theme-btn" @click="toggleTheme" :aria-label="theme==='dark'?'Tema claro':'Tema oscuro'"
-            x-text="theme==='dark'?'☀️':'🌙'"></button>
-    <button class="theme-btn" @click="openSettings()" title="Configuración">⚙️</button>
+    <span class="header-actions">
+      <button class="theme-btn" @click="toggleTheme" :aria-label="theme==='dark'?'Tema claro':'Tema oscuro'"
+              x-text="theme==='dark'?'☀️':'🌙'"></button>
+      <button class="theme-btn" @click="openSettings()" title="Configuración">⚙️</button>
+    </span>
   </header>
 
   <!-- Auth card -->
-  <div class="card auth-card" x-show="!authenticated" x-cloak>
+  <div class="card auth-card" x-show="authChecked && !authenticated" x-cloak>
     <label class="fld" for="token">Token de acceso</label>
     <div class="row">
       <input id="token" type="password"               placeholder="Ingresa el token configurado en OPENGRAB_TOKEN"
@@ -38,20 +40,29 @@
   </div>
 
   <!-- Main card -->
-  <div class="card" x-show="authenticated" x-cloak>
+  <div class="card" x-show="authChecked && authenticated" x-cloak>
     <label class="fld" for="url">URL del video</label>
-    <div class="row">
-      <input id="url" type="text" placeholder="https://…"
-             autocomplete="off" spellcheck="false" x-model="url"
-             @keydown.enter="inspect">
+    <div class="row url-row" @drop.prevent="onDrop($event)" @dragover.prevent>
+      <span class="url-input-wrap">
+        <input id="url" type="text" placeholder="https://…"
+               autocomplete="off" spellcheck="false" x-model="url"
+               @keydown.enter="inspect" @paste="onPaste($event)">
+        <button class="url-clear" x-show="url" @click="clearUrl()"
+                aria-label="Limpiar URL" title="Limpiar" x-cloak>✕</button>
+      </span>
       <button class="copy-btn" @click="copyCommand" :disabled="!url"
               :class="{copied: cmdCopied}" x-text="cmdCopied ? '✓' : '📋'"
               title="Copiar comando yt-dlp"></button>
-      <button class="go" @click="inspect" :disabled="inspecting">
+      <button class="paste-btn" @click="pasteFromClipboard"
+              title="Pegar desde el portapapeles y analizar">Pegar</button>
+      <button class="btn-secondary analyze-btn" @click="inspect" :disabled="inspecting">
         <span x-show="!inspecting">Analizar</span>
         <span x-show="inspecting">…</span>
       </button>
     </div>
+    <p class="url-hint muted-sm" x-show="!meta && !inspecting && !isPlaylist && !downloading && !terminal.length" x-cloak>
+      Pegá un link de YouTube, Instagram, TikTok, SoundCloud y ~1800 sitios más.
+    </p>
 
     <!-- Video metadata -->
     <div class="meta" x-show="inspecting && !meta" x-transition.duration.200ms>
@@ -87,7 +98,7 @@
     </div>
 
     <!-- Format preview -->
-    <div x-show="formats.length" class="mt-14">
+    <div x-show="formats.length" class="mt-14 fmt-wrap">
       <div class="toggle-label"
            role="button" tabindex="0" :aria-expanded="showFormats"
            @click="showFormats = !showFormats"
@@ -167,22 +178,35 @@
       </div>
     </div>
 
-    <div class="mt-18">
-      <button @click="download" :disabled="!meta || downloading" class="btn-block">Descargar</button>
+    <div class="mt-18" x-show="!batchJobIds.length">
+      <button @click="download" :disabled="!url.trim() || downloading || isPlaylist" class="btn-block">Descargar</button>
     </div>
 
-    <!-- Terminal output -->
-    <div class="term" :class="{show: terminal.length > 0}">
+    <!-- Progreso de descarga -->
+    <div class="term" :class="{show: terminal.length > 0 && !batchJobIds.length}">
       <div class="bar-head">
         <span class="tl"><i></i><i></i><i></i></span>
         <span>yt-dlp</span>
+        <button class="term-toggle" @click="showTerminal = !showTerminal"
+                x-text="showTerminal ? 'ocultar log' : 'ver log'"></button>
+      </div>
+      <!-- Lectura limpia: % grande + velocidad · ETA -->
+      <div class="dl-stats">
+        <span class="dl-pct" :class="{done: progressDone}"
+              x-text="(progressDone ? 100 : Math.round(progress)) + '%'"></span>
+        <span class="dl-meta" x-show="downloading && (dlSpeed || dlEta)">
+          <span x-show="dlSpeed" x-text="dlSpeed"></span>
+          <span x-show="dlEta" x-text="'· ETA ' + dlEta"></span>
+        </span>
+        <span class="dl-meta dl-done" x-show="progressDone">listo</span>
       </div>
       <div class="progress" :class="{done: progressDone}">
         <i :style="'width:' + progress + '%'"></i>
       </div>
-      <div class="lines" x-ref="lines" x-effect="if($refs.lines && terminal.length) $refs.lines.scrollTop = $refs.lines.scrollHeight">
+      <div class="lines" x-show="showTerminal" x-ref="lines"
+           x-effect="if($refs.lines && terminal.length) $refs.lines.scrollTop = $refs.lines.scrollHeight">
         <template x-for="(line, idx) in terminal" :key="idx">
-          <p class="l" :class="line.cls" :data-live="line.live ? '1' : null">
+          <p class="l" :class="line.cls">
             <span class="pfx" x-text="line.pfx"></span>
             <span class="body" x-text="line.text"></span>
           </p>
@@ -393,6 +417,7 @@ document.addEventListener('alpine:init', () => {
     token: "",
     authLoading: false,
     authenticated: false,
+    authChecked: false,
 
     // ── Theme ─────────────────────────────────
     theme: "dark",
@@ -417,13 +442,14 @@ document.addEventListener('alpine:init', () => {
 
     async init() {
       this.initTheme();
-      if (!this.AUTH_REQUIRED) { this.authenticated = true; return; }
+      if (!this.AUTH_REQUIRED) { this.authenticated = true; this.authChecked = true; return; }
       try {
         const r = await fetch("/api/history?limit=1");
         this.authenticated = r.status !== 401;
       } catch (e) {
         this.authenticated = false;
       }
+      this.authChecked = true;
     },
 
     async doAuth() {
@@ -478,6 +504,9 @@ document.addEventListener('alpine:init', () => {
     // ── Download ──────────────────────────────
     downloading: false,
     terminal: [],
+    dlSpeed: "",
+    dlEta: "",
+    showTerminal: false,
     progress: 0,
     progressDone: false,
     downloadUrl: "",
@@ -520,7 +549,10 @@ document.addEventListener('alpine:init', () => {
       this.settingsOpen = true;
       if (!this.settings.length) {
         const r = await fetch("/api/settings");
-        if (r.ok) { this.settings = await r.json(); }
+        if (r.ok) {
+          const data = await r.json();
+          this.settings = data.map(s => ({ ...s, _editValue: s.value }));
+        }
       }
     },
     toggleSettings() {
@@ -601,6 +633,41 @@ document.addEventListener('alpine:init', () => {
       } finally {
         this.inspecting = false;
       }
+    },
+
+    // Pegar en el input dispara el análisis (cero taps extra en mobile).
+    onPaste(e) {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData)?.getData("text") || "";
+      this.url = text.trim();
+      if (this.url) this.inspect();
+    },
+    // Botón "Pegar": lee el portapapeles y analiza de una.
+    async pasteFromClipboard() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          this.url = text.trim();
+          this.inspect();
+        }
+      } catch (e) {
+        this.errorMsg = "No pude leer el portapapeles. Pegá la URL a mano y tocá Analizar.";
+      }
+    },
+    // Soltar una URL (o texto con link) sobre la tarjeta también analiza.
+    onDrop(e) {
+      const text = (e.dataTransfer?.getData("text") || "").trim();
+      if (text) {
+        this.url = text;
+        this.inspect();
+      }
+    },
+
+    // Limpiar el campo y resetear el estado analizado; devolver el foco.
+    clearUrl() {
+      this.url = "";
+      this.resetUI();
+      this.$nextTick(() => document.getElementById("url")?.focus());
     },
 
     async copyCommand() {
@@ -795,7 +862,6 @@ document.addEventListener('alpine:init', () => {
 
       const ev = new EventSource("/api/jobs/" + jobId + "/events");
       let lastStatus = "";
-      let lastLiveIdx = -1;
 
       ev.onmessage = (m) => {
         const s = JSON.parse(m.data);
@@ -807,19 +873,12 @@ document.addEventListener('alpine:init', () => {
           if (s.status === "processing") this.addLine("›", s.note || "procesando…");
         }
 
-        if (s.status === "downloading" && s.speed) {
-          const txt = (s.percent || 0).toFixed(1) + "%   " +
-                      (s.speed || "") + (s.eta ? "   ETA " + s.eta : "");
-          if (lastLiveIdx >= 0) {
-            this.terminal[lastLiveIdx] = { pfx: "›", text: txt, cls: "", live: true };
-            this.terminal = [...this.terminal];
-          } else {
-            const idx = this.terminal.length;
-            this.terminal = [...this.terminal, { pfx: "›", text: txt, cls: "", live: true }];
-            lastLiveIdx = idx;
-          }
+        if (s.status === "downloading") {
+          this.dlSpeed = s.speed || "";
+          this.dlEta = s.eta || "";
         } else {
-          lastLiveIdx = -1;
+          this.dlSpeed = "";
+          this.dlEta = "";
         }
 
         if (s.status === "done") {
@@ -894,6 +953,9 @@ document.addEventListener('alpine:init', () => {
 
     resetUI() {
       this.terminal = [];
+      this.dlSpeed = "";
+      this.dlEta = "";
+      this.showTerminal = false;
       this.progress = 0;
       this.progressDone = false;
       this.downloadUrl = "";

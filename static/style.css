@@ -40,8 +40,9 @@
   .tag{font-family:var(--mono); font-size:12px; color:var(--muted)}
   .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);
        display:inline-block;margin-right:6px;vertical-align:middle}
+  .header-actions{margin-left:auto; display:flex; gap:8px; align-items:center}
   .theme-btn{
-    margin-left:auto; background:none; border:1px solid var(--line); color:var(--muted);
+    background:none; border:1px solid var(--line); color:var(--muted);
     font-size:16px; padding:4px 8px; border-radius:6px; cursor:pointer; line-height:1;
     font-family:var(--sans);
   }
@@ -63,6 +64,15 @@
   input[type=text]:focus,input[type=password]:focus{border-color:var(--amber)}
   input[type=text]::placeholder,input[type=password]::placeholder{color:var(--faint)}
 
+  .url-input-wrap{flex:1; position:relative; display:flex; min-width:0}
+  .url-input-wrap input{flex:1; padding-right:38px}
+  .url-clear{
+    position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    background:none; border:0; color:var(--faint); font-size:14px; line-height:1;
+    padding:6px; min-height:0; cursor:pointer; border-radius:6px;
+  }
+  .url-clear:hover{color:var(--text); background:var(--hover-row)}
+
   button{
     font-family:var(--sans); font-weight:600; font-size:14px; cursor:pointer;
     border:1px solid var(--line); background:var(--panel-2); color:var(--text);
@@ -73,6 +83,11 @@
   button:disabled{opacity:.45; cursor:not-allowed}
   button.go{background:var(--amber); color:var(--btn-go-text); border-color:var(--amber)}
   button.go:hover:not(:disabled){filter:brightness(1.08)}
+
+  /* Jerarquía: el héroe es Descargar (amber lleno); Analizar es secundario (outline amber). */
+  button.btn-secondary{background:transparent; color:var(--amber); border-color:var(--amber)}
+  button.btn-secondary:hover:not(:disabled){background:var(--chip-active-bg)}
+  .paste-btn{flex:none; font-family:var(--sans)}
 
   .meta{
     display:flex; gap:14px; margin-top:18px; padding-top:18px;
@@ -111,14 +126,31 @@
   .term .bar-head .tl i:nth-child(1){background:var(--danger)}
   .term .bar-head .tl i:nth-child(2){background:var(--amber)}
   .term .bar-head .tl i:nth-child(3){background:var(--ok)}
-  .term .lines{padding:12px; max-height:200px; overflow:auto; white-space:pre-wrap}
-  .term .lines .l{margin:0}
-  .term .lines .l .pfx{color:var(--amber)}
+  .term-toggle{
+    margin-left:auto; background:none; border:0; color:var(--faint);
+    font-family:var(--mono); font-size:11px; letter-spacing:.05em;
+    padding:2px 4px; cursor:pointer; text-decoration:underline; min-height:0;
+  }
+  .term-toggle:hover{color:var(--text)}
+
+  /* Lectura limpia del progreso: % grande + velocidad · ETA */
+  .dl-stats{display:flex; align-items:baseline; gap:12px; padding:12px 14px 10px}
+  .dl-pct{font-family:var(--mono); font-size:26px; font-weight:600; color:var(--amber); line-height:1}
+  .dl-pct.done{color:var(--ok)}
+  .dl-meta{font-family:var(--mono); font-size:13px; color:var(--muted); display:flex; gap:6px}
+  .dl-meta.dl-done{color:var(--ok)}
+
+  /* Log crudo (colapsable): líneas en flex para no romper con pre-wrap */
+  .term .lines{padding:10px 14px 12px; max-height:200px; overflow:auto;
+    border-top:1px solid var(--line)}
+  .term .lines .l{margin:0; display:flex; gap:8px; align-items:baseline}
+  .term .lines .l .pfx{color:var(--amber); flex:none}
+  .term .lines .l .body{white-space:pre-wrap; word-break:break-word; min-width:0}
   .term .lines .l.ok .pfx{color:var(--ok)}
   .term .lines .l.err{color:var(--err-text)}
   .term .lines .l.err .pfx{color:var(--danger)}
 
-  .progress{height:4px; background:var(--ink); position:relative}
+  .progress{height:6px; background:var(--ink); position:relative}
   .progress > i{display:block; height:100%; width:0%; background:var(--amber);
                 transition:width .25s}
   .progress.done > i{background:var(--ok)}
@@ -154,8 +186,6 @@
     border-color:var(--ok); color:var(--ok); background:transparent;
   }
   .folder-btn:hover:not(:disabled){background:rgba(91,201,126,.1)}
-
-  .auth-card{display:none}
 
   .pl-video{display:flex; align-items:center; gap:10px; padding:8px 12px;
             border-bottom:1px solid var(--line); font-size:13px}
@@ -217,11 +247,48 @@
   .copy-btn:hover{border-color:var(--amber); color:var(--amber)}
   .copy-btn.copied{color:var(--ok); border-color:var(--ok)}
 
-  @media (max-width:520px){
-    body{padding:28px 14px 60px}
-    .row{flex-direction:column}
+  @media (max-width:640px){
+    body{padding:24px 14px 60px}
+    header{flex-wrap:wrap; gap:8px 10px}
+
+    /* Anti-zoom en iOS/Android: inputs >=16px evitan el zoom al enfocar */
+    input[type=text],input[type=password]{font-size:16px}
+
+    /* Touch targets >=44px en todo lo accionable */
+    button,a.dl{min-height:44px}
+    .theme-btn{min-height:40px; min-width:40px; font-size:18px}
+
+    /* Row de URL: input full-width arriba, botones comparten la línea de abajo */
+    .url-row{flex-wrap:wrap}
+    .url-row .url-input-wrap{flex:1 1 100%}
+    .url-row .copy-btn{flex:0 0 auto; min-height:44px}
+    .url-row .paste-btn{flex:1 1 0}
+    .url-row .analyze-btn{flex:2 1 0}
+
+    /* Auth row apila */
+    .auth-card .row{flex-direction:column}
+
     .meta{flex-direction:column}
     .thumb{width:100%}
+
+    /* Chips más grandes y cómodos al dedo */
+    .quality{gap:10px}
+    .chip{padding:11px 16px; font-size:14px}
+
+    /* Tabla de formatos: scroll horizontal si no entra, sin romper layout */
+    .fmt-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+    .fmt-table{min-width:340px}
+
+    /* Forms de herramientas apilan en vez de desbordar */
+    .ch-add{flex-wrap:wrap}
+    .ch-add input[type=text]{flex:1 1 100%}
+    .ch-add select,.ch-add input[type=number]{flex:1 1 0}
+    .set-row{flex-wrap:wrap}
+    .pl-header{flex-wrap:wrap}
+
+    /* Fila de canal: título a ancho completo, controles debajo */
+    .ch-entry{flex-wrap:wrap}
+    .ch-entry .ch-title{flex:1 1 100%}
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
@@ -236,9 +303,12 @@
   .pl-count{font-family:var(--mono); font-size:13px; color:var(--muted)}
   .pl-list{max-height:300px; overflow:auto; border:1px solid var(--line); border-radius:8px}
   .btn-sm{font-size:12px; padding:6px 12px}
-  .btn-block{width:100%}
+  .btn-block{width:100%; background:var(--amber); color:var(--btn-go-text);
+    border-color:var(--amber); font-size:15px; font-weight:700; padding:14px 18px}
+  .btn-block:hover:not(:disabled){filter:brightness(1.08)}
   .loading-msg{font-size:12px; color:var(--muted); padding:12px; display:block}
   .muted-sm{font-size:12px; color:var(--muted)}
+  .url-hint{margin:10px 0 0}
 
   .empty-state{
     font-size:13px; color:var(--faint); padding:16px 0;
@@ -277,10 +347,10 @@
   .site-badge{display:inline-block; margin-top:4px; font-size:11px; color:var(--muted); font-family:var(--mono)}
 
   .h-del{opacity:.4; cursor:pointer; padding:2px 8px; border:none; background:none; font-size:16px; line-height:1; border-radius:4px}
-  .h-del:hover{opacity:1; color:var(--red); background:rgba(255,80,80,.12)}
+  .h-del:hover{opacity:1; color:var(--danger); background:rgba(229,72,77,.12)}
   .wd-entry{display:flex; align-items:center; gap:12px; padding:3px 0; font-size:13px}
   .wd-name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  .wd-badge{font-size:10px; padding:1px 6px; border-radius:3px; background:var(--accent-muted); color:var(--accent)}
+  .wd-badge{font-size:10px; padding:1px 6px; border-radius:3px; background:var(--chip-active-bg); color:var(--amber)}
   .storage-summary{font-size:14px; margin-bottom:4px; padding:4px 0}
 
   /* Borrado diferido: fade-out del item antes del splice */
