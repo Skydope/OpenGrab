@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Genera ``vendor/opengrab.ico`` con el diseño del tray icon:
-rectángulo redondeado oscuro + triángulo play ámbar, 256×256 RGBA.
+rectángulo redondeado oscuro + triángulo play ámbar, 256x256 RGBA.
 Windows 10+ escala automáticamente a todos los tamaños de taskbar/explorer."""
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ AMBER = (232, 160, 44, 255)    # triángulo play
 _SIZE = 256
 _INSET = 16       # 4/64 * 256
 _RADIUS = 48      # 12/64 * 256
-# Triángulo play escalado del diseño base 64×64
+# Triángulo play escalado del diseño base 64x64
 _TRI = [
     (_SIZE * 24 // 64, _SIZE * 18 // 64),
     (_SIZE * 24 // 64, _SIZE * 46 // 64),
@@ -64,7 +64,7 @@ def generate_ico(output: Path) -> None:
 
     ico = _png_to_ico_entry(png_data)
     output.write_bytes(ico)
-    print(f"Icono generado: {output} ({len(ico):,} bytes, 256×256 PNG)")
+    print(f"Icono generado: {output} ({len(ico):,} bytes, 256x256 PNG)")
 
 
 if __name__ == "__main__":
