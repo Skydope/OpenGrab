@@ -302,7 +302,7 @@ def _write_env_file(repo: Path, config: dict[str, Any]) -> None:
     env_path = repo / ".env"
     backup = None
     if env_path.exists():
-        backup = env_path.with_suffix(".env.bak")
+        backup = env_path.parent / ".env.bak"
         shutil.copy2(env_path, backup)
 
     lines: list[str] = [
