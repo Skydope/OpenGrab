@@ -389,6 +389,13 @@ class Database:
             rows = self._conn.execute("SELECT key, value FROM settings").fetchall()
         return {row["key"]: row["value"] for row in rows}
 
+    def count_jobs_by_status(self) -> dict[str, int]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT status, COUNT(*) as cnt FROM jobs GROUP BY status"
+            ).fetchall()
+        return {row["status"]: row["cnt"] for row in rows}
+
     # ------------------------------------------------------------------ #
     # Settings runtime
     # ------------------------------------------------------------------ #

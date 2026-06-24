@@ -662,3 +662,41 @@ def test_put_settings_no_body_returns_400(client):
     r = client.put("/api/settings")
     assert r.status_code == 400
 
+
+# --------------------- metrics API ------------------------------------- #
+
+
+def test_metrics_requires_auth(client_with_token):
+    assert client_with_token.get("/api/metrics").status_code == 401
+
+
+def test_metrics_returns_expected_keys(client):
+    r = client.get("/api/metrics")
+    assert r.status_code == 200
+    data = r.json()
+    for key in (
+        "version", "uptime_seconds", "jobs_active", "jobs_queued",
+        "jobs_done", "jobs_error", "jobs_interrupted", "jobs_total",
+        "usage_bytes", "channels_watched",
+    ):
+        assert key in data, f"missing key: {key}"
+
+
+def test_metrics_counts_jobs(client, app_state):
+    before = client.get("/api/metrics").json()["jobs_done"]
+
+    app_state.db.insert_job("done-1", "http://x.com/1", "best")
+    app_state.db.update_job("done-1", status="done", completed=1)
+    app_state.db.insert_job("done-2", "http://x.com/2", "best")
+    app_state.db.update_job("done-2", status="done", completed=2)
+
+    after = client.get("/api/metrics").json()["jobs_done"]
+    assert after - before == 2
+
+
+def test_metrics_channels_watched(client, app_state):
+    before = client.get("/api/metrics").json()["channels_watched"]
+    app_state.db.insert_channel("https://youtube.com/@chan", quality="best")
+    after = client.get("/api/metrics").json()["channels_watched"]
+    assert after - before >= 1
+

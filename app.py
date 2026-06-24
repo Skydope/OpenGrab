@@ -21,6 +21,7 @@ import asyncio
 import inspect
 import logging
 import shutil
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
@@ -111,6 +112,23 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_SecurityHeadersMiddleware)
+
+
+class _RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
+        t0 = time.monotonic()
+        response = cast(Response, await call_next(request))
+        if request.url.path != "/health":
+            log.info(
+                "%s %s %d %.0fms",
+                request.method, request.url.path,
+                response.status_code,
+                (time.monotonic() - t0) * 1000,
+            )
+        return response
+
+
+app.add_middleware(_RequestLoggingMiddleware)
 
 
 def _rate_limit_handler(_req: Request, _exc: Exception) -> JSONResponse:

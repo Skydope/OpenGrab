@@ -756,6 +756,26 @@ async def api_debug_routes(
     return JSONResponse(routes)
 
 
+@router.get("/api/metrics")
+async def api_metrics(
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    counts = state.db.count_jobs_by_status()
+    return JSONResponse({
+        "version": VERSION,
+        "uptime_seconds": round(time.monotonic() - state._start_time, 1),
+        "jobs_active": state.count_active_jobs(),
+        "jobs_queued": counts.get("queued", 0),
+        "jobs_done": counts.get("done", 0),
+        "jobs_error": counts.get("error", 0),
+        "jobs_interrupted": counts.get("interrupted", 0),
+        "jobs_total": sum(counts.values()),
+        "usage_bytes": state.current_usage_bytes(),
+        "channels_watched": len(state.db.list_channels()),
+    })
+
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

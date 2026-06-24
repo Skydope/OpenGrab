@@ -36,6 +36,7 @@ class AppState:
         self._usage_cache: int | None = None
         self._usage_cache_ts: float = 0.0
         self._usage_lock = threading.Lock()
+        self._start_time = time.monotonic()
         atexit.register(self.db.close)
 
     # ------------------------------------------------------------------ #
