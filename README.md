@@ -4,16 +4,17 @@
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="Logo-dark.png">
       <source media="(prefers-color-scheme: light)" srcset="Logo.png">
-      <img src="Logo.png" alt="OpenGrab — self-hosted video downloader" width="500" style="max-width:100%">
+      <img src="Logo.png" alt="OpenGrab" width="520" style="max-width:100%">
     </picture>
   </a>
 
   > Self-hosted video & audio downloader — paste a URL from any site, get an MP4. Wraps yt-dlp (1800+ sites) + ffmpeg behind a clean web UI.
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-1.10.0-green.svg)]()
-  [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
-  [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker)](https://hub.docker.com)
+  [![Version](https://img.shields.io/badge/version-1.10.0-green.svg)](https://github.com/Skydope/OpenGrab/releases/latest)
+  [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
+  [![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker)](https://github.com/Skydope/OpenGrab/pkgs/container/opengrab)
+  [![Stars](https://img.shields.io/github/stars/Skydope/OpenGrab?style=social)](https://github.com/Skydope/OpenGrab/stargazers)
 
   [**English**](#) · [**Español**](#español)
 
@@ -35,6 +36,45 @@
 
 </details>
 
+## Highlights
+
+- Universal support (1800+ sites via yt-dlp)
+- Quality presets: **best**, 1080p, 720p, 480p, MP3
+- Full playlists + **Watch mode** (channels with deduplication)
+- Real-time progress via SSE
+- SQLite (WAL) persistence + crash recovery
+- **Two-layer SSRF protection** (app-level DNS + host-level firewall)
+- Desktop app (Windows installer with bilingual wizard)
+- Production-ready nginx + TLS config
+- yt-dlp hot-swap and reproducible builds
+
+## Quick Start
+
+### Docker (recommended)
+
+```bash
+git clone https://github.com/Skydope/OpenGrab.git && cd OpenGrab
+cp .env.example .env
+docker compose up -d
+```
+
+Open `http://localhost:8800`
+
+### Desktop
+
+Download the installer from [Releases](https://github.com/Skydope/OpenGrab/releases/latest).
+
+See [docs/INSTALL.md](docs/INSTALL.md) for all options.
+
+## Documentation
+
+- [Installation](docs/INSTALL.md)
+- [Production Deployment](docs/DEPLOY.md)
+- [API Reference](docs/API.md)
+- [Security](docs/SECURITY.md)
+- [Contributing](docs/CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+
 ---
 
 ## Table of Contents
@@ -51,6 +91,7 @@
 - [API Reference](#api-reference)
 - [Nginx (TLS)](#nginx-tls)
 - [Contributing](#contributing)
+- [Documentation](#documentation)
 - [License](#license)
 
 ---
@@ -439,45 +480,44 @@ Distributed under the [MIT License](LICENSE). See `LICENSE` for details.
 
 ## Español
 
-> **OpenGrab** — Descargador de video auto-alojado. Pegás una URL de cualquier sitio, te llevás un MP4 (o MP3).
+> **OpenGrab** — Descargador universal autoalojado de video y audio. Soporta más de 1800 sitios mediante yt-dlp. Pegás una URL, te llevás un MP4 (o MP3).
 
-### Descripción general
+### Características
 
-OpenGrab es un descargador de video y audio que corrés en tu propio servidor. Pegás una URL de prácticamente cualquier sitio — YouTube, Vimeo, TikTok, Instagram, X/Twitter, Bandcamp, SoundCloud, y miles más — elegís calidad, y te descarga un MP4 o MP3. Nada de extensiones de navegador, sitios shady. Solo tu servidor — o la [app de escritorio para Windows](#desktop-app-windows) si preferís.
+- Soporte universal (>1800 sitios vía yt-dlp)
+- Calidades: **best**, 1080p, 720p, 480p, MP3
+- Playlists completas y **Watch mode** (canales con deduplicación)
+- Progreso en tiempo real con SSE
+- Persistencia en SQLite (WAL) + recuperación de crashes
+- **Protección SSRF en 2 capas** (aplicación + firewall)
+- App de escritorio (Windows, Linux, macOS)
+- nginx + TLS listo para producción
 
-Usa [yt-dlp](https://github.com/yt-dlp/yt-dlp) (motor que soporta +1800 sitios) y [ffmpeg](https://ffmpeg.org/) para el muxing. Todo el backend es una app FastAPI con frontend vanilla inline — sin npm, sin bundlers, sin CDN.
+### Instalación
 
-### Instalacion manual
-
-Si preferis configurar todo vos, este es el camino directo.
-
-**Requisitos previos**
-
-- **Docker** >= 24.x (recomendado) — o —
-- **Python** 3.11+ con `pip`
-- **ffmpeg** en el PATH (incluido en la imagen Docker; en bare metal: `apt install ffmpeg`, `brew install ffmpeg`, o `pacman -S ffmpeg`)
-
+**Docker (recomendado)**
 ```bash
-git clone https://github.com/skydope/opengrab.git
-cd opengrab
+git clone https://github.com/Skydope/OpenGrab.git && cd OpenGrab
 cp .env.example .env
 docker compose up -d
-# → http://localhost:8800
 ```
 
-> [!TIP]
-> Para bare metal (sin Docker), corre `pip install -r requirements.txt` y despues `python app.py`. Asegurate de tener ffmpeg en el PATH.
+Abrí `http://localhost:8800`
 
-### Uso básico
+Ver [docs/INSTALL.md](docs/INSTALL.md) para app de escritorio, bare metal y todas las opciones.
 
-1. Abrí `http://localhost:8800`
-2. Pegá una URL y clic en **Analizar**
-3. Elegí calidad (best, 1080p, 720p, 480p, o solo audio mp3)
-4. Clic en **Descargar**
+### Documentación
+
+- [Instalación](docs/INSTALL.md)
+- [Despliegue en Producción](docs/DEPLOY.md)
+- [Referencia API](docs/API.md)
+- [Seguridad](docs/SECURITY.md)
+- [Cómo Contribuir](docs/CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
 
 ### Contribuir
 
-Las contribuciones son bienvenidas. Podés abrir issues o PRs en español. Seguí los pasos de la sección [Contributing](#contributing) más arriba.
+Las contribuciones son bienvenidas. Podés abrir issues o PRs en español. Seguí los pasos en [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 ### Licencia
 

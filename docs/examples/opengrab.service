@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenGrab video & audio downloader
+After=network.target
+
+[Service]
+Type=simple
+User=opengrab
+WorkingDirectory=/opt/opengrab
+Environment=OPENGRAB_HOST=0.0.0.0
+Environment=OPENGRAB_PORT=8800
+Environment=OPENGRAB_DIR=/opt/opengrab/downloads
+ExecStart=/opt/opengrab/.venv/bin/python app.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

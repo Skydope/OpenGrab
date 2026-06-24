@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Documentation
+
+- **New `docs/` folder** with professional, bilingual documentation:
+  - `docs/INSTALL.md` — Docker, Desktop, and Bare Metal installation guides
+  - `docs/DEPLOY.md` — Production deployment with nginx, systemd, and Docker Compose
+  - `docs/API.md` — Complete API reference with request/response examples
+  - `docs/SECURITY.md` — Security policy covering SSRF defense, auth, and reporting
+  - `docs/CONTRIBUTING.md` — Contribution guidelines and quality standards
+  - `docs/examples/opengrab.service` — Example systemd unit file
+- **README.md** modernized with Highlights, Quick Start, and Documentation sections at the top, plus updated badges and Spanish section
+- **CHANGELOG.md** now links to docs/ for detailed documentation
+
 ## [1.10.0] — 2026-06-23
 
 ### Security
