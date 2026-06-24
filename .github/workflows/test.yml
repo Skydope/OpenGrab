@@ -43,3 +43,4 @@ jobs:
           python-version: "3.13"
       - run: pip install ruff
       - run: ruff check .
+      - run: shellcheck scripts/*.sh docker/*.sh

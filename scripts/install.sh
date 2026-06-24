@@ -434,7 +434,7 @@ mode_desktop() {
     # Install build deps
     infobox "Installing" "Installing build dependencies (PyInstaller + pywebview)..."
     if ! run_with_gauge "Installing build deps..." "pip install" \
-        "$pip_cmd" install -e "$repo[desktop,build]" 2>&1; then
+        "$pip_cmd" install -e "${repo}[desktop,build]" 2>&1; then
         msgbox "Error" "pip install failed."
         return 1
     fi
