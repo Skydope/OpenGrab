@@ -10,6 +10,10 @@ def test_require_auth_with_token_denied(client_with_token):
     assert r.status_code == 401
 
 
+def test_debug_routes_requires_auth(client_with_token):
+    assert client_with_token.get("/api/debug/routes").status_code == 401
+
+
 def test_require_auth_bearer_header(client_with_token):
     """Bearer header should authenticate."""
     r = client_with_token.get(
