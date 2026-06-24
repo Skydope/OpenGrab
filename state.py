@@ -162,6 +162,11 @@ class AppState:
     def _secure_delete_file(filepath: str) -> None:
         """Sobrescribe el archivo (0x00 / 0xFF / random) y lo borra.
 
+        Solo activo cuando ``OPENGRAB_SECURE_DELETE=1`` (opt-in).
+        Por defecto usa ``os.unlink()`` — la sobreescritura en SSD/CoW
+        no da garantias forenses, y el fast path evita 3x escrituras
+        innecesarias por cada delete/cleanup.
+
         CAVEAT: el overwrite in-place solo da garantias reales sobre medios que
         reescriben el mismo sector (HDD magnetico). En SSD/NVMe (wear-leveling),
         filesystems copy-on-write (Btrfs, ZFS, APFS) o con snapshots, los datos
@@ -173,6 +178,9 @@ class AppState:
         """
         path = Path(filepath)
         if not path.is_file():
+            return
+        if not config.SECURE_DELETE:
+            path.unlink()
             return
         size = path.stat().st_size
         if size == 0:

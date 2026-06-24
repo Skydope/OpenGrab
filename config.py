@@ -115,6 +115,7 @@ MAX_TOTAL_MB = _int_env("OPENGRAB_MAX_TOTAL_MB", _ini_int("max_total_mb", 0), mi
 
 TRUST_XFF = os.environ.get("OPENGRAB_TRUST_XFF", "").strip() == "1"
 IS_DESKTOP = os.environ.get("OPENGRAB_DESKTOP", "").strip() == "1"
+SECURE_DELETE = os.environ.get("OPENGRAB_SECURE_DELETE", "0").strip() == "1"
 DB_PATH = OUT_DIR / "opengrab.db"
 
 

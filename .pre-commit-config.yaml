@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning]
+        files: ^(scripts|docker)/.*\.sh$
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.0
+    hooks:
+      - id: mypy
+        args: [--strict]
+        additional_dependencies: [fastapi, uvicorn, yt-dlp, slowapi, pytest, httpx]
+        stages: [manual]
+        files: ^(app|config|db|download|models|routes|state|engine_update|desktop)\.py$

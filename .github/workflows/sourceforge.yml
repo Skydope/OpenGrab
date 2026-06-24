@@ -17,7 +17,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Wait for parallel build workflows
-        run: sleep 120
+        run: |
+          expected=("OpenGrab-Setup.exe" "OpenGrab-portable.zip"
+                    "OpenGrab-x86_64.AppImage" "OpenGrab-macos.zip")
+          for i in $(seq 1 60); do
+            all_present=true
+            for asset in "${expected[@]}"; do
+              if [ ! -f "artifacts/$asset" ]; then
+                all_present=false
+                break
+              fi
+            done
+            if $all_present; then
+              echo "All assets present after $((i * 15))s"
+              exit 0
+            fi
+            echo "Waiting for assets... ($((i * 15))s / 900s)"
+            sleep 15
+          done
+          echo "Timeout: assets missing after 15 min" >&2
+          ls -la artifacts/ || true
+          exit 1
 
       - name: Upload to SourceForge
         run: |

@@ -484,11 +484,24 @@ def test_run_download_persists_error_status_to_db(dl_state, monkeypatch):
 
 
 # --------------------- secure delete ----------------------------------- #
-def test_secure_delete_file_three_pass(tmp_path):
+def test_secure_delete_file_three_pass(tmp_path, monkeypatch):
     from state import AppState
 
+    monkeypatch.setattr("config.SECURE_DELETE", True)
     f = tmp_path / "secret.bin"
     f.write_bytes(b"A" * 5000)
+    assert f.exists()
+    AppState._secure_delete_file(str(f))
+    assert not f.exists()
+
+
+def test_secure_delete_file_fast_path(tmp_path, monkeypatch):
+    """Sin OPENGRAB_SECURE_DELETE, usa unlink directo (sin overwrite)."""
+    from state import AppState
+
+    monkeypatch.setattr("config.SECURE_DELETE", False)
+    f = tmp_path / "plain.bin"
+    f.write_bytes(b"B" * 5000)
     assert f.exists()
     AppState._secure_delete_file(str(f))
     assert not f.exists()
@@ -500,9 +513,10 @@ def test_secure_delete_file_noop_on_missing(tmp_path):
     AppState._secure_delete_file(str(tmp_path / "ghost.bin"))
 
 
-def test_secure_delete_workdir_recursive(tmp_path):
+def test_secure_delete_workdir_recursive(tmp_path, monkeypatch):
     from state import AppState
 
+    monkeypatch.setattr("config.SECURE_DELETE", True)
     wd = tmp_path / "opengrab_test"
     wd.mkdir()
     (wd / "a.bin").write_bytes(b"x" * 100)
@@ -510,6 +524,19 @@ def test_secure_delete_workdir_recursive(tmp_path):
     sub = wd / "sub"
     sub.mkdir()
     (sub / "c.bin").write_bytes(b"z" * 300)
+    AppState._secure_delete_workdir(str(wd))
+    assert not wd.exists()
+
+
+def test_secure_delete_workdir_fast_path(tmp_path, monkeypatch):
+    """Sin OPENGRAB_SECURE_DELETE, workdir se borra con unlink directo."""
+    from state import AppState
+
+    monkeypatch.setattr("config.SECURE_DELETE", False)
+    wd = tmp_path / "opengrab_fast"
+    wd.mkdir()
+    (wd / "a.bin").write_bytes(b"x" * 100)
+    (wd / "b.bin").write_bytes(b"y" * 200)
     AppState._secure_delete_workdir(str(wd))
     assert not wd.exists()
 
