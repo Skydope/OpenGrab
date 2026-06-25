@@ -37,6 +37,7 @@ class AppState:
         self._usage_cache_ts: float = 0.0
         self._usage_lock = threading.Lock()
         self._start_time = time.monotonic()
+        self._pending_cleanups: set[str] = set()
         atexit.register(self.db.close)
 
     # ------------------------------------------------------------------ #
@@ -144,16 +145,24 @@ class AppState:
     def cleanup_old_workdirs(self) -> None:
         cutoff = time.time() - 86400
         count = 0
-        for d in self.out_dir.glob("opengrab_*"):
-            if d.is_dir():
+        for pattern in ("opengrab_*", "opengrab_batch_*"):
+            for d in self.out_dir.glob(pattern):
+                if not d.is_dir():
+                    continue
                 try:
-                    if d.stat().st_mtime < cutoff:
+                    is_empty = not any(d.iterdir())
+                    if is_empty or d.stat().st_mtime < cutoff:
                         shutil.rmtree(d)
                         count += 1
                 except OSError:
                     pass
         if count:
-            log.info("limpiados %d workdirs viejos", count)
+            log.info("limpiados %d workdirs viejos o vacios", count)
+
+    def _schedule_tempdir_cleanup(self, workdir: str) -> None:
+        """Registra un workdir vacío para limpieza diferida. El evict_loop
+        (cada ~60s) lo borra cuando el thread de descarga ya terminó."""
+        self._pending_cleanups.add(workdir)
 
     # ------------------------------------------------------------------ #
     # Secure file deletion (3-pass: 0x00, 0xFF, random — no external tool)
@@ -236,7 +245,10 @@ class AppState:
     # History management
     # ------------------------------------------------------------------ #
     def _secure_delete_files(self, filepath: str | None, workdir: str | None) -> None:
-        """Borra archivos en background. Nunca raisea — el DB delete ya ocurrio."""
+        """Borra archivos en background. Nunca raisea — el DB delete ya ocurrio.
+
+        Si el workdir es compartido (batch), solo lo borra cuando ningún otro job
+        en la DB lo referencia."""
         try:
             if filepath:
                 self._secure_delete_file(str(filepath))
@@ -244,7 +256,8 @@ class AppState:
             pass
         try:
             if workdir:
-                self._secure_delete_workdir(str(workdir))
+                if self.db.count_jobs_by_workdir(workdir) == 0:
+                    self._secure_delete_workdir(str(workdir))
         except Exception:
             pass
 
@@ -390,17 +403,33 @@ class AppState:
         for jid in to_delete:
             job = self.jobs[jid]
             if job.workdir:
-                wd = Path(job.workdir)
-                if wd.exists():
-                    try:
-                        shutil.rmtree(wd, ignore_errors=True)
-                    except OSError:
-                        pass
+                # Don't rmtree a shared workdir while other jobs still reference it
+                other = [
+                    j for jid2, j in self.jobs.items()
+                    if jid2 != jid and j.workdir == job.workdir
+                ]
+                if not other:
+                    wd = Path(job.workdir)
+                    if wd.exists():
+                        try:
+                            shutil.rmtree(wd, ignore_errors=True)
+                        except OSError:
+                            pass
             del self.jobs[jid]
             self.job_events.pop(jid, None)
         if to_delete:
             log.info("evacuados %d jobs viejos de memoria", len(to_delete))
         self.db.prune_history(keep=self.resolve("history_max", 500, int)[0])
+
+        # Drain pending tempdir cleanups. Para cuando llegamos acá, el thread
+        # de descarga ya terminó y Windows liberó los handles del directorio.
+        for dirpath in list(self._pending_cleanups):
+            try:
+                os.rmdir(dirpath)
+                self._pending_cleanups.discard(dirpath)
+            except OSError:
+                pass
+
         return len(to_delete)
 
     async def evict_loop(self) -> None:

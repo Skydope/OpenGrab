@@ -830,6 +830,16 @@ document.addEventListener('alpine:init', () => {
             );
             this.downloading = false;
             if (this.historyLoaded) this.loadHistory();
+            // Success banner: mismo patrón que descarga individual.
+            // Todos los jobs del batch comparten el mismo workdir:
+            // abrir la carpeta de cualquiera muestra todos los archivos.
+            if (ok > 0) {
+              const firstDone = this.batchJobIds.find(id => this.batchJobs[id]?.status === 'done');
+              if (firstDone) {
+                this.successPath = `Playlist: ${ok} ok${fail ? ', ' + fail + ' fallidos' : ''}${skipped ? ', ' + skipped + ' omitidos' : ''}`;
+                this.lastJobId = firstDone;
+              }
+            }
           }
         })
         .catch(err => {});

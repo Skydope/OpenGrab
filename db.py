@@ -124,13 +124,14 @@ class Database:
     def insert_job(
         self, job_id: str, url: str, quality: str,
         status: str = "queued", created: float | None = None,
+        workdir: str | None = None,
     ) -> None:
         created = time.time() if created is None else created
         with self._lock:
             self._conn.execute(
-                "INSERT INTO jobs (id, url, quality, status, created) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (job_id, url, quality, status, created),
+                "INSERT INTO jobs (id, url, quality, status, created, workdir) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (job_id, url, quality, status, created, workdir),
             )
             self._conn.commit()
 
@@ -395,6 +396,14 @@ class Database:
                 "SELECT status, COUNT(*) as cnt FROM jobs GROUP BY status"
             ).fetchall()
         return {row["status"]: row["cnt"] for row in rows}
+
+    def count_jobs_by_workdir(self, workdir: str) -> int:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) as cnt FROM jobs WHERE workdir=?",
+                (workdir,),
+            ).fetchone()
+        return row["cnt"] if row else 0
 
     # ------------------------------------------------------------------ #
     # Settings runtime

@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import logging
 import re
+import shutil
 import socket
 import sys
 import tempfile
@@ -13,7 +14,7 @@ from urllib.parse import urlparse
 
 import yt_dlp  # type: ignore[import-untyped]
 
-from config import FORMATS, resource_path
+from config import FORMATS, IS_DESKTOP, resource_path
 from state import AppState
 
 log = logging.getLogger("opengrab")
@@ -366,6 +367,17 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
 
         # Desktop finalize: mueve a library_dir si corresponde
         state._finalize_desktop(job_id, workdir, final, info, quality)
+
+        # Server mode: move file out of temp workdir to OUT_DIR and clean up.
+        # Each job gets its own tempdir; we clean it as soon as this download
+        # finishes so no orphaned folders accumulate.
+        if not IS_DESKTOP and final.parent == workdir:
+            dest = state.out_dir / final.name
+            dest = state._deduplicate(dest)
+            shutil.move(str(final), str(dest))
+            final = dest
+            state._schedule_tempdir_cleanup(str(workdir))
+            job.workdir = ""  # already cleaned
 
         # Usar filepath actualizado por _finalize_desktop (puede haber cambiado)
         title = _safe_name(info.get("title", "video"))
