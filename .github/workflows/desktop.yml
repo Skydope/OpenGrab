@@ -80,6 +80,16 @@ jobs:
         with:
           files: OpenGrab-x86_64.AppImage
 
+      - name: VirusTotal scan
+        id: vt
+        uses: crazy-max/ghaction-virustotal@v5
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          update_release_body: true
+          request_rate: 4
+          files: |
+            OpenGrab-x86_64.AppImage
+
   macos:
     runs-on: macos-latest
     permissions:
@@ -182,3 +192,13 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: OpenGrab-macos.zip
+
+      - name: VirusTotal scan
+        id: vt
+        uses: crazy-max/ghaction-virustotal@v5
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          update_release_body: true
+          request_rate: 4
+          files: |
+            OpenGrab-macos.zip
