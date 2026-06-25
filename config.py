@@ -113,6 +113,15 @@ MAX_JOBS = _int_env("OPENGRAB_MAX_JOBS", _ini_int("max_jobs", 2), min_val=1)
 MAX_SIZE_MB = _int_env("OPENGRAB_MAX_SIZE_MB", _ini_int("max_size_mb", 0), min_val=0)
 MAX_TOTAL_MB = _int_env("OPENGRAB_MAX_TOTAL_MB", _ini_int("max_total_mb", 0), min_val=0)
 
+LOG_FORMAT = os.environ.get(
+    "OPENGRAB_LOG_FORMAT", _ini.get("log_format", "text")
+).strip().lower()
+if LOG_FORMAT not in ("text", "json"):
+    LOG_FORMAT = "text"
+LOG_LEVEL = os.environ.get(
+    "OPENGRAB_LOG_LEVEL", _ini.get("log_level", "INFO")
+).strip().upper()
+
 TRUST_XFF = os.environ.get("OPENGRAB_TRUST_XFF", "").strip() == "1"
 IS_DESKTOP = os.environ.get("OPENGRAB_DESKTOP", "").strip() == "1"
 SECURE_DELETE = os.environ.get("OPENGRAB_SECURE_DELETE", "0").strip() == "1"

@@ -25,8 +25,13 @@ from typing import Any
 
 SCHEMA_VERSION = 2
 
-# Estados que cuentan como "en curso" (se marcan interrupted al reiniciar).
+# Estados que cuentan como "en curso" (concurrencia, dedup, conteos).
 ACTIVE_STATUSES = ("queued", "starting", "downloading", "processing")
+
+# Subconjunto de ACTIVE que implicaba un proceso/thread VIVO. Al reiniciar son
+# huérfanos (el proceso murió): se marcan 'interrupted' y se limpia su workdir.
+# 'queued' queda afuera a propósito: nunca arrancó, no tiene workdir → se retoma.
+ORPHAN_STATUSES = ("starting", "downloading", "processing")
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -189,26 +194,42 @@ class Database:
             rows = self._conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
-    def mark_interrupted(self) -> list[dict[str, Any]]:
-        """Marca como 'interrupted' los jobs activos de un proceso anterior.
+    def reconcile_startup(self) -> dict[str, list[Any]]:
+        """Reconcilia jobs de un proceso anterior al arrancar (ver sqlite-schema.md §5.1).
 
-        Devuelve los jobs afectados (con su workdir) para que el arranque limpie los
-        tempdirs parciales (ver sqlite-schema.md §5.1)."""
-        placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)
+        Distingue dos casos que antes se trataban igual (y perdían cola):
+
+        - ``queued``: nunca arrancó. Sin workdir, sin subproceso, sin bytes
+          parciales (el workdir se crea recién en ``_run_download``, tras pasar a
+          ``starting``). Es trabajo pendiente, NO un huérfano → se deja en
+          ``queued`` y el ``dispatch_loop`` lo retoma solo al boot.
+        - ``starting``/``downloading``/``processing`` (ORPHAN_STATUSES): tenían un
+          thread/subproceso vivo que ya no existe → huérfanos. Se marcan
+          ``interrupted`` y el caller limpia su workdir parcial.
+
+        Devuelve ``{"requeued": [ids], "interrupted": [{id, workdir}]}``.
+        """
+        orphan_ph = ", ".join("?" for _ in ORPHAN_STATUSES)
         with self._lock:
-            rows = self._conn.execute(
-                f"SELECT id, workdir FROM jobs WHERE status IN ({placeholders})",
-                ACTIVE_STATUSES,
+            requeued = [
+                r["id"]
+                for r in self._conn.execute(
+                    "SELECT id FROM jobs WHERE status='queued' ORDER BY created"
+                ).fetchall()
+            ]
+            orphan_rows = self._conn.execute(
+                f"SELECT id, workdir FROM jobs WHERE status IN ({orphan_ph})",
+                ORPHAN_STATUSES,
             ).fetchall()
-            affected = [dict(r) for r in rows]
-            if affected:
+            interrupted = [dict(r) for r in orphan_rows]
+            if interrupted:
                 self._conn.execute(
                     f"UPDATE jobs SET status='interrupted' "
-                    f"WHERE status IN ({placeholders})",
-                    ACTIVE_STATUSES,
+                    f"WHERE status IN ({orphan_ph})",
+                    ORPHAN_STATUSES,
                 )
-                self._conn.commit()
-        return affected
+            self._conn.commit()
+        return {"requeued": requeued, "interrupted": interrupted}
 
     def prune_history(self, keep: int) -> int:
         """Conserva los `keep` jobs done más recientes; borra el resto. keep<=0 = no-op."""

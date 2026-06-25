@@ -41,8 +41,19 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from config import DB_PATH, HOST, OUT_DIR, PORT, TOKEN, TOKEN_WAS_GENERATED, _STATIC_DIR
+from config import (
+    DB_PATH,
+    HOST,
+    LOG_FORMAT,
+    LOG_LEVEL,
+    OUT_DIR,
+    PORT,
+    TOKEN,
+    TOKEN_WAS_GENERATED,
+    _STATIC_DIR,
+)
 from db import Database
+from logging_setup import configure_logging
 from routes import limiter, router
 from state import AppState
 
@@ -56,14 +67,23 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     state = AppState(db, OUT_DIR)
     state.cleanup_old_workdirs()
 
-    interrupted = db.mark_interrupted()
-    for j in interrupted:
+    recon = db.reconcile_startup()
+    for j in recon["interrupted"]:
         wd = j.get("workdir")
         if wd:
             try:
                 shutil.rmtree(wd, ignore_errors=True)
             except OSError:
                 pass
+    if recon["requeued"] or recon["interrupted"]:
+        log.info(
+            "reconcile arranque: %d requeued, %d interrupted",
+            len(recon["requeued"]), len(recon["interrupted"]),
+            extra={
+                "requeued": len(recon["requeued"]),
+                "interrupted": len(recon["interrupted"]),
+            },
+        )
 
     db.prune_history(keep=state.resolve("history_max", 500, int)[0])
 
@@ -114,11 +134,18 @@ class _RequestLoggingMiddleware(BaseHTTPMiddleware):
         t0 = time.monotonic()
         response = cast(Response, await call_next(request))
         if request.url.path != "/health":
+            dur_ms = (time.monotonic() - t0) * 1000
             log.info(
                 "%s %s %d %.0fms",
                 request.method, request.url.path,
                 response.status_code,
-                (time.monotonic() - t0) * 1000,
+                dur_ms,
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": response.status_code,
+                    "duration_ms": round(dur_ms, 1),
+                },
             )
         return response
 
@@ -142,11 +169,7 @@ app.include_router(router)
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [opengrab] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    configure_logging(LOG_FORMAT, LOG_LEVEL)
     log.info("OpenGrab -> http://%s:%d (salida: %s)", HOST, PORT, OUT_DIR)
     if TOKEN_WAS_GENERATED:
         log.info("Auth: token autogenerado = %s", TOKEN)

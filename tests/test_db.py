@@ -87,16 +87,31 @@ def test_get_history_limit(db):
     assert len(db.get_history(limit=0)) == 5  # 0 = sin límite
 
 
-# --------------------------- interrupted --------------------------------- #
-def test_mark_interrupted_flips_active(db):
-    db.insert_job("a", "u", "best", status="downloading")
-    db.update_job("a", workdir="/tmp/wd_a")
-    db.insert_job("b", "u", "best", status="done")
-    affected = db.mark_interrupted()
-    assert {x["id"] for x in affected} == {"a"}
-    assert affected[0]["workdir"] == "/tmp/wd_a"  # para limpiar el tempdir (§5.1)
-    assert db.get_job("a")["status"] == "interrupted"
-    assert db.get_job("b")["status"] == "done"  # intacto
+# --------------------------- reconcile startup --------------------------- #
+def test_reconcile_startup_splits_queued_and_orphans(db):
+    db.insert_job("dl", "u", "best", status="downloading")
+    db.update_job("dl", workdir="/tmp/wd_dl")
+    db.insert_job("st", "u", "best", status="starting")
+    db.insert_job("q", "u", "best", status="queued")
+    db.insert_job("done", "u", "best", status="done")
+
+    recon = db.reconcile_startup()
+
+    # queued → requeued (se retoma, no se marca interrupted)
+    assert recon["requeued"] == ["q"]
+    assert db.get_job("q")["status"] == "queued"
+    # starting/downloading → interrupted (con workdir para limpiar)
+    assert {x["id"] for x in recon["interrupted"]} == {"dl", "st"}
+    dl_row = next(x for x in recon["interrupted"] if x["id"] == "dl")
+    assert dl_row["workdir"] == "/tmp/wd_dl"  # §5.1
+    assert db.get_job("dl")["status"] == "interrupted"
+    assert db.get_job("st")["status"] == "interrupted"
+    # terminal intacto
+    assert db.get_job("done")["status"] == "done"
+
+
+def test_reconcile_startup_empty(db):
+    assert db.reconcile_startup() == {"requeued": [], "interrupted": []}
 
 
 # ------------------------------ dedup ------------------------------------ #

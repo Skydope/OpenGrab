@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Logging JSON estructurado opt-in.** Nuevo módulo `logging_setup.py` con
+  `JsonFormatter` (NDJSON: `ts` ISO-8601 UTC, `level`, `logger`, `msg`, +
+  campos `extra`, + `exc`/`stack`) y `configure_logging(fmt, level)`. Se activa
+  con `OPENGRAB_LOG_FORMAT=json` (default `text`, dev local sigue legible) y
+  `OPENGRAB_LOG_LEVEL`. El `_RequestLoggingMiddleware` ahora emite
+  `method`/`path`/`status`/`duration_ms` como claves top-level vía `extra=`,
+  para que Grafana Alloy/Loki los indexe como labels filtrables en vez de
+  regexear el mensaje.
+
+### Changed
+
+- **Reconciliacion de jobs al arranque mas fina.** `reconcile_startup()`
+  reemplaza a `mark_interrupted()` y distingue dos casos que antes se trataban
+  igual: los `queued` (nunca arrancaron, sin workdir) se dejan en `queued` y el
+  `dispatch_loop` los retoma —antes se descartaban como `interrupted`, perdiendo
+  la cola de un batch/playlist al reiniciar—; solo los huerfanos reales
+  (`starting`/`downloading`/`processing`, con proceso vivo ya muerto) se marcan
+  `interrupted` y se limpia su workdir parcial. El resultado se loguea al boot.
+
 ## [1.10.0] — 2026-06-24
 
 ### Documentation
