@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Frescura de yt-dlp por CI (extracción real, programada).** Nuevo workflow
+  `engine-freshness.yml` (cron diario + `workflow_dispatch`) que corre
+  `scripts/engine_smoke.py` contra el yt-dlp pineado. Cierra el hueco que
+  dependabot no cubre: el CI de PR corre `-m "not e2e"` y nunca extrae, así que
+  un pin intacto puede romperse del lado servidor sin que nada lo note. El smoke
+  clasifica el resultado en `healthy` (0) / `unavailable` (75, bloqueo de IP del
+  runner → neutral, sin rojo de ruido) / `broken` (1, rot real del extractor →
+  falla dura + issue de tracking deduplicado). La función `classify` es pura y
+  está cubierta por `tests/test_engine_smoke.py`.
 - **Logging JSON estructurado opt-in.** Nuevo módulo `logging_setup.py` con
   `JsonFormatter` (NDJSON: `ts` ISO-8601 UTC, `level`, `logger`, `msg`, +
   campos `extra`, + `exc`/`stack`) y `configure_logging(fmt, level)`. Se activa

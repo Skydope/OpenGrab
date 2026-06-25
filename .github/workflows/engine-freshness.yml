@@ -1,0 +1,101 @@
+name: engine-freshness
+
+# Chequea que el yt-dlp PINEADO todavía extrae de verdad. Dependabot mantiene el
+# pin al día por PR, pero el CI de PR corre `-m "not e2e"` y nunca extrae: un pin
+# intacto puede romperse del lado servidor (YouTube cambia algo) sin que nada lo
+# note hasta que un usuario reporta. Este job programado cierra ese hueco.
+#
+# `unavailable` (bloqueo de IP del runner) se trata como neutral, no como falla,
+# para que el semáforo no quede rojo de ruido. Solo `broken` (rot real del
+# extractor) falla y abre un issue. Ver scripts/engine_smoke.py.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"   # diario 06:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install (pin de yt-dlp desde pyproject)
+        run: pip install -e "."
+
+      - name: Probe de extracción
+        id: probe
+        run: |
+          set +e
+          out="$(python scripts/engine_smoke.py)"
+          code=$?
+          set -e
+          echo "$out"
+          verdict="$(printf '%s' "$out" | python -c 'import sys,json; print(json.load(sys.stdin)["verdict"])')"
+          version="$(printf '%s' "$out" | python -c 'import sys,json; print(json.load(sys.stdin)["yt_dlp_version"])')"
+          {
+            echo "code=$code"
+            echo "verdict=$verdict"
+            echo "version=$version"
+            echo "report<<EOF"
+            echo "$out"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Resultado
+        run: |
+          case "${{ steps.probe.outputs.code }}" in
+            0)  echo "::notice::yt-dlp ${{ steps.probe.outputs.version }} extrae OK (healthy)";;
+            75) echo "::notice::YouTube no disponible/bloqueado en el runner (neutral) — no es el pin";;
+            *)  echo "::error::Extracción rota con yt-dlp ${{ steps.probe.outputs.version }} (broken)";;
+          esac
+
+      - name: Abrir/actualizar issue si está roto
+        if: steps.probe.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          YT_VERSION: ${{ steps.probe.outputs.version }}
+          REPORT: ${{ steps.probe.outputs.report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="⚠️ yt-dlp freshness: extracción rota"
+          body="$(cat <<'EOF'
+          El smoke programado detectó que el yt-dlp pineado ya no extrae correctamente.
+
+          - Versión: __YT_VERSION__
+          - Run: __RUN_URL__
+
+          ```json
+          __REPORT__
+          ```
+
+          Probable rot del extractor (YouTube cambió algo). Pasos sugeridos:
+          1. Probar `pip install -U yt-dlp` localmente y correr `pytest -m e2e`.
+          2. Si el latest lo arregla, mergear el PR de dependabot (o bumpear el pin a mano).
+          3. Si el latest tampoco, esperar fix upstream / abrir issue en yt-dlp.
+          EOF
+          )"
+          # Sustitución por placeholders: evita inyección vía interpolación directa.
+          body="${body//__YT_VERSION__/$YT_VERSION}"
+          body="${body//__RUN_URL__/$RUN_URL}"
+          body="${body//__REPORT__/$REPORT}"
+
+          existing="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "Comentado en issue #$existing"
+          else
+            gh issue create --title "$title" --body "$body" --label "bug"
+          fi
+
+      - name: Fallar si está roto
+        if: steps.probe.outputs.code == '1'
+        run: exit 1
