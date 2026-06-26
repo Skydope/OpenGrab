@@ -81,10 +81,29 @@ def _ini_int(key: str, default: int) -> int:
 HOST = os.environ.get("OPENGRAB_HOST", "127.0.0.1")
 PORT = _int_env("OPENGRAB_PORT", _ini_int("port", 8800), min_val=1)
 
+IS_DESKTOP = os.environ.get("OPENGRAB_DESKTOP", "").strip() == "1"
+
+
+def _default_download_dir() -> str:
+    """Fallback de OUT_DIR cuando ni OPENGRAB_DIR ni el INI lo definen.
+
+    En modo desktop el CWD puede ser de solo lectura (un AppImage corre desde
+    un montaje squashfs), por lo que el fallback es un path absoluto en el home
+    en vez de "./downloads" relativo al CWD. Esto hace a OUT_DIR robusto al
+    orden de imports: aunque config se importe antes de que el entrypoint
+    resuelva OPENGRAB_DIR, el fallback nunca resuelve contra el CWD read-only.
+    En Docker/dev (sin OPENGRAB_DESKTOP) se mantiene "./downloads", relativo al
+    repo, que es el contrato existente.
+    """
+    if IS_DESKTOP:
+        return str(Path.home() / "Downloads" / "OpenGrab")
+    return "./downloads"
+
+
 OUT_DIR = Path(
     os.environ.get(
         "OPENGRAB_DIR",
-        _ini.get("download_dir", "./downloads"),
+        _ini.get("download_dir", _default_download_dir()),
     )
 ).resolve()
 
@@ -123,7 +142,6 @@ LOG_LEVEL = os.environ.get(
 ).strip().upper()
 
 TRUST_XFF = os.environ.get("OPENGRAB_TRUST_XFF", "").strip() == "1"
-IS_DESKTOP = os.environ.get("OPENGRAB_DESKTOP", "").strip() == "1"
 SECURE_DELETE = os.environ.get("OPENGRAB_SECURE_DELETE", "0").strip() == "1"
 DB_PATH = OUT_DIR / "opengrab.db"
 

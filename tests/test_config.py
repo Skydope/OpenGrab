@@ -45,3 +45,24 @@ def test_ini_int_returns_default_when_key_missing():
 
 def test_ini_int_returns_default_when_empty():
     assert config._ini_int("", 100) == 100
+
+
+# ----------------------- _default_download_dir --------------------------- #
+def test_default_download_dir_desktop_is_absolute_home(monkeypatch):
+    """En modo desktop el fallback es absoluto (home), nunca CWD-relative.
+
+    Regresion AppImage Errno 30: si fuera "./downloads" relativo, en un
+    AppImage resolveria contra el squashfs read-only. Blinda OUT_DIR contra
+    el orden de imports (config puede importarse antes de _setup_env).
+    """
+    monkeypatch.setattr(config, "IS_DESKTOP", True)
+    result = config._default_download_dir()
+    assert Path(result).is_absolute()
+    assert result.endswith("OpenGrab")
+    assert "Downloads" in result
+
+
+def test_default_download_dir_dev_is_cwd_relative(monkeypatch):
+    """Sin desktop (Docker/dev) se mantiene el contrato: ./downloads."""
+    monkeypatch.setattr(config, "IS_DESKTOP", False)
+    assert config._default_download_dir() == "./downloads"
