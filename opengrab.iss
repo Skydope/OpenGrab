@@ -23,9 +23,10 @@ OutputDir=dist
 OutputBaseFilename=OpenGrab-Setup
 Compression=lzma2
 SolidCompression=yes
-WizardStyle=modern
-WizardSmallImageFile=vendor\wizard-small.bmp
-WizardImageFile=vendor\wizard-image.bmp
+WizardStyle=modern dark includetitlebar
+WizardSmallImageFile=static\small-logo.png
+WizardImageFile=static\lateral-logo.png
+SetupIconFile=vendor\opengrab.ico
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -33,14 +34,15 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "webview2"; Description: "Instalar &WebView2 Runtime (ventana nativa)"; \
-  GroupDescription: "Dependencias:"
+
+; La task webview2 ya NO existe aquí.
+; La instalación se maneja íntegramente desde [Code] después de detectar si ya está presente.
 
 [Files]
 Source: "dist\OpenGrab\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "vendor\opengrab.ico"; DestDir: "{app}"
-Source: "vendor\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; \
-  Flags: deleteafterinstall; Tasks: webview2
+; El bootstrapper se copia siempre al temp; [Code] decide si ejecutarlo.
+Source: "vendor\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\OpenGrab"; Filename: "{app}\OpenGrab.exe"; \
@@ -50,10 +52,6 @@ Name: "{commondesktop}\OpenGrab"; Filename: "{app}\OpenGrab.exe"; \
 Name: "{group}\{cm:UninstallProgram,OpenGrab}"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; \
-  Parameters: "/silent /install"; \
-  StatusMsg: "{cm:InstallingWebView2}"; \
-  Tasks: webview2
 Filename: "{app}\OpenGrab.exe"; \
   Description: "{cm:LaunchProgram,OpenGrab}"; \
   Flags: nowait postinstall skipifsilent
@@ -65,6 +63,7 @@ Filename: "{cmd}"; Parameters: "/c taskkill /f /im OpenGrab.exe"; \
 [CustomMessages]
 spanish.CreateDesktopIcon=Crear acceso &directo en el escritorio
 spanish.InstallingWebView2=Instalando WebView2 Runtime...
+spanish.WebView2AlreadyPresent=WebView2 Runtime ya está instalado. Se saltea la instalación.
 spanish.InstallType=Tipo de instalación
 spanish.InstallTypeTitle=Configuración inicial
 spanish.InstallTypeDesc=Elegí el modo de instalación.
@@ -83,6 +82,7 @@ spanish.AutoStart=Iniciar con &Windows
 
 english.CreateDesktopIcon=Create &desktop shortcut
 english.InstallingWebView2=Installing WebView2 Runtime...
+english.WebView2AlreadyPresent=WebView2 Runtime is already installed. Skipping installation.
 english.InstallType=Installation type
 english.InstallTypeTitle=Initial setup
 english.InstallTypeDesc=Choose the installation mode.
@@ -107,12 +107,12 @@ var
   PageAvanzada: TInputQueryWizardPage;
   PageDescargas: TInputDirWizardPage;
   PageAutoStart: TInputOptionWizardPage;
+  { Flag global: si True, se saltea la instalación de WebView2 }
+  GWebView2Present: Boolean;
 
-function IsRecommended: Boolean;
-begin
-  Result := PageTipo.Values[0];
-end;
-
+{ ------------------------------------------------------------------ }
+{ Detección de WebView2 vía registro                                  }
+{ ------------------------------------------------------------------ }
 function WebView2Installed(): Boolean;
 var
   Version: string;
@@ -126,10 +126,10 @@ begin
     'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
   ];
 
-  for I := 0 to GetArrayLength(Paths)-1 do
+  for I := 0 to GetArrayLength(Paths) - 1 do
   begin
     if RegQueryStringValue(HKEY_LOCAL_MACHINE, Paths[I], 'pv', Version) or
-       RegQueryStringValue(HKEY_CURRENT_USER, Paths[I], 'pv', Version) then
+       RegQueryStringValue(HKEY_CURRENT_USER,  Paths[I], 'pv', Version) then
     begin
       Major := StrToIntDef(Copy(Version, 1, Pos('.', Version) - 1), 0);
       if Major >= 86 then
@@ -141,10 +141,20 @@ begin
   end;
 end;
 
+{ ------------------------------------------------------------------ }
+
+function IsRecommended: Boolean;
+begin
+  Result := PageTipo.Values[0];
+end;
+
 procedure InitializeWizard();
 var
   DefaultDownloads: string;
 begin
+  { Detectar WebView2 una sola vez al arrancar el wizard }
+  GWebView2Present := WebView2Installed();
+
   DefaultDownloads := ExpandConstant('{userdocs}\Downloads\OpenGrab');
 
   { Página 3: Tipo de instalación }
@@ -213,7 +223,9 @@ begin
   end;
 end;
 
-{ Escribe config.ini en %APPDATA%\OpenGrab\ }
+{ ------------------------------------------------------------------ }
+{ Escribe config.ini en %APPDATA%\OpenGrab\                          }
+{ ------------------------------------------------------------------ }
 procedure WriteConfig();
 var
   ConfigDir, ConfigPath, DownloadDir, Port, Token, Content: string;
@@ -249,7 +261,9 @@ begin
   SaveStringToFile(ConfigPath, Content, False);
 end;
 
-{ Registro de auto-start }
+{ ------------------------------------------------------------------ }
+{ Registro de auto-start                                              }
+{ ------------------------------------------------------------------ }
 procedure SetAutoStart(Enable: Boolean);
 var
   Key: string;
@@ -262,19 +276,50 @@ begin
     RegDeleteValue(HKEY_CURRENT_USER, Key, 'OpenGrab');
 end;
 
+{ ------------------------------------------------------------------ }
+{ Instalación condicional de WebView2                                 }
+{ ------------------------------------------------------------------ }
+procedure InstallWebView2IfNeeded();
+var
+  ResultCode: Integer;
+  Bootstrapper: string;
+begin
+  { Si ya estaba presente al iniciar, no hacer nada }
+  if GWebView2Present then
+    Exit;
+
+  Bootstrapper := ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe');
+
+
+  if not FileExists(Bootstrapper) then
+    Exit;
+
+  WizardForm.StatusLabel.Caption := CustomMessage('InstallingWebView2');
+
+  if not Exec(Bootstrapper, '/silent /install', '', SW_HIDE,
+              ewWaitUntilTerminated, ResultCode) then
+  begin
+    { Exec falló — avisamos pero no bloqueamos la instalación }
+    MsgBox(CustomMessage('WebView2Failed'), mbInformation, MB_OK);
+    Exit;
+  end;
+
+  { Validar post-instalación }
+  if not WebView2Installed() then
+    MsgBox(CustomMessage('WebView2Failed'), mbInformation, MB_OK);
+end;
+
+{ ------------------------------------------------------------------ }
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
     WriteConfig();
+
     if not IsRecommended then
       SetAutoStart(PageAutoStart.Values[0]);
 
-    { Validar que el bootstrapper de WebView2 se instaló correctamente }
-    if WizardIsTaskSelected('webview2') then
-    begin
-      if not WebView2Installed() then
-        MsgBox(CustomMessage('WebView2Failed'), mbInformation, MB_OK);
-    end;
+    InstallWebView2IfNeeded();
   end;
 end;
