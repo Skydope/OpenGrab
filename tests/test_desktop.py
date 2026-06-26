@@ -254,6 +254,26 @@ def test_bootstrap_without_ini_download_dir(monkeypatch, tmp_path):
     assert os.environ["OPENGRAB_DIR"].endswith("OpenGrab")
 
 
+def test_main_resolves_env_before_importing_config():
+    """Regresión AppImage (Errno 30): ``_setup_env`` debe llamarse ANTES de
+    ``from config import ...`` en ``main()``. config.OUT_DIR se congela en el
+    import; si OPENGRAB_DIR no está seteada para entonces, cae a "./downloads"
+    relativo al CWD — que en un AppImage es el squashfs de solo lectura.
+    """
+    import inspect
+
+    src = inspect.getsource(desktop.main)
+    setup_pos = src.find("_setup_env(")
+    config_import_pos = src.find("from config import")
+
+    assert setup_pos != -1, "main() debe llamar a _setup_env"
+    assert config_import_pos != -1, "main() debe importar config localmente"
+    assert setup_pos < config_import_pos, (
+        "_setup_env() debe ejecutarse antes de importar config, o OUT_DIR "
+        "se congela con el fallback relativo al CWD (read-only en AppImage)"
+    )
+
+
 def test_bootstrap_respects_env_override(monkeypatch, tmp_path):
     """OPENGRAB_DIR en env tiene prioridad sobre ini y default."""
     monkeypatch.setenv("OPENGRAB_DIR", "/my/custom/folder")
