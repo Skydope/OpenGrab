@@ -358,6 +358,14 @@ def main() -> int:
         return 0
 
     _setup_logging()
+
+    # OPENGRAB_DIR debe resolverse ANTES de importar config: config.OUT_DIR se
+    # computa a nivel de módulo durante el import y, sin la variable seteada,
+    # cae al fallback "./downloads" relativo al CWD. En un AppImage el CWD es el
+    # montaje squashfs de solo lectura → OSError [Errno 30] al hacer mkdir.
+    port = _free_port()
+    _setup_env(port)
+
     from config import VERSION
 
     _log.info("OpenGrab desktop v%s iniciado — %s", VERSION, sys.platform)
@@ -369,9 +377,6 @@ def main() -> int:
         engine_update.check_and_update()
     except Exception as exc:
         _msgbox(f"No se pudo actualizar yt-dlp:\n{exc}", "OpenGrab", "warn")
-
-    port = _free_port()
-    _setup_env(port)
 
     threading.Thread(target=_serve, args=(port,), daemon=True).start()
 
