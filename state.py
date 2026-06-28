@@ -160,9 +160,39 @@ class AppState:
             log.info("limpiados %d workdirs viejos o vacios", count)
 
     def _schedule_tempdir_cleanup(self, workdir: str) -> None:
-        """Registra un workdir vacío para limpieza diferida. El evict_loop
-        (cada ~60s) lo borra cuando el thread de descarga ya terminó."""
+        """Registra un workdir para limpieza diferida. Se invoca SIEMPRE
+        después de mover el archivo final fuera del workdir, así que el
+        husk restante (fragmentos, streams sin mergear) es descartable.
+        Lo draina flush_pending_cleanups (dispatch_loop al quedar 0 jobs
+        activos, y evict_loop como red de seguridad)."""
         self._pending_cleanups.add(workdir)
+
+    def flush_pending_cleanups(self) -> int:
+        """Borra los workdirs registrados en _pending_cleanups y devuelve
+        cuántos se removieron.
+
+        A diferencia del os.rmdir viejo (solo-vacíos), esto remueve el husk
+        aunque tenga residuo: el keeper ya se movió fuera ANTES de registrar
+        el workdir (download.py: move -> _schedule_tempdir_cleanup), así que
+        no hay riesgo de borrar el archivo final.
+
+        Retry-safe: un workdir solo sale del set si se confirmó que ya no
+        existe en disco. Si un handle sigue abierto (Windows), queda pendiente
+        para el próximo tick. Si ya no existe (borrado externo), se descarta
+        igual — self-healing de entradas stale."""
+        removed = 0
+        for dirpath in list(self._pending_cleanups):
+            try:
+                self._secure_delete_workdir(dirpath)
+            except Exception:
+                log.exception("flush_pending_cleanups: no se pudo borrar %s", dirpath)
+            if not os.path.exists(dirpath):
+                self._pending_cleanups.discard(dirpath)
+                removed += 1
+        if removed:
+            with self._usage_lock:
+                self._usage_cache_ts = 0.0
+        return removed
 
     # ------------------------------------------------------------------ #
     # Secure file deletion (3-pass: 0x00, 0xFF, random — no external tool)
@@ -421,14 +451,10 @@ class AppState:
             log.info("evacuados %d jobs viejos de memoria", len(to_delete))
         self.db.prune_history(keep=self.resolve("history_max", 500, int)[0])
 
-        # Drain pending tempdir cleanups. Para cuando llegamos acá, el thread
-        # de descarga ya terminó y Windows liberó los handles del directorio.
-        for dirpath in list(self._pending_cleanups):
-            try:
-                os.rmdir(dirpath)
-                self._pending_cleanups.discard(dirpath)
-            except OSError:
-                pass
+        # Drain pending tempdir cleanups. Red de seguridad: el camino normal
+        # los borra desde dispatch_loop al quedar 0 jobs activos. Acá los
+        # agarramos por si ese flush falló (handle abierto en su momento).
+        self.flush_pending_cleanups()
 
         return len(to_delete)
 
