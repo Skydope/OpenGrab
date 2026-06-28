@@ -518,6 +518,12 @@ class AppState:
     async def dispatch_loop(self) -> None:
         while True:
             await asyncio.sleep(2.0)
+            # Limpieza inmediata: cuando termina la última descarga, drenar los
+            # workdirs husk ya registrados. Corre en el event loop (no en el
+            # worker thread), sin race sobre self.jobs y dándole a Windows un
+            # margen para soltar handles antes del rmtree.
+            if self._pending_cleanups and self.count_active_jobs() == 0:
+                self.flush_pending_cleanups()
             max_jobs = self.resolve("max_jobs", 2, int)[0]
             # MAX_JOBS es un techo de CONCURRENCIA, no de despachos-por-tick. Si ya
             # hay descargas activas (manuales o de un batch anterior), descontamos

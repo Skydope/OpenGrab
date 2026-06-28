@@ -61,3 +61,47 @@ def test_flush_invalida_cache_usage(st):
         st._usage_cache_ts = 1e18  # cache "fresca"
     st.flush_pending_cleanups()
     assert st._usage_cache_ts == 0.0  # invalidada
+
+
+@pytest.mark.asyncio
+async def test_dispatch_loop_flushea_al_quedar_sin_activos(st):
+    """Cuando count_active_jobs()==0, dispatch_loop drena en el primer tick."""
+    wd = _make_husk(st.out_dir, "opengrab_dispatch", with_residue=True)
+    st._schedule_tempdir_cleanup(str(wd))
+    # sin jobs activos -> count_active_jobs()==0
+
+    calls = {"n": 0}
+    real_sleep = asyncio.sleep
+    async def fake_sleep(_):
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise asyncio.CancelledError
+        await real_sleep(0)
+    with patch("asyncio.sleep", fake_sleep):
+        with pytest.raises(asyncio.CancelledError):
+            await st.dispatch_loop()
+
+    assert not wd.exists()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_loop_NO_flushea_con_job_activo(st):
+    """Con una descarga en curso, el husk no se toca."""
+    wd = _make_husk(st.out_dir, "opengrab_active", with_residue=True)
+    st._schedule_tempdir_cleanup(str(wd))
+    st.jobs["j1"] = Job(id="j1", created=0.0)
+    st.jobs["j1"].status = "downloading"
+
+    calls = {"n": 0}
+    real_sleep = asyncio.sleep
+    async def fake_sleep(_):
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise asyncio.CancelledError
+        await real_sleep(0)
+    with patch("asyncio.sleep", fake_sleep), \
+         patch.object(st.db, "get_queued", return_value=[]):
+        with pytest.raises(asyncio.CancelledError):
+            await st.dispatch_loop()
+
+    assert wd.exists()  # preservado: hay un job activo
