@@ -387,6 +387,11 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         job.percent = 100.0
         job.filepath = job.filepath or str(final)
         job.filename = (job.filepath and Path(job.filepath).name) or f"{title}.{ext}"
+        # Desktop: si el finalize movió el archivo a library_dir, el husk del
+        # workdir es descartable. Mode-agnostic y seguro ante finalize fallido
+        # (si el keeper sigue dentro del workdir, esto es no-op). En server mode
+        # ya se limpió arriba (job.workdir == ""), así que también es no-op.
+        state.schedule_workdir_if_external(job)
         job.mime = mime
         job.title = title
         log.info("job %s: completado → %s", job_id, job.filepath)

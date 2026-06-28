@@ -167,6 +167,26 @@ class AppState:
         activos, y evict_loop como red de seguridad)."""
         self._pending_cleanups.add(workdir)
 
+    def schedule_workdir_if_external(self, job: Job) -> bool:
+        """Registra el workdir del job para limpieza si el archivo final quedó
+        FUERA de él (p.ej. _finalize_desktop lo movió a library_dir). Limpia
+        job.workdir y devuelve True si lo hizo.
+
+        No-op (devuelve False) si no hay workdir, no hay filepath, o el filepath
+        sigue dentro del workdir. Ese último caso cubre un finalize fallido: el
+        keeper quedó en el workdir y se sirve desde ahí, así que NO debe
+        borrarse — evict_once lo limpiará luego por la vía job-based una vez
+        expirado. Unifica el cleanup de desktop con el de server (download.py),
+        que ya hace move + _schedule_tempdir_cleanup en su propio path."""
+        if not job.workdir or not job.filepath:
+            return False
+        wd = Path(job.workdir).resolve()
+        if Path(job.filepath).resolve().is_relative_to(wd):
+            return False
+        self._schedule_tempdir_cleanup(job.workdir)
+        job.workdir = ""
+        return True
+
     def flush_pending_cleanups(self) -> int:
         """Borra los workdirs registrados en _pending_cleanups y devuelve
         cuántos se removieron.
