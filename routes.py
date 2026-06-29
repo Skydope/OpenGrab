@@ -526,6 +526,8 @@ async def api_open_folder(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
+    if not IS_DESKTOP:
+        raise HTTPException(409, "open-folder solo esta disponible en modo desktop.")
     job = state.jobs.get(job_id)
     if job is None or not job.filepath:
         raise HTTPException(404, "Job no encontrado o sin archivo.")

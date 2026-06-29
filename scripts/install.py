@@ -657,67 +657,11 @@ def _mode_desktop() -> None:
     console.print(_panel(
         "Build Complete",
         f"Output directory: [bold]{dist}[/]\n"
-        + (f"Files: {len(output_files)}" if output_files else "(check dist/OpenGrab/)"),
+        + (f"Files: {len(output_files)}" if output_files else "(check dist/OpenGrab/)\n")
+        + "\nPre-built AppImage and macOS releases:\n"
+        + "https://github.com/Skydope/OpenGrab/releases",
         "green",
     ))
-
-    # ── Post-build: AppImage (Linux) ───────────────────────────────────
-    if sys.platform == "linux" and Confirm.ask(
-        "Create an AppImage from the build?",
-        default=False,
-    ):
-        _create_appimage(repo)
-
-    # ── Post-build: DMG (macOS) ────────────────────────────────────────
-    if sys.platform == "darwin" and Confirm.ask(
-        "Create a DMG from the .app bundle?",
-        default=False,
-    ):
-        _create_dmg(repo)
-
-
-def _create_appimage(repo: Path) -> None:
-    dist = repo / "dist" / "OpenGrab"
-    if not dist.exists():
-        console.print("[red]Build output not found.[/]")
-        return
-    if not _check_cmd("appimagetool"):
-        console.print(
-            "[yellow]appimagetool not found.[/]\n"
-            "Download from https://github.com/AppImage/AppImageKit/releases"
-        )
-        return
-    rc, out = _run_live(
-        ["appimagetool", str(dist)],
-        "Creating AppImage",
-        cwd=repo,
-        timeout=300,
-    )
-    if rc != 0:
-        console.print(_panel("Error", f"AppImage creation failed:\n{out}", "red"))
-    else:
-        console.print("  [green]✓[/] AppImage created")
-
-
-def _create_dmg(repo: Path) -> None:
-    dist = repo / "dist" / "OpenGrab"
-    if not dist.exists():
-        console.print("[red]Build output not found.[/]")
-        return
-    if not _check_cmd("hdiutil"):
-        console.print("[yellow]hdiutil not found.[/]")
-        return
-    dmg_path = repo / "dist" / "OpenGrab.dmg"
-    rc, out = _run(
-        ["hdiutil", "create", "-volname", "OpenGrab", "-srcfolder", str(dist), str(dmg_path)],
-        "Creating DMG",
-        cwd=repo,
-        timeout=120,
-    )
-    if rc != 0:
-        console.print(_panel("Error", f"DMG creation failed:\n{out}", "red"))
-    else:
-        console.print(f"  [green]✓[/] DMG created at [bold]{dmg_path}[/]")
 
 
 # --------------------------------------------------------------------------- #

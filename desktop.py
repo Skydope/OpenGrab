@@ -261,27 +261,28 @@ def _webview2_runtime_installed() -> bool:
     return False
 
 
-def _webview2_available() -> bool:
-    """True si podemos abrir una ventana nativa con WebView2 + pywebview.
+def _native_webview_available() -> bool:
+    """True si podemos abrir una ventana nativa con pywebview.
 
-    Verifica tres condiciones:
-    1. Estamos en Windows (única plataforma con WebView2).
-    2. pythonnet + webview son importables (los DLLs nativos están disponibles).
-    3. El runtime de WebView2 está instalado en el sistema (registro).
+    Por plataforma:
+    - win32: requiere WebView2 runtime instalado (registro).
+    - linux: requiere WebKit2GTK en el sistema. pywebview lo detecta en runtime;
+      si falta, ``webview.start()`` lanza y el caller cae a navegador.
+    - darwin: nativo via Cocoa/WKWebView, sin dependencias extra.
+
+    El import de pywebview se verifica primero (comun a todas las plataformas).
+    Si falla, se devuelve False y el caller usa ``webbrowser.open()``.
     """
-    if sys.platform != "win32":
-        return False
-
     try:
         import webview  # noqa: F401
-        from webview.platforms.edgechromium import EdgeChrome  # noqa: F401
     except ImportError as exc:
-        _log.warning("webview2_available: falló import de pywebview: %s", exc)
+        _log.warning("native_webview: falló import de pywebview: %s", exc)
         return False
 
-    if not _webview2_runtime_installed():
-        _log.warning("webview2_available: runtime de WebView2 no encontrado")
-        return False
+    if sys.platform == "win32":
+        if not _webview2_runtime_installed():
+            _log.warning("native_webview: runtime de WebView2 no encontrado")
+            return False
 
     return True
 
@@ -321,7 +322,7 @@ def _open_ui_window(port: int) -> None:
 
     Si WebView2 no está disponible o falla, abre en el navegador."""
     url = f"http://127.0.0.1:{port}"
-    if _webview2_available():
+    if _native_webview_available():
         try:
             import webview
 
@@ -434,10 +435,9 @@ def _system_tray(port: int) -> None:
             return f"Estado: {dot} {_tray_state.get('estado', 'Inactivo')}"
 
         def _on_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
-            # Windows: WebView2 requiere main thread → señalizamos vía evento.
-            # Linux/macOS: no hay WebView2, abrimos el navegador directo (no
-            # necesita main thread) en vez de depender del fallback del loop.
-            if sys.platform == "win32":
+            # pywebview requiere main thread en todas las plataformas.
+            # Si hay webview nativo, señalizamos via evento para que main abra.
+            if _native_webview_available():
                 _reopen_event.set()
             else:
                 webbrowser.open(f"http://127.0.0.1:{port}")
@@ -531,7 +531,7 @@ def main() -> int:
     tray_thread.start()
 
     try:
-        has_webview = _webview2_available()
+        has_webview = _native_webview_available()
         if has_webview:
             _open_ui_window(port)
             _log.info("ventana cerrada, app sigue en tray")

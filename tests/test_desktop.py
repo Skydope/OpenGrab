@@ -117,66 +117,52 @@ def test_msgbox_win_calls_messagebox(monkeypatch):
     assert calls["flags"] == 0x10
 
 
-# ----------------------- _webview2_available ----------------------------- #
-def test_webview2_unavailable_non_windows(monkeypatch):
+# ----------------------- _native_webview_available ------------------------ #
+def test_native_webview_unavailable_when_pywebview_missing(monkeypatch):
+    import builtins
+
     monkeypatch.setattr(desktop.sys, "platform", "linux")
-    assert desktop._webview2_available() is False
+    _orig_import = builtins.__import__
+
+    def _mock_import(name, *args, **kwargs):
+        if name == "webview" or name.startswith("webview."):
+            raise ImportError(f"No module named '{name}'")
+        return _orig_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _mock_import)
+    assert desktop._native_webview_available() is False
 
 
-def test_webview2_available_when_edgechromium_importable(monkeypatch):
+def test_native_webview_available_windows_with_runtime(monkeypatch):
     monkeypatch.setattr(desktop.sys, "platform", "win32")
     monkeypatch.setattr(desktop, "_webview2_runtime_installed", lambda: True)
 
     fake_webview = types.ModuleType("webview")
-    fake_edge = types.ModuleType("webview.platforms.edgechromium")
-
-    class _FakeEdgeChrome:
-        pass
-
-    fake_edge.EdgeChrome = _FakeEdgeChrome
-    fake_webview.platforms = types.ModuleType("webview.platforms")
-    fake_webview.platforms.edgechromium = fake_edge
-
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
-    monkeypatch.setitem(sys.modules, "webview.platforms", fake_webview.platforms)
-    monkeypatch.setitem(sys.modules, "webview.platforms.edgechromium", fake_edge)
 
-    assert desktop._webview2_available() is True
+    assert desktop._native_webview_available() is True
 
 
-def test_webview2_unavailable_when_runtime_missing(monkeypatch):
+def test_native_webview_unavailable_windows_runtime_missing(monkeypatch):
     monkeypatch.setattr(desktop.sys, "platform", "win32")
     monkeypatch.setattr(desktop, "_webview2_runtime_installed", lambda: False)
 
     fake_webview = types.ModuleType("webview")
-    fake_edge = types.ModuleType("webview.platforms.edgechromium")
-
-    class _FakeEdgeChrome:
-        pass
-
-    fake_edge.EdgeChrome = _FakeEdgeChrome
-    fake_webview.platforms = types.ModuleType("webview.platforms")
-    fake_webview.platforms.edgechromium = fake_edge
-
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
-    monkeypatch.setitem(sys.modules, "webview.platforms", fake_webview.platforms)
-    monkeypatch.setitem(sys.modules, "webview.platforms.edgechromium", fake_edge)
 
-    assert desktop._webview2_available() is False
+    assert desktop._native_webview_available() is False
 
 
-def test_webview2_unavailable_when_edgechromium_missing(monkeypatch):
-    monkeypatch.setattr(desktop.sys, "platform", "win32")
-
+def test_native_webview_available_linux_with_pywebview(monkeypatch):
+    monkeypatch.setattr(desktop.sys, "platform", "linux")
     fake_webview = types.ModuleType("webview")
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
-
-    assert desktop._webview2_available() is False
+    assert desktop._native_webview_available() is True
 
 
 # ------------------------------ _open_ui --------------------------------- #
 def test_open_ui_falls_back_to_browser(monkeypatch):
-    monkeypatch.setattr(desktop, "_webview2_available", lambda: False)
+    monkeypatch.setattr(desktop, "_native_webview_available", lambda: False)
     opened = {}
     monkeypatch.setattr(desktop.webbrowser, "open", lambda u: opened.setdefault("url", u))
     desktop._open_ui_window(8800)
@@ -184,7 +170,7 @@ def test_open_ui_falls_back_to_browser(monkeypatch):
 
 
 def test_open_ui_uses_pywebview_when_available(monkeypatch):
-    monkeypatch.setattr(desktop, "_webview2_available", lambda: True)
+    monkeypatch.setattr(desktop, "_native_webview_available", lambda: True)
 
     fake = types.ModuleType("webview")
     calls = {}
@@ -198,7 +184,7 @@ def test_open_ui_uses_pywebview_when_available(monkeypatch):
 
 def test_open_ui_no_msgbox_on_browser_fallback(monkeypatch):
     """En el nuevo diseño, el fallback a navegador es silencioso (el msgbox está en main)."""
-    monkeypatch.setattr(desktop, "_webview2_available", lambda: False)
+    monkeypatch.setattr(desktop, "_native_webview_available", lambda: False)
     monkeypatch.setattr(desktop.webbrowser, "open", lambda u: None)
 
     msgbox_calls = []
@@ -407,12 +393,20 @@ def test_tray_on_open_sets_reopen_event(monkeypatch):
     assert reopen_event.is_set(), "_reopen_event debería estar seteado en Windows"
     assert "url" not in opened, "En Windows no debe abrir el navegador"
 
-    # En Linux/macOS → abre el navegador directo, sin tocar reopen.
+    # En Linux con pywebview → también señaliza reopen (GTK requiere main thread).
+    reopen_event.clear()
+    monkeypatch.setattr(desktop.sys, "platform", "linux")
+    monkeypatch.setattr(desktop, "_native_webview_available", lambda: True)
+    on_open(None, None)
+    assert reopen_event.is_set(), "_reopen_event debería estar seteado con webview nativo"
+    assert "url" not in opened, "Con webview nativo no debe abrir el navegador"
+
+    # En Linux sin pywebview → abre el navegador directo (fallback).
     reopen_event.clear()
     opened.clear()
-    monkeypatch.setattr(desktop.sys, "platform", "linux")
+    monkeypatch.setattr(desktop, "_native_webview_available", lambda: False)
     on_open(None, None)
-    assert not reopen_event.is_set(), "En Linux no debe usar _reopen_event"
+    assert not reopen_event.is_set(), "Sin webview nativo no debe usar _reopen_event"
     assert opened.get("url") == "http://127.0.0.1:12345"
 
     # 'Abrir en web' → navegador en cualquier plataforma.

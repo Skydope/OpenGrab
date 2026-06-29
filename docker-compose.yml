@@ -10,6 +10,9 @@ services:
       - OPENGRAB_HOST=0.0.0.0
       - OPENGRAB_PORT=8800
       - OPENGRAB_DIR=/downloads
+      # Ruta del ini de settings. En el volumen /downloads para que persista
+      # junto con la DB. La UI escribe aca los cambios de settings.
+      - OPENGRAB_CONFIG=${OPENGRAB_CONFIG:-/downloads/config.ini}
       - OPENGRAB_TOKEN=${OPENGRAB_TOKEN:-}
       - OPENGRAB_MAX_JOBS=${OPENGRAB_MAX_JOBS:-2}
       - OPENGRAB_MAX_SIZE_MB=${OPENGRAB_MAX_SIZE_MB:-0}

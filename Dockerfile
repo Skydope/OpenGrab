@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.13-slim
 
 # ffmpeg → muxear video+audio a mp4 | curl → healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl \
@@ -27,6 +27,7 @@ ENV OPENGRAB_HOST=0.0.0.0 \
     OPENGRAB_PORT=8800 \
     OPENGRAB_DIR=/downloads \
     OPENGRAB_AUTOUPDATE=0 \
+    OPENGRAB_CONFIG=/downloads/config.ini \
     HOME=/tmp
 
 EXPOSE 8800

@@ -114,6 +114,23 @@ infobox() {
 
 check_cmd() { command -v "$1" &>/dev/null; }
 
+check_python_version() {
+    if ! check_cmd python3; then
+        echo "  ✗ python3 >= 3.12 (not found)"
+        return 1
+    fi
+    local ver
+    ver=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+    local major minor
+    major=$(echo "$ver" | cut -d. -f1)
+    minor=$(echo "$ver" | cut -d. -f2)
+    if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 12 ]; }; then
+        echo "  ✗ python3 >= 3.12 (found $ver)"
+        return 1
+    fi
+    return 0
+}
+
 rand_token() { python3 -c "import secrets; print(secrets.token_urlsafe(16))" 2>/dev/null || openssl rand -hex 12; }
 
 detect_pkg_mgr() {
@@ -282,7 +299,7 @@ mode_docker() {
 
 mode_baremetal() {
     local errs=""
-    check_cmd python3 || errs="$errs\n  ✗ python3 (required)"
+    check_python_version || errs="$errs\n  ✗ python3 >= 3.12 (required)"
     check_cmd pip3 && true || check_cmd pip || errs="$errs\n  ✗ pip (required)"
     check_cmd git || errs="$errs\n  ✗ Git (required)"
 
@@ -390,7 +407,7 @@ EOF
 
 mode_desktop() {
     local errs=""
-    check_cmd python3 || errs="$errs\n  ✗ python3 (required)"
+    check_python_version || errs="$errs\n  ✗ python3 >= 3.12 (required)"
     check_cmd pip3 && true || check_cmd pip || errs="$errs\n  ✗ pip (required)"
 
     if [ -n "$errs" ]; then
@@ -447,18 +464,7 @@ mode_desktop() {
         return 1
     fi
 
-    msgbox "Build Complete" "Output directory:\n$repo/dist/OpenGrab\n\nRun the binary from there or create an installer."
-
-    # AppImage
-    if check_cmd appimagetool && yesno "AppImage" "Create an AppImage?" "no"; then
-        infobox "AppImage" "Creating AppImage..."
-        if run_with_gauge "Creating AppImage..." "appimagetool" \
-            appimagetool "$repo/dist/OpenGrab" 2>&1; then
-            msgbox "AppImage" "AppImage created successfully!"
-        else
-            msgbox "Error" "AppImage creation failed."
-        fi
-    fi
+    msgbox "Build Complete" "Output directory:\n$repo/dist/OpenGrab\n\nRun the binary from there.\n\nPre-built AppImage and macOS releases:\nhttps://github.com/Skydope/OpenGrab/releases"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
