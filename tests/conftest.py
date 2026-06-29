@@ -16,6 +16,17 @@ asyncio.iscoroutinefunction = inspect.iscoroutinefunction  # type: ignore[assign
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Neutraliza la contaminacion de OPENGRAB_DESKTOP. desktop.py hace
+# os.environ.setdefault("OPENGRAB_DESKTOP", "1") al importarse, y pytest importa
+# TODOS los modulos de test en la coleccion (incluido test_desktop.py) antes de
+# correr ningun test. Ese setdefault corre antes de que app/routers.system
+# liguen IS_DESKTOP de forma lazy en el primer test, dejandolo en True y
+# filtrando a tests que asumen modo no-desktop. conftest.py se importa antes que
+# los modulos de test, asi que fijar la key aca gana: el setdefault de desktop.py
+# la ve presente y no la pisa. Los tests que necesitan desktop parchean
+# config.IS_DESKTOP/routers.system.IS_DESKTOP de forma explicita.
+os.environ.setdefault("OPENGRAB_DESKTOP", "")
+
 _OPENGRAB_MODULES = ("app", "config", "models", "download", "routes", "routers", "state", "db")
 
 
