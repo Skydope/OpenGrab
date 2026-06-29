@@ -41,8 +41,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Abrir en web" abre el navegador. Un poller daemon consulta `/api/jobs` cada
   1.5s. La lógica de formateo (`_format_tray_status`) es pura y está cubierta
   por `tests/test_tray.py`.
+- **Configuración en modal con pestañas.** La sección inline de ajustes se
+  reemplazó por un modal tipo dashboard accesible solo desde el ícono de
+  engranaje del header, con pestañas (Descargas / Almacenamiento / Interfaz /
+  Avanzado), backdrop con blur, cierre por `Esc` y click-afuera, y layout
+  full-screen responsive en mobile con tabs scrolleables. Backup export/import
+  se movieron a la pestaña Avanzado. History, Storage y Channels siguen como
+  tools inline sin cambios.
 
 ### Changed
+
+- **Hot-reload de toda la configuración (la tabla gana sobre el INI).** La
+  precedencia de `state.resolve()` pasó de `env > ini > tabla > default` a
+  `env > tabla > ini > default`. El `config.ini` que escribe el instalador
+  queda como semilla; al editar una setting desde la UI, su valor vive en la
+  tabla SQLite, gana sobre el INI y se aplica en vivo (sin reinicio, porque
+  `resolve()` se consulta en cada uso: dispatcher, prune de historial, etc.).
+  Como consecuencia, el candado (🔒) ahora solo aplica a settings con
+  `origin=env` (override declarativo de Docker, no sobreescribible en caliente);
+  el bloqueo por INI se eliminó, así que en escritorio toda setting es editable.
+  El endpoint `PUT/PATCH /api/settings` solo rechaza keys `env`. Cubierto por
+  `test_resolve_table_over_ini` y `test_resolve_ini_over_default`.
 
 - **Reconciliacion de jobs al arranque mas fina.** `reconcile_startup()`
   reemplaza a `mark_interrupted()` y distingue dos casos que antes se trataban
