@@ -451,6 +451,13 @@ def test_resolve_table_over_ini(monkeypatch, tmp_path):
     Garantiza el hot-reload: una vez que el usuario edita una setting, su valor
     en la tabla se aplica en vivo aunque el instalador haya sembrado el ini.
     """
+    import sys
+
+    for m in ("config", "state"):
+        try:
+            del sys.modules[m]
+        except KeyError:
+            pass
     import config as _config
     from state import AppState
 
@@ -466,6 +473,13 @@ def test_resolve_table_over_ini(monkeypatch, tmp_path):
 
 def test_resolve_ini_over_default(monkeypatch, tmp_path):
     """Sin env ni tabla, el ini actúa como semilla por encima del default."""
+    import sys
+
+    for m in ("config", "state"):
+        try:
+            del sys.modules[m]
+        except KeyError:
+            pass
     import config as _config
     from state import AppState
 
