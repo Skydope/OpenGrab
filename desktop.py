@@ -23,7 +23,7 @@ import time
 import urllib.request
 import webbrowser
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import pystray
@@ -37,6 +37,12 @@ _server_error: Exception | None = None
 _log = logging.getLogger("opengrab.desktop")
 _tray_icon: pystray.Icon | None = None  # seteado por _system_tray()
 _reopen_event = threading.Event()      # señal tray → main para reopen WebView2
+_tray_stop = threading.Event()         # corta el poller del tray al salir
+_tray_state: dict[str, object] = {     # estado vivo mostrado en el tray
+    "active": False,
+    "tooltip": "OpenGrab",
+    "estado": "Inactivo",
+}
 
 
 def _setup_logging() -> None:
@@ -330,8 +336,12 @@ def _open_ui_window(port: int) -> None:
         webbrowser.open(url)
 
 
-def _get_tray_image() -> object:
-    """Genera un icono para la bandeja del sistema (sin dependencia de archivos externos)."""
+def _get_tray_image(active: bool | None = None) -> object:
+    """Genera el icono de la bandeja (sin depender de archivos externos).
+
+    Si ``active`` no es ``None``, dibuja un punto de estado abajo-derecha:
+    verde si está descargando, rojo si está inactivo.
+    """
     from PIL import Image, ImageDraw
 
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
@@ -340,41 +350,123 @@ def _get_tray_image() -> object:
     draw.rounded_rectangle([4, 4, 60, 60], radius=12, fill=(28, 33, 43, 255))
     # Play button simplificado (triángulo ámbar)
     draw.polygon([(24, 18), (24, 46), (44, 32)], fill=(232, 160, 44, 255))
+    if active is not None:
+        color = (46, 204, 113, 255) if active else (231, 76, 60, 255)
+        draw.ellipse([42, 42, 60, 60], fill=color, outline=(28, 33, 43, 255), width=2)
     return img
+
+
+def _format_tray_status(jobs: list[dict[str, Any]]) -> tuple[bool, str, str]:
+    """Resume el estado de descargas para la bandeja, a partir de ``/api/jobs``.
+
+    Devuelve ``(active, tooltip, estado)``:
+      - ``active``: hay al menos un job descargando o procesando.
+      - ``tooltip``: texto de hover del icono (truncado a ~120 chars).
+      - ``estado``: etiqueta para la línea 'Estado:' del menú.
+
+    Función pura (sin I/O) para poder testearla sin GUI ni red.
+    """
+    downloading = [j for j in jobs if j.get("status") in ("downloading", "processing")]
+    if downloading:
+        j = max(downloading, key=lambda x: x.get("percent") or 0.0)
+        pct = int(j.get("percent") or 0)
+        title = str(j.get("title") or j.get("filename") or "descarga").strip()
+        short = title if len(title) <= 60 else title[:59] + "…"
+        n = len(downloading)
+        suffix = f" (+{n - 1})" if n > 1 else ""
+        tooltip = f"OpenGrab — ↓ {pct}% · {short}{suffix}"
+        estado = f"Descargando {pct}% · {short}{suffix}"
+        return True, tooltip[:120], estado
+    queued = [j for j in jobs if j.get("status") in ("queued", "starting")]
+    if queued:
+        return False, "OpenGrab — en cola", f"En cola ({len(queued)})"
+    return False, "OpenGrab — inactivo", "Inactivo"
+
+
+def _poll_tray_status(port: int) -> None:
+    """Pollea ``/api/jobs`` y refresca tooltip, icono (punto verde/rojo) y menú.
+
+    Corre en thread daemon hasta que ``_tray_stop`` se setea (al salir). En
+    modo desktop ``OPENGRAB_NO_AUTH=1``, así que no necesita token.
+    """
+    import json
+
+    url = f"http://127.0.0.1:{port}/api/jobs?recent=0"
+    last_active: bool | None = None
+    while not _tray_stop.wait(1.5):
+        try:
+            with urllib.request.urlopen(url, timeout=2) as r:
+                payload = json.loads(r.read().decode("utf-8"))
+            jobs = payload if isinstance(payload, list) else []
+        except Exception:
+            jobs = []
+        active, tooltip, estado = _format_tray_status(jobs)
+        _tray_state.update(active=active, tooltip=tooltip, estado=estado)
+        icon = _tray_icon
+        if icon is None:
+            continue
+        try:
+            icon.title = tooltip
+            if active != last_active:
+                icon.icon = _get_tray_image(active)
+                last_active = active
+            icon.update_menu()
+        except Exception:
+            _log.debug("poll_tray_status: no se pudo actualizar el icono", exc_info=True)
 
 
 def _system_tray(port: int) -> None:
     """Bandeja del sistema. Corre en thread secundario (no-daemon).
 
-    Señaliza al main thread vía ``_reopen_event`` para que abra una ventana
-    WebView2 desde el thread principal. Si pywebview no está disponible
-    (Linux/macOS), el main thread abre el navegador.
+    Click izquierdo (item ``default``) → señaliza al main thread vía
+    ``_reopen_event`` para abrir WebView2. Click derecho → menú con el estado
+    vivo de la descarga ("Estado: 🟢/🔴 …"), "Abrir en web" (navegador) y
+    "Salir". Un poller daemon refresca tooltip, icono y menú cada ~1.5s.
+
+    En Linux/macOS no hay WebView2, así que "Abrir OpenGrab" abre el navegador
+    (lo resuelve el main thread al recibir ``_reopen_event``).
     """
     global _tray_icon
 
     try:
         import pystray
 
-        image = _get_tray_image()
+        def _estado_text(item: object) -> str:
+            dot = "🟢" if _tray_state.get("active") else "🔴"
+            return f"Estado: {dot} {_tray_state.get('estado', 'Inactivo')}"
 
         def _on_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
             _reopen_event.set()
 
+        def _on_open_web(icon: pystray.Icon, item: pystray.MenuItem) -> None:
+            webbrowser.open(f"http://127.0.0.1:{port}")
+
         def _on_exit(icon: pystray.Icon, item: pystray.MenuItem) -> None:
             _log.info("tray: salir solicitado por usuario")
+            _tray_stop.set()
             icon.stop()
+
+        def _setup(icon: pystray.Icon) -> None:
+            icon.visible = True
+            threading.Thread(
+                target=_poll_tray_status, args=(port,),
+                daemon=True, name="og-tray-poll",
+            ).start()
 
         _tray_icon = pystray.Icon(
             "OpenGrab",
-            image,
+            _get_tray_image(False),
             "OpenGrab",
             menu=pystray.Menu(
+                pystray.MenuItem(_estado_text, None, enabled=False),
+                pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Abrir OpenGrab", _on_open, default=True),
+                pystray.MenuItem("Abrir en web", _on_open_web),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Salir", _on_exit),
             ),
         )
-        _tray_icon.run()
+        _tray_icon.run(setup=_setup)
         _log.info("tray: icon.run() retornó")
     except Exception:
         _log.exception("tray: error inesperado")
