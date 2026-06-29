@@ -137,7 +137,10 @@ async def api_open_downloads_folder(
         raise HTTPException(409, _t("error.folder_desktop_only"))
     folder = str(OUT_DIR)
     if sys.platform == "win32":
-        os.startfile(folder)
+        try:
+            os.startfile(folder)
+        except OSError:
+            log.warning("api_open_downloads_folder: falló startfile %s", folder)
     elif sys.platform == "darwin":
         import subprocess
 

@@ -148,6 +148,81 @@ def test_dismiss_unknown_job_is_noop(client, app_state):
     assert r.json() == {"ok": False}
 
 
+# ----------------------- /api/open-downloads-folder ------------------------- #
+def test_open_downloads_folder_requires_desktop(client):
+    """Sin modo desktop el endpoint responde 409 (no aplica en web/Docker)."""
+    r = client.post("/api/open-downloads-folder")
+    assert r.status_code == 409
+
+
+def test_open_downloads_folder_windows(client, monkeypatch):
+    """En win32 usa os.startfile sobre OUT_DIR."""
+    import os as _os
+
+    from routers import system
+
+    monkeypatch.setattr(system, "IS_DESKTOP", True)
+    monkeypatch.setattr(system.sys, "platform", "win32")
+    calls: list[str] = []
+    monkeypatch.setattr(_os, "startfile", lambda p: calls.append(p), raising=False)
+    r = client.post("/api/open-downloads-folder")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert len(calls) == 1
+
+
+def test_open_downloads_folder_macos(client, monkeypatch):
+    """En darwin invoca `open` vía subprocess."""
+    import subprocess
+
+    from routers import system
+
+    monkeypatch.setattr(system, "IS_DESKTOP", True)
+    monkeypatch.setattr(system.sys, "platform", "darwin")
+    calls: list[list[str]] = []
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: calls.append(a[0]))
+    r = client.post("/api/open-downloads-folder")
+    assert r.status_code == 200
+    assert calls and calls[0][0] == "open"
+
+
+def test_open_downloads_folder_linux(client, monkeypatch):
+    """En linux invoca `xdg-open` vía subprocess."""
+    import subprocess
+
+    from routers import system
+
+    monkeypatch.setattr(system, "IS_DESKTOP", True)
+    monkeypatch.setattr(system.sys, "platform", "linux")
+    calls: list[list[str]] = []
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: calls.append(a[0]))
+    r = client.post("/api/open-downloads-folder")
+    assert r.status_code == 200
+    assert calls and calls[0][0] == "xdg-open"
+
+
+def test_open_downloads_folder_win32_failure_is_logged(client, monkeypatch):
+    """Si startfile falla (e.g. carpeta inexistente) no rompe: loguea y ok=True.
+
+    Regresión del fix que envolvió la rama win32 en try/except, en simetría con
+    open/xdg-open. Antes propagaba OSError → 500.
+    """
+    import os as _os
+
+    from routers import system
+
+    monkeypatch.setattr(system, "IS_DESKTOP", True)
+    monkeypatch.setattr(system.sys, "platform", "win32")
+
+    def _boom(p: str) -> None:
+        raise FileNotFoundError(p)
+
+    monkeypatch.setattr(_os, "startfile", _boom, raising=False)
+    r = client.post("/api/open-downloads-folder")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
 def test_api_jobs_file_missing(client, app_state):
 
     from models import Job
