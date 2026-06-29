@@ -54,7 +54,8 @@ def _is_ip_unsafe(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 def _resolve_hostname(hostname: str) -> tuple[bool, str]:
     """Resuelve un hostname y valida TODAS las IPs (A + AAAA) contra _is_ip_unsafe.
 
-    Devuelve ``(safe, reason)``. Politica strict:
+    Devuelve ``(safe, reason)`` donde ``reason`` es una *key i18n* (no texto
+    literal): el caller la pasa por ``t()`` para traducirla. Politica strict:
     - Si la resolucion falla (`gaierror`), bloquea: preferimos un falso
       negativo transitorio a un bypass silencioso de SSRF.
     - Si CUALQUIER IP resuelta es insegura, bloquea: un atacante podria
@@ -68,22 +69,25 @@ def _resolve_hostname(hostname: str) -> tuple[bool, str]:
     try:
         infos = socket.getaddrinfo(hostname, None, family=socket.AF_UNSPEC)
     except socket.gaierror:
-        return False, "no se pudo resolver el host"
+        return False, "error.url_no_host"
     except (UnicodeError, OSError):
-        return False, "host inválido"
+        return False, "error.url_invalid_host"
     for info in infos:
         ip_str = info[4][0]
         try:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
-            return False, "host inválido"
+            return False, "error.url_invalid_host"
         if _is_ip_unsafe(ip):
-            return False, "el host resuelve a una IP privada o reservada"
+            return False, "error.url_private_ip"
     return True, ""
 
 
 def _is_safe_url(url: str) -> tuple[bool, str]:
     """``(safe, reason)`` — True si la URL es http(s) publica segura para yt-dlp.
+
+    ``reason`` es una *key i18n* (p.ej. ``error.url_internal``), no texto
+    literal: el caller la traduce con ``t()`` segun el idioma del request.
 
     Universal en cuanto a sitio; restrictivo en cuanto a destino (anti-SSRF).
     Resuelve DNS y valida todas las IPs: bloquea dominios que apuntan a rangos
@@ -94,21 +98,18 @@ def _is_safe_url(url: str) -> tuple[bool, str]:
         parsed = urlparse(url.strip())
         host = parsed.hostname
     except ValueError:
-        return False, "URL inválida"
+        return False, "error.url_invalid"
     if parsed.scheme not in ("http", "https") or not host:
-        return False, (
-            "Pegá un enlace http(s) válido. Si el sitio no anda, probá "
-            "'Actualizar motor' o revisá el formato del link."
-        )
+        return False, "error.url_non_http"
     host_l = host.lower()
     if host_l in _BLOCKED_HOSTS or host_l.endswith((".local", ".localhost")):
-        return False, "el host apunta a un destino interno"
+        return False, "error.url_internal"
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return _resolve_hostname(host)
     if _is_ip_unsafe(ip):
-        return False, "el host apunta a un destino interno"
+        return False, "error.url_internal"
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
@@ -116,7 +117,7 @@ def _is_safe_url(url: str) -> tuple[bool, str]:
         return _resolve_hostname(host)
     # IP literal en la URL: validar directo, sin resolver.
     if _is_ip_unsafe(ip):
-        return False, "el host apunta a un destino interno"
+        return False, "error.url_internal"
     return True, ""
 
 

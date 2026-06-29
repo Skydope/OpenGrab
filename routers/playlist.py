@@ -52,7 +52,7 @@ async def api_batch_download(
     for url in req.urls:
         safe, reason = _is_safe_url(url.strip())
         if not safe:
-            skipped.append({"url": url, "reason": reason})
+            skipped.append({"url": url, "reason": _t(reason)})
         else:
             valid_urls.append(url.strip())
     # Cap at 100

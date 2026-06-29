@@ -75,7 +75,7 @@ def test_is_safe_url_blocks_domain_resolving_to_private(monkeypatch):
     monkeypatch.setattr(download.socket, "getaddrinfo", _fake_gai("10.0.0.5"))
     safe, reason = _is_safe_url("http://evil.attacker.com/")
     assert not safe
-    assert "privada" in reason or "reservada" in reason
+    assert reason == "error.url_private_ip"
 
 
 def test_is_safe_url_allows_domain_resolving_to_public(monkeypatch):
@@ -99,7 +99,7 @@ def test_is_safe_url_blocks_on_dns_failure(monkeypatch):
     monkeypatch.setattr(download.socket, "getaddrinfo", _boom)
     safe, reason = _is_safe_url("http://nxdomain.invalid/")
     assert not safe
-    assert "no se pudo resolver" in reason
+    assert reason == "error.url_no_host"
 
 
 def test_is_safe_url_blocks_domain_resolving_to_ipv6_ula(monkeypatch):
@@ -129,3 +129,34 @@ def test_safe_name():
     assert _safe_name("file/name:test") == "filenametest"
     assert _safe_name("") == "video"
     assert _safe_name("a" * 200) == "a" * 120
+
+
+def test_is_safe_url_reasons_son_keys_i18n_traducibles(monkeypatch):
+    """Regresion anti-leak: las razones de rechazo son keys i18n que existen
+    en es y en, y traducen distinto (un usuario en ingles no recibe espanol)."""
+    import json
+    from pathlib import Path
+
+    import download
+    import i18n
+    from download import _is_safe_url
+
+    es = json.loads((Path("static/i18n/es.json")).read_text(encoding="utf-8"))
+    en = json.loads((Path("static/i18n/en.json")).read_text(encoding="utf-8"))
+
+    monkeypatch.setattr(download.socket, "getaddrinfo", _fake_gai("10.0.0.5"))
+    cases = [
+        "ftp://x",                 # error.url_non_http
+        "not-a-url",               # error.url_non_http (sin host)
+        "http://localhost",        # error.url_internal
+        "http://10.0.0.1",         # error.url_internal (IP literal)
+        "http://evil.example/",    # error.url_private_ip (resuelve a privada)
+    ]
+    for url in cases:
+        safe, reason = _is_safe_url(url)
+        assert not safe, f"deberia rechazar {url}"
+        assert reason.startswith("error."), f"reason no es key i18n: {reason!r}"
+        assert reason in es and reason in en, f"key {reason!r} falta en algun idioma"
+        # El fix real: traducir al ingles no devuelve el texto en espanol.
+        assert i18n.t(reason, lang="en") == en[reason]
+        assert i18n.t(reason, lang="en") != es[reason] or es[reason] == en[reason]
