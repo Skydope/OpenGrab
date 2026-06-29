@@ -545,6 +545,7 @@ class AppState:
     # Watch mode scheduler
     # ------------------------------------------------------------------ #
     async def watch_loop(self) -> None:
+        global _latest_watch_ts
         from download import _check_channel_watch
 
         while True:
