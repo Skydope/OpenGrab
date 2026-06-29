@@ -397,13 +397,26 @@ def test_tray_on_open_sets_reopen_event(monkeypatch):
 
     desktop._system_tray(12345)
 
-    # Click izquierdo (default) → reopen event.
+    # Click izquierdo (default):
     on_open = next((a for t, a in items if t == "Abrir OpenGrab"), None)
     assert on_open is not None, "No se capturó el callback de 'Abrir OpenGrab'"
-    on_open(None, None)
-    assert reopen_event.is_set(), "_reopen_event debería estar seteado"
 
-    # 'Abrir en web' → navegador en el puerto correcto.
+    # En Windows → señaliza reopen (WebView2 vía main thread), sin abrir browser.
+    monkeypatch.setattr(desktop.sys, "platform", "win32")
+    on_open(None, None)
+    assert reopen_event.is_set(), "_reopen_event debería estar seteado en Windows"
+    assert "url" not in opened, "En Windows no debe abrir el navegador"
+
+    # En Linux/macOS → abre el navegador directo, sin tocar reopen.
+    reopen_event.clear()
+    opened.clear()
+    monkeypatch.setattr(desktop.sys, "platform", "linux")
+    on_open(None, None)
+    assert not reopen_event.is_set(), "En Linux no debe usar _reopen_event"
+    assert opened.get("url") == "http://127.0.0.1:12345"
+
+    # 'Abrir en web' → navegador en cualquier plataforma.
+    opened.clear()
     on_web = next((a for t, a in items if t == "Abrir en web"), None)
     assert on_web is not None, "No se capturó el callback de 'Abrir en web'"
     on_web(None, None)

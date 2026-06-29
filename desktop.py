@@ -418,13 +418,11 @@ def _poll_tray_status(port: int) -> None:
 def _system_tray(port: int) -> None:
     """Bandeja del sistema. Corre en thread secundario (no-daemon).
 
-    Click izquierdo (item ``default``) → señaliza al main thread vía
-    ``_reopen_event`` para abrir WebView2. Click derecho → menú con el estado
-    vivo de la descarga ("Estado: 🟢/🔴 …"), "Abrir en web" (navegador) y
-    "Salir". Un poller daemon refresca tooltip, icono y menú cada ~1.5s.
-
-    En Linux/macOS no hay WebView2, así que "Abrir OpenGrab" abre el navegador
-    (lo resuelve el main thread al recibir ``_reopen_event``).
+    Click izquierdo (item ``default``) → en Windows señaliza al main thread vía
+    ``_reopen_event`` para abrir WebView2; en Linux/macOS abre el navegador
+    directo. Click derecho → menú con el estado vivo de la descarga
+    ("Estado: 🟢/🔴 …"), "Abrir en web" (navegador) y "Salir". Un poller daemon
+    refresca tooltip, icono y menú cada ~1.5s.
     """
     global _tray_icon
 
@@ -436,7 +434,13 @@ def _system_tray(port: int) -> None:
             return f"Estado: {dot} {_tray_state.get('estado', 'Inactivo')}"
 
         def _on_open(icon: pystray.Icon, item: pystray.MenuItem) -> None:
-            _reopen_event.set()
+            # Windows: WebView2 requiere main thread → señalizamos vía evento.
+            # Linux/macOS: no hay WebView2, abrimos el navegador directo (no
+            # necesita main thread) en vez de depender del fallback del loop.
+            if sys.platform == "win32":
+                _reopen_event.set()
+            else:
+                webbrowser.open(f"http://127.0.0.1:{port}")
 
         def _on_open_web(icon: pystray.Icon, item: pystray.MenuItem) -> None:
             webbrowser.open(f"http://127.0.0.1:{port}")
