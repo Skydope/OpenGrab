@@ -389,6 +389,7 @@ def test_tray_on_open_sets_reopen_event(monkeypatch):
 
     # En Windows → señaliza reopen (WebView2 vía main thread), sin abrir browser.
     monkeypatch.setattr(desktop.sys, "platform", "win32")
+    monkeypatch.setattr(desktop, "_native_webview_available", lambda: True)
     on_open(None, None)
     assert reopen_event.is_set(), "_reopen_event debería estar seteado en Windows"
     assert "url" not in opened, "En Windows no debe abrir el navegador"
