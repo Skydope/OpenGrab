@@ -47,7 +47,7 @@ class AppState:
         atexit.register(self.db.close)
 
     # ------------------------------------------------------------------ #
-    # Settings resolver (env > ini > tabla > default)
+    # Settings resolver (env > tabla > ini > default)
     # ------------------------------------------------------------------ #
     def resolve(self, key: str, default: Any, cast: type = str) -> tuple[Any, str]:
         """Resuelve una setting con precedencia env > tabla > ini > default.
@@ -670,7 +670,7 @@ class AppState:
         }
 
         def _sanitize_segment(segment: str) -> str:
-            # Quitar chars ilegales de文件名
+            # Quitar chars ilegales del nombre de archivo
             seg = self._ILLEGAL_CHARS.sub("", segment)
             # Colapsar whitespace
             seg = re.sub(r"\s+", " ", seg).strip()
