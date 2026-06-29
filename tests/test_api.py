@@ -112,6 +112,42 @@ def test_api_jobs_file_not_done(client, app_state):
     assert r.status_code == 409
 
 
+def test_dismiss_terminal_job_removes_from_view(client, app_state):
+    """POST /dismiss en un job terminado lo saca de memoria (no de la DB)."""
+    from models import Job
+
+    job = Job(id="donejob", created=1000000.0)
+    job.status = "done"
+    app_state.jobs["donejob"] = job
+
+    r = client.post("/api/jobs/donejob/dismiss")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+    assert "donejob" not in app_state.jobs
+    assert "donejob" not in app_state.job_events
+
+
+def test_dismiss_active_job_is_rejected(client, app_state):
+    """POST /dismiss en un job activo no lo descarta: seguiria corriendo huerfano."""
+    from models import Job
+
+    job = Job(id="running", created=1000000.0)
+    job.status = "downloading"
+    app_state.jobs["running"] = job
+
+    r = client.post("/api/jobs/running/dismiss")
+    assert r.status_code == 200
+    assert r.json() == {"ok": False}
+    assert "running" in app_state.jobs  # sigue en la vista
+
+
+def test_dismiss_unknown_job_is_noop(client, app_state):
+    """POST /dismiss en un job inexistente devuelve ok=False sin error."""
+    r = client.post("/api/jobs/nope/dismiss")
+    assert r.status_code == 200
+    assert r.json() == {"ok": False}
+
+
 def test_api_jobs_file_missing(client, app_state):
 
     from models import Job

@@ -110,12 +110,20 @@ class AppState:
         """Remueve un job terminado de la vista de sesion sin tocar DB ni archivos.
 
         El job sigue disponible en Historial y sus archivos permanecen intactos.
-        Evita que GET /api/jobs lo devuelva al rehidratar la UI tras reload."""
-        if job_id in self.jobs:
-            self.jobs.pop(job_id)
-            self.job_events.pop(job_id, None)
-            return True
-        return False
+        Evita que GET /api/jobs lo devuelva al rehidratar la UI tras reload.
+
+        Solo descarta jobs en estado terminal (done/error/cancelled). Un job
+        activo no se descarta: la tarea de descarga corre en un thread que
+        mantiene su referencia al Job y seguiria viva pero huerfana (invisible,
+        ocupando un slot de concurrencia). Devuelve False en ese caso, en
+        simetria con cancel_job, que tambien valida el estado.
+        """
+        job = self.jobs.get(job_id)
+        if job is None or job.status not in ("done", "error", "cancelled"):
+            return False
+        self.jobs.pop(job_id)
+        self.job_events.pop(job_id, None)
+        return True
 
     # ------------------------------------------------------------------ #
     # Task lifecycle
