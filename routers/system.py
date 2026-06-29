@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import limiter, require_auth, get_state, _INDEX_HTML
+from . import limiter, require_auth, get_state, log, _INDEX_HTML
 from config import FORMATS, IS_DESKTOP, OUT_DIR, VERSION
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
