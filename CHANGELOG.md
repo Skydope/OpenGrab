@@ -26,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `method`/`path`/`status`/`duration_ms` como claves top-level vía `extra=`,
   para que Grafana Alloy/Loki los indexe como labels filtrables en vez de
   regexear el mensaje.
+- **Botón "Guardar en…" (mover archivo a una carpeta elegida).** Reemplaza al
+  link "Guardar archivo" en modo desktop: ahora abre un diálogo nativo de
+  carpeta (WebView2 vía `window.pywebview.api.pick_folder`, expuesto por la
+  nueva clase `_JsApi`) y mueve el archivo ya descargado a esa carpeta vía
+  `POST /api/jobs/{id}/move`. El move es server-side, conserva el nombre,
+  deduplica ante colisión y reusa `_finalize_lock`. Sin WebView (browser/red)
+  cae a pedir la ruta por prompt, sugiriendo `library_dir`. En modo no-desktop
+  se mantiene la descarga por el navegador. Cubierto por `tests/test_move_file.py`.
+- **Bandeja del sistema con estado vivo de descarga.** El tray muestra el
+  progreso real: línea "Estado: 🟢/🔴 …" con título y % de la descarga en
+  curso (o "En cola (N)" / "Inactivo"), tooltip con `↓ % · título`, y un punto
+  verde/rojo sobre el icono. Click izquierdo abre WebView2; nueva opción
+  "Abrir en web" abre el navegador. Un poller daemon consulta `/api/jobs` cada
+  1.5s. La lógica de formateo (`_format_tray_status`) es pura y está cubierta
+  por `tests/test_tray.py`.
 
 ### Changed
 
