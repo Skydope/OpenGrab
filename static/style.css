@@ -646,6 +646,131 @@ footer code{color:var(--muted)}
 }
 .backup-actions .btn-sm{font-size:12px}
 
+/* ── Settings modal ─────────────────────────────────────────── */
+body.modal-open{overflow:hidden}
+.settings-overlay{
+  position:fixed; inset:0; z-index:120;
+  display:flex; align-items:center; justify-content:center;
+  padding:24px;
+}
+.settings-backdrop{
+  position:absolute; inset:0;
+  background:rgba(0,0,0,.55);
+  backdrop-filter:blur(3px);
+}
+.settings-modal{
+  position:relative;
+  width:100%; max-width:660px;
+  max-height:min(86vh, 760px);
+  display:flex; flex-direction:column;
+  background:var(--panel);
+  border:1px solid var(--line-2);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow-pop);
+  overflow:hidden;
+}
+.sm-enter{transition:opacity .16s ease, transform .16s ease}
+.sm-enter-start{opacity:0; transform:translateY(8px) scale(.985)}
+
+/* header */
+.sm-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 20px 14px;
+  border-bottom:1px solid var(--line);
+}
+.sm-title{
+  display:flex; align-items:center; gap:10px;
+  font-size:15px; font-weight:650; color:var(--text); letter-spacing:.2px;
+}
+.sm-title svg{width:18px; height:18px; color:var(--amber)}
+.sm-close{
+  width:30px; height:30px; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  background:transparent; border:1px solid var(--line);
+  border-radius:8px; color:var(--muted);
+  font-size:13px; cursor:pointer; transition:all .12s ease;
+}
+.sm-close:hover{color:var(--text); border-color:var(--line-2); background:var(--panel-2)}
+.sm-close:focus-visible{outline:none; box-shadow:0 0 0 3px var(--focus-ring)}
+
+/* tabs */
+.sm-tabs{
+  display:flex; gap:2px;
+  padding:0 14px;
+  border-bottom:1px solid var(--line);
+  background:var(--panel-2);
+}
+.sm-tab{
+  position:relative;
+  padding:12px 14px;
+  background:transparent; border:none;
+  font-family:var(--sans); font-size:13px; font-weight:550;
+  color:var(--muted); cursor:pointer;
+  transition:color .12s ease;
+}
+.sm-tab:hover{color:var(--text)}
+.sm-tab.active{color:var(--text)}
+.sm-tab.active::after{
+  content:""; position:absolute; left:8px; right:8px; bottom:-1px; height:2px;
+  background:var(--amber); border-radius:2px 2px 0 0;
+}
+.sm-tab:focus-visible{outline:none; box-shadow:inset 0 0 0 2px var(--focus-ring); border-radius:6px}
+
+/* body */
+.sm-body{
+  padding:8px 20px 20px;
+  overflow-y:auto;
+  flex:1;
+}
+.sm-panel{padding-top:6px}
+
+/* field row — dashboard style */
+.sm-field{
+  display:flex; flex-wrap:wrap; align-items:center;
+  gap:10px 14px;
+  padding:14px 2px;
+}
+.sm-field + .sm-field{border-top:1px solid var(--line)}
+.sm-field-info{
+  display:flex; flex-direction:column; gap:3px;
+  flex:1 1 240px; min-width:0;
+}
+.sm-field-label{font-size:13.5px; color:var(--text); line-height:1.35}
+.sm-field-help{font-size:11px; color:var(--muted); line-height:1.7}
+.sm-field-control{
+  display:flex; align-items:center; gap:9px;
+  flex:0 0 auto; margin-left:auto;
+}
+.sm-field-control select,
+.sm-field-control input[type=text],
+.sm-field-control input[type=number]{
+  min-width:140px;
+}
+.sm-field-control input[type=number]{min-width:96px}
+.sm-field-err{
+  background:var(--err-bg);
+  border-radius:var(--radius-sm);
+  padding:12px 14px;
+  margin:4px 0;
+}
+.sm-field-err + .sm-field{border-top:none}
+.sm-empty{
+  padding:28px 8px; text-align:center;
+  color:var(--muted); font-size:13px;
+}
+
+/* advanced */
+.sm-adv-block{
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  padding:16px;
+}
+.sm-adv-title{font-size:13.5px; font-weight:600; color:var(--text); margin-bottom:4px}
+.sm-adv-desc{margin-bottom:14px; line-height:1.6}
+.sm-adv-block .backup-actions{margin-top:0; padding-top:0; border-top:none}
+.sm-adv-note{margin-top:16px; line-height:1.6}
+
 /* ---- Empty / loading ---------------------------------------------------- */
 .empty-state{
   font-size:13px; color:var(--faint); padding:14px 0;
@@ -712,6 +837,24 @@ input[type=checkbox]:focus-visible{outline:none; box-shadow:0 0 0 3px var(--focu
 @media (max-width:640px){
   body{padding:28px 14px 64px}
   header{flex-wrap:wrap; gap:8px 10px}
+
+  /* settings modal: near-fullscreen on phones */
+  .settings-overlay{padding:0; align-items:stretch}
+  .settings-modal{
+    max-width:none; max-height:none; height:100%;
+    border:none; border-radius:0;
+  }
+  .sm-tabs{overflow-x:auto; -webkit-overflow-scrolling:touch; padding:0 8px}
+  .sm-tab{flex:0 0 auto; white-space:nowrap; padding:14px 13px; font-size:14px}
+  .sm-field{flex-direction:column; align-items:stretch; gap:10px}
+  .sm-field-control{margin-left:0; flex-wrap:wrap}
+  .sm-field-control select,
+  .sm-field-control input[type=text],
+  .sm-field-control input[type=number]{
+    flex:1 1 100%; min-width:0; font-size:16px; padding:11px 14px;
+  }
+  .sm-field-control .btn-sm{flex:1 1 100%; min-height:44px}
+  .sm-field-control .set-toggle{flex:1 1 100%}
 
   /* anti-zoom iOS/Android: inputs >=16px */
   input[type=text],input[type=password]{font-size:16px}

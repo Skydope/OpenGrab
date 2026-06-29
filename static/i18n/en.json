@@ -64,7 +64,6 @@
   "error.server_start_failed": "Error starting server:\n{err}",
   "error.server_not_started": "Server could not start.\n\nCheck that the port is not blocked by a firewall.",
   "error.no_wheel_found": "yt-dlp wheel not found on PyPI",
-
   "ui.token_label": "Access Token",
   "ui.token_placeholder": "Enter the token configured in OPENGRAB_TOKEN",
   "ui.connect": "Connect",
@@ -143,7 +142,7 @@
   "ui.seleccionados": "selected",
   "ui.de": "of",
   "ui.mb": "MB",
-  "ui.settings_lock_note": "🔒 = env/ini origin, not editable from UI.",
+  "ui.settings_lock_note": "🔒 Set via environment variable (Docker), not editable from the interface.",
   "ui.origin_env_ini": "Origin: {origin} (not editable)",
   "ui.error_analyze": "Error analyzing.",
   "ui.error_playlist_load": "Error loading playlist.",
@@ -202,7 +201,6 @@
   "ui.tools": "Tools",
   "ui.save_to_folder": "Save file to a folder",
   "ui.update_engine_aria": "Update yt-dlp engine",
-
   "settings.max_jobs": "Simultaneous downloads",
   "settings.max_total_mb": "Maximum storage (MB, 0 = unlimited)",
   "settings.max_size_mb": "Maximum file size (MB, 0 = unlimited)",
@@ -213,23 +211,19 @@
   "settings.notifications_enabled": "Browser notifications (watch mode)",
   "settings.library_dir": "Download directory",
   "settings.name_template": "File name template",
-
   "quality.best": "best mp4",
   "quality.1080p": "1080p",
   "quality.720p": "720p",
   "quality.480p": "480p",
   "quality.audio": "audio only · mp3",
-
   "theme.dark": "Dark theme",
   "theme.light": "Light theme",
   "theme.auto": "Automatic",
   "theme.dark_label": "Dark",
   "theme.light_label": "Light",
-
   "lang.auto": "Automatic",
   "lang.es": "Spanish",
   "lang.en": "English",
-
   "tray.inactive": "Inactive",
   "tray.downloading": "Downloading {pct}% · {short}{suffix}",
   "tray.downloading_tooltip": "OpenGrab — ↓ {pct}% · {short}{suffix}",
@@ -241,13 +235,11 @@
   "tray.exit": "Exit",
   "tray.already_running": "OpenGrab is already running.\n\nCheck the taskbar or system tray.",
   "tray.status": "Status: {dot} {estado}",
-
   "quality.chip.best": "best mp4",
   "quality.chip.1080p": "1080p",
   "quality.chip.720p": "720p",
   "quality.chip.480p": "480p",
   "quality.chip.audio": "audio only · mp3",
-
   "download.log": "Batch download",
   "download.extracting_audio": "Extracting audio and converting to mp3…",
   "download.muxing": "Muxing / remuxing to mp4…",
@@ -259,18 +251,15 @@
   "download.timeout_title": "timeout: {title}",
   "download.ok_filename": "ok: {filename}",
   "download.error_title": "error: {title}",
-
   "config.warning_invalid": "[opengrab] WARNING: {key}={raw!r} invalid, using {default}",
   "config.warning_min": "[opengrab] WARNING: {key}={val} below minimum {min_val}, using {min_val}",
   "config.no_pillow": "ERROR: Pillow is not installed → pip install Pillow",
   "config.icon_generated": "Icon generated: {output} ({size} bytes, 256x256 PNG)",
   "config.installing_engine": "Updating engine…",
   "config.cant_update": "Could not update.",
-
   "shortcuts.calidad": "Quality",
   "shortcuts.codec": "Codec",
   "shortcuts.size": "Size",
-
   "ui.subs_toggle": "Subtitles (.srt/.vtt)",
   "ui.thumb_toggle": "Thumbnail (.jpg)",
   "ui.infojson_toggle": "Info JSON",
@@ -280,5 +269,13 @@
   "ui.export_backup": "Export backup",
   "ui.import_backup": "Import backup",
   "ui.confirm_import": "Will import {settings} settings, {history} history entries and {channels} channels. Continue?",
-  "ui.import_success": "Imported: {settings} settings, {history} history, {channels} channels"
+  "ui.import_success": "Imported: {settings} settings, {history} history, {channels} channels",
+  "ui.close": "Close",
+  "ui.tab_downloads": "Downloads",
+  "ui.tab_storage": "Storage",
+  "ui.tab_interface": "Interface",
+  "ui.tab_advanced": "Advanced",
+  "ui.settings_empty_group": "No settings in this section.",
+  "ui.backup_title": "Backup",
+  "ui.backup_desc": "Export or import your settings, history and channels as a JSON file."
 }

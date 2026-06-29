@@ -64,7 +64,6 @@
   "error.server_start_failed": "Error al iniciar el servidor:\n{err}",
   "error.server_not_started": "El servidor no pudo iniciarse.\n\nRevisá que el puerto no esté bloqueado por un firewall.",
   "error.no_wheel_found": "no se encontró wheel de yt-dlp en PyPI",
-
   "ui.token_label": "Token de acceso",
   "ui.token_placeholder": "Ingresá el token configurado en OPENGRAB_TOKEN",
   "ui.connect": "Conectar",
@@ -143,7 +142,7 @@
   "ui.seleccionados": "seleccionados",
   "ui.de": "de",
   "ui.mb": "MB",
-  "ui.settings_lock_note": "🔒 = origen env/ini, no editable desde la UI.",
+  "ui.settings_lock_note": "🔒 Definido por variable de entorno (Docker), no editable desde la interfaz.",
   "ui.origin_env_ini": "Origen: {origin} (no editable)",
   "ui.error_analyze": "Error al analizar.",
   "ui.error_playlist_load": "Error al cargar playlist.",
@@ -202,7 +201,6 @@
   "ui.tools": "Herramientas",
   "ui.save_to_folder": "Guardar el archivo en una carpeta",
   "ui.update_engine_aria": "Actualizar motor yt-dlp",
-
   "settings.max_jobs": "Descargas simultáneas",
   "settings.max_total_mb": "Almacenamiento máximo (MB, 0 = sin límite)",
   "settings.max_size_mb": "Tamaño máximo por archivo (MB, 0 = sin límite)",
@@ -213,23 +211,19 @@
   "settings.notifications_enabled": "Notificaciones del navegador (watch mode)",
   "settings.library_dir": "Directorio donde se guardan las descargas",
   "settings.name_template": "Plantilla para el nombre del archivo descargado",
-
   "quality.best": "best mp4",
   "quality.1080p": "1080p",
   "quality.720p": "720p",
   "quality.480p": "480p",
   "quality.audio": "solo audio · mp3",
-
   "theme.dark": "Tema oscuro",
   "theme.light": "Tema claro",
   "theme.auto": "Automático",
   "theme.dark_label": "Oscuro",
   "theme.light_label": "Claro",
-
   "lang.auto": "Automático",
   "lang.es": "Español",
   "lang.en": "English",
-
   "tray.inactive": "Inactivo",
   "tray.downloading": "Descargando {pct}% · {short}{suffix}",
   "tray.downloading_tooltip": "OpenGrab — ↓ {pct}% · {short}{suffix}",
@@ -241,13 +235,11 @@
   "tray.exit": "Salir",
   "tray.already_running": "OpenGrab ya está corriendo.\n\nRevisá la barra de tareas o la bandeja del sistema.",
   "tray.status": "Estado: {dot} {estado}",
-
   "quality.chip.best": "best mp4",
   "quality.chip.1080p": "1080p",
   "quality.chip.720p": "720p",
   "quality.chip.480p": "480p",
   "quality.chip.audio": "solo audio · mp3",
-
   "download.log": "Descarga en lote",
   "download.extracting_audio": "Extrayendo audio y convirtiendo a mp3…",
   "download.muxing": "Muxeando / remuxeando a mp4…",
@@ -259,18 +251,15 @@
   "download.timeout_title": "timeout: {title}",
   "download.ok_filename": "ok: {filename}",
   "download.error_title": "error: {title}",
-
   "config.warning_invalid": "[opengrab] WARNING: {key}={raw!r} invalido, usando {default}",
   "config.warning_min": "[opengrab] WARNING: {key}={val} menor que minimo {min_val}, usando {min_val}",
   "config.no_pillow": "ERROR: Pillow no está instalado → pip install Pillow",
   "config.icon_generated": "Icono generado: {output} ({size} bytes, 256x256 PNG)",
   "config.installing_engine": "Actualizando motor…",
   "config.cant_update": "No se pudo actualizar.",
-
   "shortcuts.calidad": "Calidad",
   "shortcuts.codec": "Codec",
   "shortcuts.size": "Tamaño",
-
   "ui.subs_toggle": "Subtítulos (.srt/.vtt)",
   "ui.thumb_toggle": "Miniatura (.jpg)",
   "ui.infojson_toggle": "Info JSON",
@@ -280,5 +269,13 @@
   "ui.export_backup": "Exportar backup",
   "ui.import_backup": "Importar backup",
   "ui.confirm_import": "Se importarán {settings} settings, {history} entradas de historial y {channels} canales. ¿Continuar?",
-  "ui.import_success": "Importado: {settings} settings, {history} historial, {channels} canales"
+  "ui.import_success": "Importado: {settings} settings, {history} historial, {channels} canales",
+  "ui.close": "Cerrar",
+  "ui.tab_downloads": "Descargas",
+  "ui.tab_storage": "Almacenamiento",
+  "ui.tab_interface": "Interfaz",
+  "ui.tab_advanced": "Avanzado",
+  "ui.settings_empty_group": "No hay ajustes en esta sección.",
+  "ui.backup_title": "Copia de seguridad",
+  "ui.backup_desc": "Exportá o importá tu configuración, historial y canales en un archivo JSON."
 }

@@ -32,7 +32,7 @@
           <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
         </svg>
       </button>
-      <button class="theme-btn" @click="openSettings()" :title="t('ui.settings_title')" :aria-label="t('ui.settings_title')">
+      <button class="theme-btn" @click="openSettingsModal()" :title="t('ui.settings_title')" :aria-label="t('ui.settings_title')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3"></circle>
@@ -458,95 +458,119 @@
     </div>
   </div>
 
-  <!-- Settings -->
-  <div class="tools-section" x-show="authenticated" x-cloak>
-    <div class="toggle-label-lg"
-         role="button" tabindex="0" :aria-expanded="settingsOpen"
-         @click="toggleSettings"
-         @keydown.enter.prevent="toggleSettings"
-         @keydown.space.prevent="toggleSettings"
-          x-text="settingsOpen ? t('ui.settings_expanded') : t('ui.settings_collapsed')"></div>
-    <div x-show="settingsOpen">
-      <div x-show="settingsLoading" aria-busy="true">
-        <div class="skeleton" style="height:40px;margin:8px 0;"></div>
-        <div class="skeleton" style="height:40px;margin:8px 0;"></div>
-        <div class="skeleton" style="height:40px;margin:8px 0;"></div>
-      </div>
-      <template x-for="s in settings" :key="s.key">
-        <div class="set-row"
-             x-show="s.scope !== 'desktop' || isDesktop"
-             :class="{ 'set-err-row': s._error }">
-          <!-- Label + description -->
-          <div class="set-info">
-            <span class="set-label" x-text="s.description || s.key"></span>
-            <span x-show="s.tokens && s.key==='name_template'" class="set-help">
-              Tokens: <template x-for="t in s.tokens"><code class="set-token" x-text="t"></code></template>
-            </span>
-          </div>
-
-          <!-- Lock badge -->
-          <span class="set-origin" x-show="s.locked"
-                :title="'Origen: ' + s.origin + ' (no editable)'">&#128274;</span>
-
-          <!-- Editable: select -->
-          <select x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.options"
-                  x-model="s._editValue"
-                  @change="saveSetting(s)">
-            <template x-for="opt in s.options" :key="opt.value">
-              <option :value="opt.value" x-text="opt.label"
-                      :selected="String(s._editValue) === String(opt.value)"></option>
-            </template>
-          </select>
-
-          <!-- Editable: number -->
-          <input x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='int'"
-                 type="number"
-                 x-model="s._editValue"
-                 :min="s.validation?.min"
-                 :max="s.validation?.max"
-                 @keydown.enter="validateAndSave(s)"
-                 @blur="validateAndSave(s)">
-
-          <!-- Editable: bool (checkbox toggle) -->
-          <label x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='bool'"
-                 class="set-toggle">
-            <input type="checkbox"
-                   :checked="s._editValue === true || s._editValue === 'true'"
-                   @change="s._editValue = $event.target.checked; saveSetting(s)">
-            <span class="set-toggle-label"
-                  x-text="(s._editValue === true || s._editValue === 'true') ? t('ui.on') : t('ui.off')"></span>
-          </label>
-
-          <!-- Editable: text -->
-          <input x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='string' && !s.options"
-                 type="text"
-                 x-model="s._editValue"
-                 :placeholder="s.placeholder"
-                 @keydown.enter="validateAndSave(s)">
-
-          <!-- Read-only (locked or desktop-scope on web) -->
-          <span x-show="s.locked || (s.scope === 'desktop' && !isDesktop)"
-                class="set-value" x-text="s.value"></span>
-
-          <!-- Save button (only for text/number inputs; selects auto-save on change) -->
-          <button x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && !s.options"
-                  class="btn-sm" @click="validateAndSave(s)"
-                  :disabled="s._saving"
-                  x-text="s._saving ? t('ui.saving') : t('ui.save')"></button>
-
-          <!-- Saving spinner -->
-          <span x-show="s._saving" class="set-spin" :aria-label="t('ui.saving')"></span>
-
-          <!-- Error inline -->
-          <div x-show="s._error" class="set-err" x-text="s._error"></div>
+  <!-- Settings modal -->
+  <div class="settings-overlay" x-show="settingsModalOpen" x-cloak
+       @keydown.escape.window="closeSettingsModal()" x-transition.opacity>
+    <div class="settings-backdrop" @click="closeSettingsModal()"></div>
+    <div class="settings-modal" role="dialog" aria-modal="true"
+         :aria-label="t('ui.settings_title')" @click.stop
+         x-transition:enter="sm-enter" x-transition:enter-start="sm-enter-start">
+      <!-- Header -->
+      <div class="sm-head">
+        <div class="sm-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span x-text="t('ui.settings_title')"></span>
         </div>
-      </template>
-      <div class="set-note muted-sm" x-show="settings.length && !settingsLoading" x-text="t('ui.settings_lock_note')">
+        <button class="sm-close" @click="closeSettingsModal()"
+                :aria-label="t('ui.close')" title="Esc">&#10005;</button>
       </div>
-      <div class="backup-actions" x-show="settings.length && !settingsLoading">
-        <button class="btn-sm" @click="exportBackup" x-text="t('ui.export_backup')"></button>
-        <button class="btn-sm" @click="importBackup" x-text="t('ui.import_backup')"></button>
-        <input type="file" id="backup-file" accept=".json" @change="handleBackupFile($event)" style="display:none">
+
+      <!-- Tabs -->
+      <div class="sm-tabs" role="tablist">
+        <template x-for="tab in settingsTabs" :key="tab.id">
+          <button class="sm-tab" role="tab" :class="{active: activeTab === tab.id}"
+                  :aria-selected="activeTab === tab.id" @click="activeTab = tab.id">
+            <span x-text="t(tab.label)"></span>
+          </button>
+        </template>
+      </div>
+
+      <!-- Body -->
+      <div class="sm-body">
+        <div x-show="settingsLoading" aria-busy="true">
+          <div class="skeleton" style="height:52px;margin:12px 0;"></div>
+          <div class="skeleton" style="height:52px;margin:12px 0;"></div>
+          <div class="skeleton" style="height:52px;margin:12px 0;"></div>
+        </div>
+
+        <!-- Grouped panels (downloads / storage / interface) -->
+        <template x-for="tab in settingsTabs.filter(tt => tt.id !== 'advanced')" :key="'p-'+tab.id">
+          <div class="sm-panel" role="tabpanel"
+               x-show="!settingsLoading && activeTab === tab.id">
+            <template x-for="s in settingsByGroup(tab.id)" :key="s.key">
+              <div class="sm-field" x-show="s.scope !== 'desktop' || isDesktop"
+                   :class="{ 'sm-field-err': s._error }">
+                <div class="sm-field-info">
+                  <span class="sm-field-label" x-text="s.description || s.key"></span>
+                  <span x-show="s.tokens && s.key==='name_template'" class="sm-field-help">
+                    Tokens: <template x-for="tok in s.tokens"><code class="set-token" x-text="tok"></code></template>
+                  </span>
+                </div>
+                <div class="sm-field-control">
+                  <span class="set-origin" x-show="s.locked"
+                        :title="t('ui.settings_lock_note')">&#128274;</span>
+
+                  <select x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.options"
+                          x-model="s._editValue" @change="saveSetting(s)">
+                    <template x-for="opt in s.options" :key="opt.value">
+                      <option :value="opt.value" x-text="opt.label"></option>
+                    </template>
+                  </select>
+
+                  <input x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='int'"
+                         type="number" x-model="s._editValue"
+                         :min="s.validation?.min" :max="s.validation?.max"
+                         @keydown.enter="validateAndSave(s)" @blur="validateAndSave(s)">
+
+                  <label x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='bool'"
+                         class="set-toggle">
+                    <input type="checkbox"
+                           :checked="s._editValue === true || s._editValue === 'true'"
+                           @change="s._editValue = $event.target.checked; saveSetting(s)">
+                    <span class="set-toggle-label"
+                          x-text="(s._editValue === true || s._editValue === 'true') ? t('ui.on') : t('ui.off')"></span>
+                  </label>
+
+                  <input x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='string' && !s.options"
+                         type="text" x-model="s._editValue" :placeholder="s.placeholder"
+                         @keydown.enter="validateAndSave(s)">
+
+                  <span x-show="s.locked || (s.scope === 'desktop' && !isDesktop)"
+                        class="set-value" x-text="s.value"></span>
+
+                  <button x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && !s.options && s.type!=='bool'"
+                          class="btn-sm" @click="validateAndSave(s)" :disabled="s._saving"
+                          x-text="s._saving ? t('ui.saving') : t('ui.save')"></button>
+
+                  <span x-show="s._saving" class="set-spin" :aria-label="t('ui.saving')"></span>
+                </div>
+                <div x-show="s._error" class="set-err" x-text="s._error"></div>
+              </div>
+            </template>
+            <div class="sm-empty"
+                 x-show="settingsByGroup(tab.id).filter(s => s.scope !== 'desktop' || isDesktop).length === 0"
+                 x-text="t('ui.settings_empty_group')"></div>
+          </div>
+        </template>
+
+        <!-- Advanced panel -->
+        <div class="sm-panel" role="tabpanel" x-show="!settingsLoading && activeTab === 'advanced'">
+          <div class="sm-adv-block">
+            <div class="sm-adv-title" x-text="t('ui.backup_title')"></div>
+            <div class="sm-adv-desc muted-sm" x-text="t('ui.backup_desc')"></div>
+            <div class="backup-actions">
+              <button class="btn-sm" @click="exportBackup" x-text="t('ui.export_backup')"></button>
+              <button class="btn-sm" @click="importBackup" x-text="t('ui.import_backup')"></button>
+              <input type="file" id="backup-file" accept=".json" @change="handleBackupFile($event)" style="display:none">
+            </div>
+          </div>
+          <div class="sm-adv-note muted-sm" x-show="settings.some(s => s.locked)"
+               x-text="t('ui.settings_lock_note')"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -809,28 +833,46 @@ document.addEventListener('alpine:init', () => {
 
     // ── Settings ──────────────────────────────
     isDesktop: "__IS_DESKTOP__" === "true",
-    settingsOpen: false,
+    settingsModalOpen: false,
     settingsLoaded: false,
     settingsLoading: false,
     settings: [],
+    activeTab: "downloads",
+    settingsTabs: [
+      { id: "downloads", label: "ui.tab_downloads" },
+      { id: "storage", label: "ui.tab_storage" },
+      { id: "interface", label: "ui.tab_interface" },
+      { id: "advanced", label: "ui.tab_advanced" },
+    ],
 
-    async openSettings() {
-      this.settingsOpen = true;
-      if (!this.settingsLoaded) {
-        this.settingsLoading = true;
-        const r = await fetch("/api/settings");
-        if (r.ok) {
-          const data = await r.json();
-          this.settings = data.map(s => ({ ...s, _editValue: s.value, _error: null, _saving: false }));
-          this.settingsLoaded = true;
-        }
-        this.settingsLoading = false;
+    async loadSettings() {
+      if (this.settingsLoaded) return;
+      this.settingsLoading = true;
+      const r = await fetch("/api/settings");
+      if (r.ok) {
+        const data = await r.json();
+        this.settings = data.map(s => ({ ...s, _editValue: s.value, _error: null, _saving: false }));
+        this.settingsLoaded = true;
       }
+      this.settingsLoading = false;
+    },
+    async openSettingsModal() {
+      this.activeTab = "downloads";
+      this.settingsModalOpen = true;
+      document.body.classList.add("modal-open");
+      await this.loadSettings();
+    },
+    closeSettingsModal() {
+      this.settingsModalOpen = false;
+      document.body.classList.remove("modal-open");
+    },
+    settingsByGroup(group) {
+      return this.settings.filter(s => (s.group || "advanced") === group);
     },
     refreshSettings() {
       this.settingsLoaded = false;
       this.settings = [];
-      if (this.settingsOpen) this.openSettings();
+      if (this.settingsModalOpen) this.loadSettings();
     },
     async fetchDefaults() {
       try {
@@ -859,10 +901,6 @@ document.addEventListener('alpine:init', () => {
         if (d.thumb_default) this.thumbEnabled = true;
         if (d.infojson_default) this.infojsonEnabled = true;
       } catch (e) { /* no-op */ }
-    },
-    toggleSettings() {
-      if (this.settingsOpen) { this.settingsOpen = false; }
-      else { this.openSettings(); }
     },
     validateAndSave(s) {
       s._error = null;
