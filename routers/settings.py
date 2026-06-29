@@ -5,10 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from i18n import t as _t
 
-import configparser
-import os
 import re
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -212,36 +209,6 @@ def _validate_setting_value(key: str, raw_value: str) -> str | None:
     return None
 
 
-def _write_setting_to_ini(key: str, value: str) -> bool:
-    """Escribe key=value en el ini de OpenGrab. Crea dir+archivo si no existen.
-
-    Devuelve True si se escribió ok o False si falló (e.g. FS read-only).
-    """
-    try:
-        if sys.platform == "win32":
-            base = Path(os.environ.get(
-                "APPDATA", str(Path.home() / "AppData" / "Roaming")
-            ))
-        else:
-            base = Path(os.environ.get(
-                "XDG_CONFIG_HOME", str(Path.home() / ".config")
-            ))
-        ini_path = Path(os.environ.get(
-            "OPENGRAB_CONFIG", str(base / "OpenGrab" / "config.ini")
-        ))
-        ini_path.parent.mkdir(parents=True, exist_ok=True)
-        cp = configparser.ConfigParser()
-        if ini_path.exists():
-            cp.read(ini_path, encoding="utf-8")
-        if "opengrab" not in cp:
-            cp["opengrab"] = {}
-        cp["opengrab"][key] = value
-        cp.write(open(ini_path, "w", encoding="utf-8"))
-        return True
-    except Exception:
-        return False
-
-
 @router.get("/api/settings")
 async def api_get_settings(
     _: None = Depends(require_auth),
@@ -331,7 +298,7 @@ async def api_update_settings(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    """Actualiza settings (PUT o PATCH). Keys locked (origin=env/ini) retornan 400."""
+    """Actualiza settings (PUT o PATCH). Keys con origin=env retornan 400."""
     try:
         body = await request.json()
     except Exception:
@@ -354,12 +321,12 @@ async def api_update_settings(
         if err:
             errors[key] = err
             continue
-        # Persist: table + ini
+        # Persist: la tabla es la única fuente de verdad para ediciones del
+        # usuario. Gana sobre el ini en resolve() (env > tabla > ini), así que
+        # escribir el ini sería redundante; dejarlo intacto preserva su rol de
+        # semilla del instalador y elimina la divergencia tabla/ini. El valor
+        # se aplica en vivo porque resolve() se consulta en cada uso.
         state.db.set_setting(key, str_value)
-        _write_setting_to_ini(key, str_value)
-        from config import set_ini
-
-        set_ini(key, str_value)
         updated.append(key)
     if errors and not updated:
         raise HTTPException(

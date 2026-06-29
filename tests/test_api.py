@@ -641,11 +641,32 @@ def test_put_settings_locked_key_returns_400(client, app_state):
 
 
 def test_patch_settings_unlocked_key_updates_table(client, app_state):
-    """PATCH con key desbloqueada persiste en DB e ini."""
+    """PATCH con key desbloqueada persiste solo en la tabla (no en el ini)."""
     r = client.patch("/api/settings", json={"lang": "en"})
     assert r.status_code == 200, f"Got {r.status_code}: {r.json()}"
     assert "lang" in r.json()["updated"]
     assert app_state.db.get_setting("lang") == "en"
+
+
+def test_patch_settings_does_not_mutate_ini(client, app_state):
+    """El save no debe tocar config._ini: la tabla es la única fuente de verdad.
+
+    El ini queda como semilla del instalador. Regresión del fix que eliminó la
+    doble escritura tabla+ini (la tabla gana en resolve, el ini write era
+    redundante y rompía el modelo de 'ini = semilla').
+    """
+    import config
+
+    assert "history_max" not in config._ini
+    r = client.patch("/api/settings", json={"history_max": "321"})
+    assert r.status_code == 200, r.json()
+    assert app_state.db.get_setting("history_max") == "321"
+    # el ini sigue sin la key: no fue mutado por el save
+    assert "history_max" not in config._ini
+    # y resolve la toma de la tabla, en vivo
+    val, origin = app_state.resolve("history_max", 500, int)
+    assert val == 321
+    assert origin == "table"
 
 
 def test_patch_settings_theme_values_accepted(client, app_state, monkeypatch):
