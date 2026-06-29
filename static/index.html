@@ -32,6 +32,15 @@
           <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
         </svg>
       </button>
+      
+      <button class="theme-btn" x-show="isDesktop" @click="openDownloadsFolder()"
+              :title="t('ui.open_downloads')" :aria-label="t('ui.open_downloads')" x-cloak>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </button>
+
       <button class="theme-btn" @click="openSettingsModal()" :title="t('ui.settings_title')" :aria-label="t('ui.settings_title')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1628,6 +1637,10 @@ document.addEventListener('alpine:init', () => {
     async openFolder(jobId) {
       if (!jobId) return;
       await fetch("/api/jobs/" + jobId + "/open-folder", { method: "POST" });
+    },
+
+    async openDownloadsFolder() {
+      await fetch("/api/open-downloads-folder", { method: "POST" });
     },
 
     // Busca el library_dir configurado para sugerirlo como default del prompt.

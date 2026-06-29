@@ -81,6 +81,7 @@
   "ui.copy_command": "Copiar comando yt-dlp",
   "ui.save_file": "Guardar archivo",
   "ui.open_folder": "Abrir carpeta",
+  "ui.open_downloads": "Abrir carpeta de descargas",
   "ui.save_as": "Guardar en…",
   "ui.saving": "Guardando…",
   "ui.discard": "Descartar",

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from . import limiter, require_auth, get_state, _INDEX_HTML
-from config import FORMATS, IS_DESKTOP, VERSION
+from config import FORMATS, IS_DESKTOP, OUT_DIR, VERSION
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from i18n import t as _t
 
 import asyncio
 import json as _json
+import os
+import sys
 import time
 from typing import Any
 
@@ -125,6 +127,32 @@ async def api_metrics(
         "usage_bytes": state.current_usage_bytes(),
         "channels_watched": len(state.db.list_channels()),
     })
+
+
+@router.post("/api/open-downloads-folder")
+async def api_open_downloads_folder(
+    _: None = Depends(require_auth),
+) -> JSONResponse:
+    if not IS_DESKTOP:
+        raise HTTPException(409, _t("error.folder_desktop_only"))
+    folder = str(OUT_DIR)
+    if sys.platform == "win32":
+        os.startfile(folder)
+    elif sys.platform == "darwin":
+        import subprocess
+
+        try:
+            subprocess.run(["open", folder], check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            log.warning("api_open_downloads_folder: falló open %s", folder)
+    else:
+        import subprocess
+
+        try:
+            subprocess.run(["xdg-open", folder], check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            log.warning("api_open_downloads_folder: falló xdg-open %s", folder)
+    return JSONResponse({"ok": True, "folder": folder})
 
 
 @router.get("/health")
