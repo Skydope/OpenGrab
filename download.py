@@ -212,7 +212,8 @@ def _fetch_playlist(url: str) -> dict[str, Any]:
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if info is None:
-        raise RuntimeError("yt-dlp no devolvió información.")
+        from i18n import t
+        raise RuntimeError(t("error.ytdl_no_info"))
     entries = info.get("entries") or []
     videos = []
     for e in entries:

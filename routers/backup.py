@@ -50,7 +50,7 @@ async def api_backup_import(
         raise HTTPException(400, _t("error.json_invalid"))
 
     if not isinstance(body, dict) or body.get("version") != 1:
-        raise HTTPException(400, "Versión de backup no soportada")
+        raise HTTPException(400, _t("error.backup_version_unsupported"))
 
     imported: dict[str, int] = {"settings": 0, "history": 0, "channels": 0}
     errors: list[str] = []

@@ -15,6 +15,7 @@
   "error.access_denied": "Acceso denegado.",
   "error.folder_desktop_only": "open-folder solo está disponible en modo desktop.",
   "error.json_invalid": "JSON inválido.",
+  "error.backup_version_unsupported": "Versión de backup no soportada.",
   "error.missing_field": "Falta el campo '{field}'.",
   "error.dest_not_dir": "El destino no es un directorio.",
   "error.move_failed": "No se pudo mover el archivo.",
