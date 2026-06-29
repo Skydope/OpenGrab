@@ -280,6 +280,36 @@ def _webview2_available() -> bool:
     return True
 
 
+class _JsApi:
+    """Puente JS↔Python expuesto en la ventana WebView2 como ``window.pywebview.api``.
+
+    El front lo usa para abrir un diálogo nativo de selección de carpeta (botón
+    "Guardar en…"). Solo existe cuando la UI corre dentro de WebView2; en el
+    fallback al navegador ``window.pywebview`` no está definido y el front cae a
+    pedir la ruta por otro medio.
+    """
+
+    def pick_folder(self) -> str | None:
+        """Abre un diálogo nativo de carpeta. Devuelve la ruta o ``None`` si se canceló."""
+        try:
+            import webview
+
+            windows = webview.windows
+            if not windows:
+                return None
+            result = windows[0].create_file_dialog(webview.FOLDER_DIALOG)
+        except Exception:
+            _log.exception("pick_folder: falló el diálogo nativo")
+            return None
+        if not result:
+            return None
+        # create_file_dialog devuelve una tupla/lista de rutas (o str en algunas
+        # plataformas). Tomamos la primera.
+        if isinstance(result, (list, tuple)):
+            return str(result[0]) if result else None
+        return str(result)
+
+
 def _open_ui_window(port: int) -> None:
     """Abre la UI con WebView2 (bloquea el thread caller hasta que se cierra).
 
@@ -289,7 +319,9 @@ def _open_ui_window(port: int) -> None:
         try:
             import webview
 
-            webview.create_window("OpenGrab", url, width=980, height=720)
+            webview.create_window(
+                "OpenGrab", url, width=980, height=720, js_api=_JsApi(),
+            )
             webview.start()
         except Exception:
             _log.exception("webview falló, abriendo en navegador")

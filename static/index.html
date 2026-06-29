@@ -275,9 +275,18 @@
               aria-label="Reintentar la descarga">Reintentar</button>
     </div>
 
-    <!-- Download link -->
+    <!-- Download / Save link -->
     <div class="actions" :class="{show: downloadUrl}">
-      <a class="dl" :href="downloadUrl" :download="downloadFilename">Guardar archivo</a>
+      <template x-if="isDesktop">
+        <button class="dl" @click="saveTo(lastJobId)" :disabled="savingTo"
+                aria-label="Guardar el archivo en una carpeta">
+          <span x-show="!savingTo">Guardar en…</span>
+          <span x-show="savingTo" x-cloak>Guardando…</span>
+        </button>
+      </template>
+      <template x-if="!isDesktop">
+        <a class="dl" :href="downloadUrl" :download="downloadFilename">Guardar archivo</a>
+      </template>
     </div>
 
     <!-- Success banner -->
@@ -573,6 +582,8 @@ document.addEventListener('alpine:init', () => {
     downloadFilename: "",
     successPath: "",
     lastJobId: "",
+    savingTo: false,
+    lastSaveDir: "",
 
     // ── Sesión: descargas concurrentes (tarjetas) ──
     sessionJobs: {},     // {id: {id,status,percent,speed,eta,note,title,filename,filepath,error,created,finished,lines}}
@@ -1199,6 +1210,55 @@ document.addEventListener('alpine:init', () => {
     async openFolder(jobId) {
       if (!jobId) return;
       await fetch("/api/jobs/" + jobId + "/open-folder", { method: "POST" });
+    },
+
+    // Busca el library_dir configurado para sugerirlo como default del prompt.
+    libraryDirDefault() {
+      if (this.lastSaveDir) return this.lastSaveDir;
+      const s = (this.settings || []).find(x => x.key === "library_dir");
+      return (s && s.value) || "";
+    },
+
+    // "Guardar en…": mueve el archivo (server-side) a la carpeta elegida.
+    // Prioriza el picker nativo de WebView2; si no existe (browser / red),
+    // cae a pedir la ruta del servidor por prompt.
+    async saveTo(jobId) {
+      if (!jobId || this.savingTo) return;
+      let dest = null;
+      if (window.pywebview?.api?.pick_folder) {
+        try { dest = await window.pywebview.api.pick_folder(); }
+        catch (e) { dest = null; }
+        if (!dest) return;  // usuario canceló
+      } else {
+        dest = window.prompt("Carpeta de destino (ruta en el servidor):",
+                             this.libraryDirDefault());
+        if (!dest || !dest.trim()) return;
+        dest = dest.trim();
+      }
+      this.savingTo = true;
+      try {
+        const r = await fetch("/api/jobs/" + jobId + "/move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dest }),
+        });
+        if (!r.ok) {
+          let msg = "No se pudo guardar el archivo.";
+          try { const e = await r.json(); if (e.detail) msg = e.detail; } catch (_) {}
+          this.errorMsg = msg;
+          return;
+        }
+        const d = await r.json();
+        this.lastSaveDir = dest;
+        this.successPath = d.filepath || this.successPath;
+        // Mantener funcionando "Abrir carpeta" y el link de descarga.
+        if (this.sessionJobs[jobId]) this.sessionJobs[jobId].filepath = d.filepath;
+        this.errorMsg = "";
+      } catch (e) {
+        this.errorMsg = "No se pudo guardar el archivo.";
+      } finally {
+        this.savingTo = false;
+      }
     },
 
     // ── History ───────────────────────────────
