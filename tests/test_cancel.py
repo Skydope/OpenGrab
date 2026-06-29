@@ -111,7 +111,7 @@ def test_run_download_cancel_temprano_no_arranca_ydl(st):
 @pytest.mark.asyncio
 async def test_endpoint_cancel_404_si_noop(st):
     from fastapi import HTTPException
-    from routes import api_cancel_job
+    from routers.jobs import api_cancel_job
     with pytest.raises(HTTPException) as ei:
         await api_cancel_job("ghost", _=None, state=st)
     assert ei.value.status_code == 404
@@ -119,7 +119,7 @@ async def test_endpoint_cancel_404_si_noop(st):
 
 @pytest.mark.asyncio
 async def test_endpoint_cancel_running_ok(st):
-    from routes import api_cancel_job
+    from routers.jobs import api_cancel_job
     st.jobs["r"] = Job(id="r", created=time.time())
     st.jobs["r"].status = "downloading"
     out = await api_cancel_job("r", _=None, state=st)
@@ -130,7 +130,7 @@ async def test_endpoint_cancel_running_ok(st):
 @pytest.mark.asyncio
 async def test_lista_incluye_queued_de_db(st):
     import json
-    from routes import api_list_jobs
+    from routers.jobs import api_list_jobs
     st.db.insert_job("qd", "https://x/1", "best")  # queued, sin spawnear
     resp = await api_list_jobs(recent=900.0, _=None, state=st)
     ids = [j["id"] for j in json.loads(bytes(resp.body))]

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 
 def test_rate_limiting_info(client, app_state):
-    with patch("routes._fetch_info", return_value={"title": "Test", "duration": 60, "formats": []}):
+    with patch("routers.system._fetch_info", return_value={"title": "Test", "duration": 60, "formats": []}):
         for i in range(10):
             r = client.get("/api/info?url=https://youtu.be/abc")
             assert r.status_code == 200, f"Request {i + 1} should pass"

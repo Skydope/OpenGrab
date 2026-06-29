@@ -179,7 +179,7 @@ def test_api_job_file_serves_from_library_dir(client, app_state, monkeypatch):
     import tempfile
     from pathlib import Path
 
-    import routes as routes_mod
+    import routers.jobs as routes_mod
     from models import Job
 
     monkeypatch.setattr(routes_mod, "IS_DESKTOP", True)
@@ -198,7 +198,7 @@ def test_api_job_file_outside_all_roots_blocked(client, app_state, monkeypatch):
     """Path fuera de out_dir y library_dir sigue bloqueado (403) incluso en desktop."""
     import tempfile
 
-    import routes as routes_mod
+    import routers.jobs as routes_mod
     from models import Job
 
     monkeypatch.setattr(routes_mod, "IS_DESKTOP", True)
@@ -351,7 +351,7 @@ def test_api_check_channel(client, monkeypatch):
     def fake_check(state, channel):
         return [{"url": "https://x.com/1", "extractor": "yt", "video_id": "v1", "title": "Test"}]
 
-    monkeypatch.setattr("routes._check_channel_watch", fake_check)
+    monkeypatch.setattr("routers.channels._check_channel_watch", fake_check)
 
     r = client.post("/api/channels", json={"url": "https://x.com/@ch-check"})
     cid = r.json()["id"]
@@ -578,7 +578,7 @@ def test_batch_status_unknown_ids_returns_empty(client, app_state):
 
 # ----------------------------- /api/settings -------------------------------- #
 def test_get_settings_returns_all_keys(client):
-    """GET /api/settings devuelve las 10 keys del catálogo."""
+    """GET /api/settings devuelve las 13 keys del catálogo."""
     r = client.get("/api/settings")
     assert r.status_code == 200
     data = r.json()
@@ -586,6 +586,7 @@ def test_get_settings_returns_all_keys(client):
     expected = {
         "max_jobs", "max_total_mb", "max_size_mb", "history_max",
         "quality_default", "theme", "lang", "notifications_enabled",
+        "subs_default", "thumb_default", "infojson_default",
         "library_dir", "name_template",
     }
     assert keys == expected
@@ -608,7 +609,7 @@ def test_get_settings_has_required_fields(client):
 
 
 def test_get_settings_defaults_returns_expected_keys(client):
-    """GET /api/settings/defaults devuelve quality_default, theme, lang, notifications_enabled."""
+    """GET /api/settings/defaults devuelve quality_default, theme, lang, notif, subs, thumb, infojson."""
     r = client.get("/api/settings/defaults")
     assert r.status_code == 200
     data = r.json()
@@ -616,6 +617,9 @@ def test_get_settings_defaults_returns_expected_keys(client):
     assert "theme" in data
     assert "lang" in data
     assert "notifications_enabled" in data
+    assert "subs_default" in data
+    assert "thumb_default" in data
+    assert "infojson_default" in data
     assert data["quality_default"] == "best"
 
 

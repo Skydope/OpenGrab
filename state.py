@@ -127,7 +127,9 @@ class AppState:
             return "cancelled"
         return "noop"
 
-    def _spawn_download(self, job_id: str, url: str, quality: str) -> None:
+    def _spawn_download(self, job_id: str, url: str, quality: str,
+                        subs: bool = False, thumb: bool = False,
+                        infojson: bool = False) -> None:
         """Crea Job en memoria + Event y lanza _run_download en thread.
 
         Precondicion: la fila en DB ya existe en el estado correcto.
@@ -138,7 +140,10 @@ class AppState:
         self.job_events[job_id] = asyncio.Event()
         loop = asyncio.get_running_loop()
         task = asyncio.create_task(
-            asyncio.to_thread(_run_download, self, job_id, url, quality, loop)
+            asyncio.to_thread(
+                _run_download, self, job_id, url, quality, loop,
+                subs, thumb, infojson,
+            )
         )
         self._track_task(task)
 

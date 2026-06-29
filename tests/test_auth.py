@@ -102,16 +102,16 @@ def test_no_localhost_bypass():
     """require_auth NO debe esquivar auth para client.host==127.0.0.1."""
     import sys
     for m in list(sys.modules):
-        if m in ("config", "routes"):
+        if m in ("config", "routers"):
             del sys.modules[m]
     import os
     os.environ["OPENGRAB_TOKEN"] = "real-token"
     os.environ.pop("OPENGRAB_NO_AUTH", None)
     import importlib
     import config
-    import routes
+    import routers
     importlib.reload(config)
-    importlib.reload(routes)
+    importlib.reload(routers)
 
     from starlette.requests import Request
     from fastapi import HTTPException
@@ -123,7 +123,7 @@ def test_no_localhost_bypass():
     }
     req = Request(scope)
     try:
-        routes.require_auth(req)
+        routers.require_auth(req)
         assert False, "no debería pasar: 127.0.0.1 esquivó auth"
     except HTTPException as e:
         assert e.status_code == 401

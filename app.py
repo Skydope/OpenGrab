@@ -54,7 +54,8 @@ from config import (
 )
 from db import Database
 from logging_setup import configure_logging
-from routes import limiter, router
+from routers import limiter
+from routers import system, settings, jobs, playlist, history, storage, channels, engine, backup
 from state import AppState
 
 log = logging.getLogger("opengrab")
@@ -189,7 +190,15 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
-app.include_router(router)
+app.include_router(system.router)
+app.include_router(settings.router)
+app.include_router(jobs.router)
+app.include_router(playlist.router)
+app.include_router(history.router)
+app.include_router(storage.router)
+app.include_router(channels.router)
+app.include_router(engine.router)
+app.include_router(backup.router)
 
 
 def main() -> None:

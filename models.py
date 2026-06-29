@@ -12,6 +12,9 @@ class AuthReq(BaseModel):
 class JobReq(BaseModel):
     url: str
     quality: str = "best"
+    subs: bool = False
+    thumb: bool = False
+    infojson: bool = False
 
 
 class ChannelReq(BaseModel):

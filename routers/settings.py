@@ -1,0 +1,350 @@
+from __future__ import annotations
+
+from . import limiter, require_auth, get_state
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
+from i18n import t as _t
+
+import configparser
+import os
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+from state import AppState
+
+router = APIRouter()
+
+# --------------------------------------------------------------------------- #
+# Settings catalog + API
+# --------------------------------------------------------------------------- #
+# Metadata completa por setting:
+#   key → (type, scope, default, description, placeholder, options, tokens, validation)
+_FULL_CATALOG: dict[str, tuple[str, str, Any, str, str, Any, Any, Any]] = {
+    "max_jobs": (
+        "int", "runtime", 2,
+        "Descargas simultáneas",
+        "2",
+        None, None,
+        {"min": 1, "max": 20},
+    ),
+    "max_total_mb": (
+        "int", "runtime", 0,
+        "Almacenamiento máximo (MB, 0 = sin límite)",
+        "0",
+        None, None,
+        {"min": 0},
+    ),
+    "max_size_mb": (
+        "int", "runtime", 0,
+        "Tamaño máximo por archivo (MB, 0 = sin límite)",
+        "0",
+        None, None,
+        {"min": 0},
+    ),
+    "history_max": (
+        "int", "runtime", 500,
+        "Entradas máximas en el historial",
+        "500",
+        None, None,
+        {"min": 10, "max": 10000},
+    ),
+    "quality_default": (
+        "string", "runtime", "best",
+        "Calidad por defecto para nuevas descargas",
+        "best",
+        [
+            {"value": "best", "label": "best mp4"},
+            {"value": "1080p", "label": "1080p"},
+            {"value": "720p", "label": "720p"},
+            {"value": "480p", "label": "480p"},
+            {"value": "audio", "label": "solo audio · mp3"},
+        ],
+        None, None,
+    ),
+    "theme": (
+        "string", "runtime", "auto",
+        "Tema de la interfaz",
+        "auto",
+        [
+            {"value": "dark", "label": "Oscuro"},
+            {"value": "light", "label": "Claro"},
+            {"value": "auto", "label": "Automático"},
+        ],
+        None, None,
+    ),
+    "lang": (
+        "string", "runtime", "auto",
+        "Idioma de la interfaz",
+        "auto",
+        [
+            {"value": "auto", "label": "Automático"},
+            {"value": "es", "label": "Español"},
+            {"value": "en", "label": "English"},
+        ],
+        None, None,
+    ),
+    "notifications_enabled": (
+        "bool", "runtime", False,
+        "Notificaciones del navegador (watch mode)",
+        "",
+        None, None, None,
+    ),
+    "subs_default": (
+        "bool", "runtime", False,
+        "Descargar subtítulos (.srt/.vtt) por defecto",
+        "",
+        None, None, None,
+    ),
+    "thumb_default": (
+        "bool", "runtime", False,
+        "Descargar miniatura (.jpg) por defecto",
+        "",
+        None, None, None,
+    ),
+    "infojson_default": (
+        "bool", "runtime", False,
+        "Descargar info JSON por defecto",
+        "",
+        None, None, None,
+    ),
+    "library_dir": (
+        "string", "desktop", "",
+        "Directorio donde se guardan las descargas",
+        "C:\\Users\\...\\Downloads\\OpenGrab",
+        None, None, None,
+    ),
+    "name_template": (
+        "string", "desktop", "{title}",
+        "Plantilla para el nombre del archivo descargado",
+        "{title}",
+        None,
+        ["{title}", "{channel}", "{upload_year}", "{upload_date}",
+         "{extractor}", "{video_id}", "{resolution}"],
+        None,
+    ),
+}
+
+# Catálogo simple para compatibilidad con resolve() y lookup rápido.
+_SETTING_CATALOG: dict[str, tuple[str, str, Any]] = {
+    k: (vtype, scope, default) for k, (vtype, scope, default, *_rest) in _FULL_CATALOG.items()
+}
+
+# Validadores server-side por setting.
+_SETTING_VALIDATORS: dict[str, dict[str, Any]] = {
+    key: (val[7] or {}) for key, val in _FULL_CATALOG.items() if val[7]
+}
+# Settings de tipo select (para validación de valores permitidos).
+_SETTING_OPTIONS: dict[str, set[str]] = {
+    key: {o["value"] for o in val[5]}
+    for key, val in _FULL_CATALOG.items() if val[5]
+}
+
+_NAME_TEMPLATE_TOKENS = frozenset({
+    "{title}", "{channel}", "{upload_year}", "{upload_date}",
+    "{extractor}", "{video_id}", "{resolution}",
+})
+
+
+def _validate_setting_value(key: str, raw_value: str) -> str | None:
+    """Valida un valor para un setting. Devuelve mensaje de error o None."""
+    info = _FULL_CATALOG.get(key)
+    if info is None:
+        return _t("error.settings_unknown_key")
+    vtype = info[0]
+
+    if vtype == "int":
+        try:
+            ival = int(raw_value)
+        except (ValueError, TypeError):
+            return _t("error.settings_int_invalid")
+        rules = _SETTING_VALIDATORS.get(key, {})
+        if "min" in rules and ival < rules["min"]:
+            return _t("error.settings_min_value", min=rules["min"])
+        if "max" in rules and ival > rules["max"]:
+            return _t("error.settings_max_value", max=rules["max"])
+        return None
+
+    if vtype == "bool":
+        if str(raw_value).strip().lower() in ("true", "1", "yes"):
+            return None
+        if str(raw_value).strip().lower() in ("false", "0", "no", ""):
+            return None
+        return _t("error.settings_bool_invalid")
+
+    if vtype == "string":
+        sval = str(raw_value)
+        # Validar opciones si es un select
+        if key in _SETTING_OPTIONS and sval not in _SETTING_OPTIONS[key]:
+            return _t("error.settings_value_not_allowed", options=sorted(_SETTING_OPTIONS[key]))
+        # Validar tokens para name_template
+        if key == "name_template":
+            tokens = re.findall(r"\{[a-z_]+\}", sval)
+            invalid = [t for t in tokens if t not in _NAME_TEMPLATE_TOKENS]
+            if invalid:
+                return _t("error.settings_tokens_invalid", tokens=", ".join(invalid))
+        # Validar library_dir: warn si no existe, pero no bloquear
+        if key == "library_dir" and sval:
+            p = Path(sval)
+            if p.exists() and not p.is_dir():
+                return _t("error.settings_path_not_dir")
+        return None
+
+    return None
+
+
+def _write_setting_to_ini(key: str, value: str) -> bool:
+    """Escribe key=value en el ini de OpenGrab. Crea dir+archivo si no existen.
+
+    Devuelve True si se escribió ok o False si falló (e.g. FS read-only).
+    """
+    try:
+        if sys.platform == "win32":
+            base = Path(os.environ.get(
+                "APPDATA", str(Path.home() / "AppData" / "Roaming")
+            ))
+        else:
+            base = Path(os.environ.get(
+                "XDG_CONFIG_HOME", str(Path.home() / ".config")
+            ))
+        ini_path = Path(os.environ.get(
+            "OPENGRAB_CONFIG", str(base / "OpenGrab" / "config.ini")
+        ))
+        ini_path.parent.mkdir(parents=True, exist_ok=True)
+        cp = configparser.ConfigParser()
+        if ini_path.exists():
+            cp.read(ini_path, encoding="utf-8")
+        if "opengrab" not in cp:
+            cp["opengrab"] = {}
+        cp["opengrab"][key] = value
+        cp.write(open(ini_path, "w", encoding="utf-8"))
+        return True
+    except Exception:
+        return False
+
+
+@router.get("/api/settings")
+async def api_get_settings(
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    """Devuelve el catálogo completo de settings con valor actual y metadata."""
+    catalog: list[dict[str, Any]] = []
+    for key, (vtype, scope, default, desc, placeholder,
+              options, tokens, validation) in _FULL_CATALOG.items():
+        val, origin = state.resolve(key, default, str)
+        # Cast para la respuesta
+        if vtype == "int":
+            try:
+                val = int(val)
+            except (ValueError, TypeError):
+                val = default
+        elif vtype == "bool":
+            if isinstance(val, str):
+                val = val.strip().lower() in ("true", "1", "yes")
+            elif isinstance(val, bool):
+                pass
+            else:
+                val = bool(val)
+
+        locked = origin in ("env", "ini")
+        entry: dict[str, Any] = {
+            "key": key,
+            "type": vtype,
+            "scope": scope,
+            "value": val,
+            "default": default,
+            "origin": origin,
+            "locked": locked,
+            "restart_required": False,
+            "description": desc,
+            "placeholder": placeholder,
+        }
+        if options:
+            entry["options"] = options
+        if tokens:
+            entry["tokens"] = tokens
+        if validation:
+            entry["validation"] = validation
+        catalog.append(entry)
+    return JSONResponse(catalog)
+
+
+@router.get("/api/settings/defaults")
+async def api_get_settings_defaults(
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    """Devuelve los defaults que el frontend necesita para inicializar chips."""
+    quality, _origin_q = state.resolve("quality_default", "best", str)
+    theme, _origin_t = state.resolve("theme", "auto", str)
+    lang, _origin_l = state.resolve("lang", "auto", str)
+    notif, _origin_n = state.resolve("notifications_enabled", False, str)
+    notif_enabled = (isinstance(notif, bool) and notif) or str(notif).strip().lower() in ("true", "1", "yes")
+
+    def _to_bool(raw: Any) -> bool:
+        return bool(raw) if isinstance(raw, bool) else str(raw).strip().lower() in ("true", "1", "yes")
+
+    subs_val = _to_bool(state.resolve("subs_default", False, str)[0])
+    thumb_val = _to_bool(state.resolve("thumb_default", False, str)[0])
+    infojson_val = _to_bool(state.resolve("infojson_default", False, str)[0])
+    return JSONResponse({
+        "quality_default": quality,
+        "theme": theme,
+        "lang": lang,
+        "notifications_enabled": notif_enabled,
+        "subs_default": subs_val,
+        "thumb_default": thumb_val,
+        "infojson_default": infojson_val,
+    })
+
+
+@router.put("/api/settings")
+@router.patch("/api/settings")
+@limiter.limit("10/minute")
+async def api_update_settings(
+    request: Request,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    """Actualiza settings (PUT o PATCH). Keys locked (origin=env/ini) retornan 400."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, _t("error.json_invalid"))
+    if not isinstance(body, dict):
+        raise HTTPException(400, _t("error.settings_body_dict"))
+    errors: dict[str, str] = {}
+    updated: list[str] = []
+    for key, raw_value in body.items():
+        if key not in _FULL_CATALOG:
+            errors[key] = _t("error.settings_unknown_key")
+            continue
+        _, origin = state.resolve(key, _FULL_CATALOG[key][2], str)
+        if origin in ("env", "ini"):
+            errors[key] = _t("error.settings_locked", origin=origin)
+            continue
+        # Validacion server-side
+        str_value = str(raw_value)
+        err = _validate_setting_value(key, str_value)
+        if err:
+            errors[key] = err
+            continue
+        # Persist: table + ini
+        state.db.set_setting(key, str_value)
+        _write_setting_to_ini(key, str_value)
+        from config import set_ini
+
+        set_ini(key, str_value)
+        updated.append(key)
+    if errors and not updated:
+        raise HTTPException(
+            400,
+            {"error": _t("error.settings_all_failed"), "details": errors},
+        )
+    return JSONResponse({
+        "ok": True,
+        "updated": updated,
+        "errors": errors if errors else None,
+    })

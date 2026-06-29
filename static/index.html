@@ -112,6 +112,22 @@
       </template>
     </div>
 
+    <!-- Extras toggles (subs, thumb, info json) -->
+    <div class="extras-toggles" x-show="!isPlaylist && !downloading">
+      <label class="extra-toggle">
+        <input type="checkbox" x-model="subsEnabled" @change="saveExtraPref('subs')">
+        <span x-text="t('ui.subs_toggle')"></span>
+      </label>
+      <label class="extra-toggle">
+        <input type="checkbox" x-model="thumbEnabled" @change="saveExtraPref('thumb')">
+        <span x-text="t('ui.thumb_toggle')"></span>
+      </label>
+      <label class="extra-toggle">
+        <input type="checkbox" x-model="infojsonEnabled" @change="saveExtraPref('infojson')">
+        <span x-text="t('ui.infojson_toggle')"></span>
+      </label>
+    </div>
+
     <!-- Format preview -->
     <div x-show="formats.length" class="mt-14 fmt-wrap">
       <div class="toggle-label"
@@ -314,8 +330,12 @@
          @keydown.space.prevent="toggleHistory"
                     x-text="historyOpen ? t('ui.history_expanded') : t('ui.history_collapsed') + historyBadge()"></div>
     <div x-show="historyOpen">
+      <input type="text" x-model="historyFilter" 
+             :placeholder="t('ui.history_filter_placeholder')"
+             class="hist-filter" x-show="history.length > 5">
       <span x-show="!historyLoaded" class="muted-sm" x-text="t('ui.loading')"></span>
       <span x-show="historyLoaded && !history.length" class="empty-state" x-text="t('ui.no_downloads')"></span>
+      <span x-show="historyLoaded && history.length && !visibleHistory.length && historyFilter" class="empty-state" x-text="t('ui.history_no_results')"></span>
       <template x-for="e in visibleHistory" :key="e.job_id">
         <div class="h-entry" :data-job-id="e.job_id">
           <img class="h-thumb" x-show="e.thumbnail" :src="e.thumbnail" alt="" loading="lazy">
@@ -381,8 +401,17 @@
           <button class="btn-sm" @click="cleanupStorage" x-text="t('ui.cleanup_old')"></button>
           <button class="btn-sm" @click="cleanupAllStorage" x-text="t('ui.cleanup_all')"></button>
           <span class="muted-sm" x-show="storageMsg" x-text="storageMsg" aria-live="polite"></span>
-        </div>
-      </div>
+    </div>
+
+    <!-- Extras files (subs, thumb, info json) -->
+    <div x-show="focusedJobId && jobExtras[focusedJobId]?.length" class="job-extras">
+      <span class="extras-label" x-text="t('ui.extras') + ':'"></span>
+      <template x-for="ex in jobExtras[focusedJobId]" :key="ex.filename">
+        <a :href="'/api/jobs/' + focusedJobId + '/file/' + ex.filename" class="extra-link"
+           :download="ex.filename" x-text="ex.filename + ' (' + fmtSize(ex.size) + ')'"></a>
+      </template>
+    </div>
+  </div>
     </div>
   </div>
 
@@ -513,6 +542,11 @@
         </div>
       </template>
       <div class="set-note muted-sm" x-show="settings.length && !settingsLoading" x-text="t('ui.settings_lock_note')">
+      </div>
+      <div class="backup-actions" x-show="settings.length && !settingsLoading">
+        <button class="btn-sm" @click="exportBackup" x-text="t('ui.export_backup')"></button>
+        <button class="btn-sm" @click="importBackup" x-text="t('ui.import_backup')"></button>
+        <input type="file" id="backup-file" accept=".json" @change="handleBackupFile($event)" style="display:none">
       </div>
     </div>
   </div>
@@ -691,6 +725,9 @@ document.addEventListener('alpine:init', () => {
 
     // ── Quality ───────────────────────────────
     quality: "best",
+    subsEnabled: false,
+    thumbEnabled: false,
+    infojsonEnabled: false,
     qualities: [
       { id: "best",  label: "best mp4" },
       { id: "1080p", label: "1080p" },
@@ -740,6 +777,7 @@ document.addEventListener('alpine:init', () => {
     // ── Sesión: descargas concurrentes (tarjetas) ──
     sessionJobs: {},     // {id: {id,status,percent,speed,eta,note,title,filename,filepath,error,created,finished,lines}}
     focusedJobId: "",    // job cuyo detalle se ve en la terminal
+    jobExtras: {},       // {jobId: [{filename, type, size}, ...]}
     _streams: {},        // {id: EventSource} para no duplicar conexiones
 
     // ── Error ─────────────────────────────────
@@ -750,6 +788,7 @@ document.addEventListener('alpine:init', () => {
     historyOpen: false,
     historyLoaded: false,
     history: [],
+    historyFilter: "",
     pendingDeletes: {},      // { jobId: { timeoutId, entry } }
     _clearAllPending: null,  // { timeoutId, history }
     toast: { show: false, message: "", type: null },  // 'pending' | 'success'
@@ -816,7 +855,10 @@ document.addEventListener('alpine:init', () => {
           const perm = await this.requestNotifPermission();
           if (perm === "granted") this.startWatchPoll();
         }
-      } catch (e) { /* no-op: defaults no bloquean el inicio */ }
+        if (d.subs_default) this.subsEnabled = true;
+        if (d.thumb_default) this.thumbEnabled = true;
+        if (d.infojson_default) this.infojsonEnabled = true;
+      } catch (e) { /* no-op */ }
     },
     toggleSettings() {
       if (this.settingsOpen) { this.settingsOpen = false; }
@@ -1050,6 +1092,15 @@ document.addEventListener('alpine:init', () => {
     selectedCount() {
       return this.playlistVideos.filter(v => v.selected).length;
     },
+    saveExtraPref(type) {
+      const key = type === "subs" ? "subs_default" : type === "thumb" ? "thumb_default" : "infojson_default";
+      const val = type === "subs" ? this.subsEnabled : type === "thumb" ? this.thumbEnabled : this.infojsonEnabled;
+      fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: String(val) }),
+      }).catch(() => {});
+    },
 
     toggleAllPlaylist(val) {
       this.playlistVideos.forEach(v => {
@@ -1206,7 +1257,14 @@ document.addEventListener('alpine:init', () => {
     // Historial sin los jobs que ahora se muestran como tarjeta (evita duplicar:
     // recién terminado = tarjeta; al descartarlo reaparece acá reactivamente).
     get visibleHistory() {
-      return this.history.filter(e => !(e.job_id in this.sessionJobs));
+      const filtered = this.history.filter(e => !(e.job_id in this.sessionJobs));
+      const q = (this.historyFilter || "").toLowerCase().trim();
+      if (!q) return filtered;
+      return filtered.filter(h =>
+        (h.title || "").toLowerCase().includes(q) ||
+        (h.url || "").toLowerCase().includes(q) ||
+        (h.extractor || "").toLowerCase().includes(q)
+      );
     },
 
     // Inserta/actualiza un job en el mapa preservando sus líneas de log.
@@ -1307,6 +1365,65 @@ document.addEventListener('alpine:init', () => {
       this.focusedJobId = jobId;
       this.terminal = j.lines || [];
       this.mirrorToTerminal(jobId);
+      if (j.status === "done" && !this.jobExtras[jobId]) {
+        this.fetchJobExtras(jobId);
+      }
+    },
+    async fetchJobExtras(jobId) {
+      try {
+        const r = await fetch("/api/jobs/" + jobId + "/extras");
+        if (r.ok) {
+          this.jobExtras = { ...this.jobExtras, [jobId]: await r.json() };
+        }
+      } catch (e) { /* no-op */ }
+    },
+    fmtSize(bytes) {
+      if (!bytes || bytes < 1024) return (bytes || 0) + " B";
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / 1048576).toFixed(1) + " MB";
+    },
+    async exportBackup() {
+      try {
+        const r = await fetch("/api/backup/export");
+        if (!r.ok) return;
+        const blob = await r.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "opengrab-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (e) { /* no-op */ }
+    },
+    importBackup() {
+      document.getElementById("backup-file")?.click();
+    },
+    async handleBackupFile(e) {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const s = data.settings ? Object.keys(data.settings).length : 0;
+        const h = (data.history || []).length;
+        const c = (data.channels || []).length;
+        if (!confirm(this.t('ui.confirm_import', {settings: s, history: h, channels: c}))) return;
+        const r = await fetch("/api/backup/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const result = await r.json();
+        if (r.ok && result.ok) {
+          this.showToast(this.t('ui.import_success', result.imported), "success");
+          this.refreshSettings();
+          if (this.historyOpen) { this.historyLoaded = false; this.history = []; this.toggleHistory(); }
+        } else {
+          this.showToast(result.detail || "Error al importar", "error");
+        }
+      } catch (e) {
+        this.showToast("JSON inválido", "error");
+      }
+      e.target.value = "";
     },
 
     // Espeja el job en foco a los escalares que usa la terminal (sin tocar
@@ -1374,7 +1491,7 @@ document.addEventListener('alpine:init', () => {
         const r = await fetch("/api/jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: this.url.trim(), quality: this.quality }),
+          body: JSON.stringify({ url: this.url.trim(), quality: this.quality, subs: this.subsEnabled, thumb: this.thumbEnabled, infojson: this.infojsonEnabled }),
         });
         if (!r.ok) throw new Error((await r.json()).detail || this.t('ui.error_create_job'));
         ({ job_id: jobId } = await r.json());

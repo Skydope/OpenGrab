@@ -169,7 +169,7 @@ class TestDispatchLoopBasic:
         # the job is already marked 'starting' in DB
         db_status_at_download_time = {}
 
-        def fake_run_download(state, job_id, url, quality, loop):
+        def fake_run_download(state, job_id, url, quality, loop, subs=False, thumb=False, infojson=False):
             # Check DB status at the moment _run_download starts (corre en un thread).
             job = state.db.get_job(job_id)
             db_status_at_download_time[job_id] = job["status"]
@@ -312,9 +312,9 @@ class TestDispatchLoopLifespan:
         # Clear any cached modules to ensure fresh import
         for mod in list(sys.modules):
             if mod in (
-                "app", "config", "models", "download", "routes",
+                "app", "config", "models", "download", "routes", "routers",
                 "state", "db", "app_state", "_opengrab_modules",
-            ) or mod.startswith(("app.", "config.", "models.", "download.", "routes.", "state.", "db.")):
+            ) or mod.startswith(("app.", "config.", "models.", "download.", "routes.", "routers.", "state.", "db.")):
                 del sys.modules[mod]
 
         # Patch env before importing app

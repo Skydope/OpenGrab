@@ -329,7 +329,7 @@ def test_app_import_does_not_configure_root_handler(monkeypatch):
 
     # Forzar fresh import de app
     for m in list(sys.modules):
-        if m in ("app", "config", "db", "routes", "state", "download",
+        if m in ("app", "config", "db", "routes", "routers", "state", "download",
                  "engine_update", "models"):
             sys.modules.pop(m, None)
 

@@ -286,6 +286,34 @@ button.btn-secondary:hover:not(:disabled){background:var(--chip-active-bg); bord
 .fmt-table tr.sel td{color:var(--amber); background:var(--chip-active-bg)}
 .fmt-table .fsize{color:var(--faint); text-align:right}
 
+/* ---- Extras toggles (subs, thumb, info json) ---------------------------- */
+.extras-toggles{
+  display:flex; gap:14px; flex-wrap:wrap; margin-top:10px;
+}
+.extra-toggle{
+  display:flex; align-items:center; gap:6px; font-size:12.5px;
+  color:var(--muted); cursor:pointer;
+}
+.extra-toggle:hover{color:var(--text)}
+.extra-toggle input[type=checkbox]{
+  accent-color:var(--amber); width:16px; height:16px; cursor:pointer;
+}
+.job-extras{
+  margin-top:8px; padding:8px 0; border-top:1px solid var(--line);
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+}
+.extras-label{
+  font-size:11px; color:var(--muted); font-weight:600;
+  font-family:var(--sans);
+}
+.extra-link{
+  font-size:11px; color:var(--amber); font-family:var(--mono);
+  text-decoration:none; padding:3px 8px;
+  border:1px solid var(--line); border-radius:6px;
+  transition:border-color .15s, background .15s;
+}
+.extra-link:hover{border-color:var(--amber); background:var(--chip-active-bg)}
+
 /* ---- Playlist ----------------------------------------------------------- */
 .pl-header{display:flex; gap:8px; align-items:center; margin-bottom:11px; flex-wrap:wrap}
 .pl-count{
@@ -512,6 +540,13 @@ footer code{color:var(--muted)}
 .h-del:hover{opacity:1; color:var(--danger); background:var(--danger-soft)}
 .h-entry.removing{opacity:0; transform:translateX(8px); transition:opacity .3s, transform .3s}
 
+.hist-filter{
+  width:100%; padding:9px 11px; margin-bottom:8px; font-size:12.5px;
+  background:var(--ink); border:1px solid var(--line); color:var(--text);
+  border-radius:8px; font-family:var(--mono);
+}
+.hist-filter:focus{outline:none; box-shadow:0 0 0 3px var(--focus-ring); border-color:var(--amber)}
+
 .engine-row{
   display:flex; align-items:center; gap:12px; margin-top:14px; padding-top:12px;
   border-top:1px solid var(--line); flex-wrap:wrap;
@@ -604,6 +639,12 @@ footer code{color:var(--muted)}
   color:var(--ok); border-color:var(--ok); background:var(--ok-soft);
 }
 .set-note{font-size:11px; color:var(--muted); margin-top:10px}
+
+.backup-actions{
+  display:flex; gap:8px; margin-top:12px; padding-top:12px;
+  border-top:1px solid var(--line);
+}
+.backup-actions .btn-sm{font-size:12px}
 
 /* ---- Empty / loading ---------------------------------------------------- */
 .empty-state{

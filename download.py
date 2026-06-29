@@ -273,7 +273,10 @@ def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> list[dict[
 # --------------------------------------------------------------------------- #
 # Download job (runs in thread pool)
 # --------------------------------------------------------------------------- #
-def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: asyncio.AbstractEventLoop) -> None:
+def _run_download(state: AppState, job_id: str, url: str, quality: str,
+                  loop: asyncio.AbstractEventLoop,
+                  subs: bool = False, thumb: bool = False,
+                  infojson: bool = False) -> None:
     job = state.jobs[job_id]
     workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
     max_size_mb, _ = state.resolve("max_size_mb", 0, int)
@@ -342,6 +345,15 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
             }
         ]
         opts.pop("merge_output_format", None)
+
+    if subs:
+        opts["writesubtitles"] = True
+        opts["writeautomaticsub"] = True
+        opts["subtitleslangs"] = ["es", "en"]
+    if thumb:
+        opts["writethumbnail"] = True
+    if infojson:
+        opts["writeinfojson"] = True
 
     # En el binario de escritorio, ffmpeg viaja bundleado y no está en el PATH.
     # Guard: solo seteamos ffmpeg_location si el binario existe junto al recurso;

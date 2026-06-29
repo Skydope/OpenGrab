@@ -269,5 +269,16 @@
 
   "shortcuts.calidad": "Calidad",
   "shortcuts.codec": "Codec",
-  "shortcuts.size": "Tamaño"
+  "shortcuts.size": "Tamaño",
+
+  "ui.subs_toggle": "Subtítulos (.srt/.vtt)",
+  "ui.thumb_toggle": "Miniatura (.jpg)",
+  "ui.infojson_toggle": "Info JSON",
+  "ui.extras": "Extras",
+  "ui.history_filter_placeholder": "Filtrar por título, sitio…",
+  "ui.history_no_results": "Sin resultados.",
+  "ui.export_backup": "Exportar backup",
+  "ui.import_backup": "Importar backup",
+  "ui.confirm_import": "Se importarán {settings} settings, {history} entradas de historial y {channels} canales. ¿Continuar?",
+  "ui.import_success": "Importado: {settings} settings, {history} historial, {channels} canales"
 }
