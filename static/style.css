@@ -307,6 +307,17 @@ button.btn-secondary:hover:not(:disabled){background:var(--chip-active-bg); bord
 }
 .batch-row:last-child{border-bottom:0}
 .batch-row:hover{background:var(--hover-row)}
+.batch-row.focused{background:var(--hover-row); box-shadow:inset 3px 0 0 var(--amber)}
+.job-actions{flex:none; display:flex; gap:6px; align-items:center}
+.job-act{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:24px; height:24px; padding:0; border:1px solid var(--line);
+  border-radius:var(--radius-sm, 6px); background:transparent; color:var(--text);
+  font-size:13px; line-height:1; cursor:pointer; text-decoration:none;
+  transition:background .15s ease, border-color .15s ease;
+}
+.job-act:hover{background:var(--hover-row); border-color:var(--amber)}
+.job-act.job-cancel:hover{border-color:var(--danger); color:var(--danger)}
 .batch-status-icon{font-size:13px; flex:none; width:20px; text-align:center}
 .batch-row.status-done .batch-status-icon{color:var(--ok)}
 .batch-row.status-error .batch-status-icon{color:var(--danger)}

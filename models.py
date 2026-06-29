@@ -30,6 +30,7 @@ class Job(BaseModel):
     filepath: str = ""
     mime: str = ""
     created: float = 0.0
+    finished: float = 0.0
     workdir: str = ""
     downloaded: int = 0
     total: int = 0

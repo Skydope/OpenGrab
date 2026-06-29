@@ -31,6 +31,7 @@ class AppState:
         self.out_dir = out_dir
         self.jobs: dict[str, Job] = {}
         self.job_events: dict[str, asyncio.Event] = {}
+        self.cancel_requests: set[str] = set()  # job_ids cuya cancelación se pidió
         self.running_tasks: set[asyncio.Task[None]] = set()
         self._finalize_lock = threading.Lock()
         self._usage_cache: int | None = None
@@ -99,6 +100,27 @@ class AppState:
     def _track_task(self, task: asyncio.Task[None]) -> None:
         self.running_tasks.add(task)
         task.add_done_callback(self.running_tasks.discard)
+
+    def cancel_job(self, job_id: str) -> str:
+        """Cancela un job. Devuelve el resultado:
+
+        - "cancelling": estaba corriendo en un worker thread; se marca la
+          bandera y el progress hook de yt-dlp aborta en el próximo callback.
+        - "cancelled": estaba sólo encolado en DB (sin thread); se pasa a
+          'cancelled' para que dispatch_loop no lo tome.
+        - "noop": no existe o ya está en un estado terminal.
+        """
+        job = self.jobs.get(job_id)
+        if job is not None and job.status in (
+            "queued", "starting", "downloading", "processing"
+        ):
+            self.cancel_requests.add(job_id)
+            return "cancelling"
+        row = self.db.get_job(job_id)
+        if row is not None and row["status"] == "queued":
+            self.db.update_job(job_id, status="cancelled")
+            return "cancelled"
+        return "noop"
 
     def _spawn_download(self, job_id: str, url: str, quality: str) -> None:
         """Crea Job en memoria + Event y lanza _run_download en thread.

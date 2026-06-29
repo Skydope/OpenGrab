@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     id          TEXT PRIMARY KEY,       -- uuid hex[:12]
     url         TEXT NOT NULL,          -- URL original
     quality     TEXT NOT NULL,          -- best | 1080p | 720p | 480p | audio
-    status      TEXT NOT NULL,          -- queued | starting | downloading | processing | done | error | interrupted
+    status      TEXT NOT NULL,          -- queued | starting | downloading | processing | done | error | interrupted | cancelled
     title       TEXT,                   -- título del video (safe_name aplicado)
     filename    TEXT,                   -- nombre de archivo final (Title.ext)
     filepath    TEXT,                   -- ruta absoluta al archivo

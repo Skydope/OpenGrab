@@ -34,7 +34,7 @@ from download import (
     _is_safe_url,
     _sanitize_url,
 )
-from models import AuthReq, BatchReq, ChannelReq, JobReq
+from models import AuthReq, BatchReq, ChannelReq, Job, JobReq
 from state import AppState
 
 log = logging.getLogger("opengrab")
@@ -277,6 +277,80 @@ async def api_batch_status(
     return JSONResponse(result)
 
 
+_ACTIVE_STATUSES = ("queued", "starting", "downloading", "processing")
+
+
+def _serialize_job(job: Job) -> dict[str, Any]:
+    """Vista de un job para el frontend. Mismo contrato de campos que el SSE
+    (status/percent/speed/eta/note/filename/filepath/error) más lo necesario
+    para renderizar una tarjeta y reconectar el stream (id/title/created/
+    finished/downloaded/total)."""
+    return {
+        "id": job.id,
+        "status": job.status,
+        "percent": job.percent,
+        "speed": job.speed,
+        "eta": job.eta,
+        "note": job.note,
+        "title": job.title,
+        "filename": job.filename,
+        "filepath": job.filepath,
+        "mime": job.mime,
+        "error": job.error,
+        "created": job.created,
+        "finished": job.finished,
+        "downloaded": job.downloaded,
+        "total": job.total,
+    }
+
+
+@router.get("/api/jobs")
+async def api_list_jobs(
+    recent: float = 900.0,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    """Lista los jobs vivos en memoria para rehidratar la UI al reabrir.
+
+    Incluye SIEMPRE los jobs en vuelo (queued/starting/downloading/processing)
+    y los terminados (done/error) cuyo ``finished`` cae dentro de ``recent``
+    segundos — esos se muestran como tarjeta 'listo/error'; los más viejos ya
+    viven en el Historial. ``recent=0`` devuelve solo los activos.
+
+    Orden: activos primero por antigüedad (created asc), luego terminados por
+    fin más reciente (finished desc)."""
+    now = time.time()
+    active: list[dict[str, Any]] = []
+    finished: list[dict[str, Any]] = []
+    for job in state.jobs.values():
+        if job.status in _ACTIVE_STATUSES:
+            active.append(_serialize_job(job))
+        elif recent > 0 and job.finished and (now - job.finished) <= recent:
+            finished.append(_serialize_job(job))
+    active.sort(key=lambda j: j["created"])
+    finished.sort(key=lambda j: j["finished"], reverse=True)
+    # Jobs encolados en DB que todavía no se spawnearon (esperando slot en
+    # dispatch_loop): no están en state.jobs pero deben verse para poder
+    # cancelarlos desde la cola.
+    in_mem = set(state.jobs.keys())
+    queued_db: list[dict[str, Any]] = []
+    for row in state.db.get_queued(limit=1000):
+        if row["id"] in in_mem:
+            continue
+        queued_db.append({
+            "id": row["id"], "status": "queued", "percent": 0.0,
+            "speed": "", "eta": "", "note": "", "title": row.get("title") or "",
+            "filename": "", "filepath": "", "mime": "", "error": "",
+            "created": row.get("created") or 0.0, "finished": 0.0,
+            "downloaded": 0, "total": 0,
+        })
+    queued_db.sort(key=lambda j: j["created"])
+    return JSONResponse(
+        active + queued_db + finished,
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
 @router.post("/api/jobs")
 @limiter.limit("5/minute")
 async def api_create_job(
@@ -312,6 +386,19 @@ async def api_create_job(
     return {"job_id": job_id}
 
 
+@router.post("/api/jobs/{job_id}/cancel")
+async def api_cancel_job(
+    job_id: str,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> dict[str, str]:
+    result = state.cancel_job(job_id)
+    if result == "noop":
+        raise HTTPException(404, "El job no existe o ya terminó.")
+    log.info("job %s: cancelación solicitada (%s)", job_id, result)
+    return {"status": result}
+
+
 async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str, None]:
     last = None
     while True:
@@ -339,7 +426,7 @@ async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str
         if snapshot != last:
             yield f"data: {_json.dumps(snapshot)}\n\n"
             last = snapshot
-        if job.status in ("done", "error"):
+        if job.status in ("done", "error", "cancelled"):
             break
 
 

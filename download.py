@@ -8,11 +8,13 @@ import shutil
 import socket
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import yt_dlp  # type: ignore[import-untyped]
+from yt_dlp.utils import DownloadCancelled  # type: ignore[import-untyped]
 
 from config import FORMATS, IS_DESKTOP, resource_path
 from state import AppState
@@ -273,6 +275,10 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
     def hook(d: dict[str, Any]) -> None:
         if evt is None:
             return
+        if job_id in state.cancel_requests:
+            # Abortar yt-dlp desde el hook: la excepción propaga fuera de
+            # extract_info y la captura el except DownloadCancelled de abajo.
+            raise DownloadCancelled("cancelado por el usuario")
         status = d.get("status")
         if status == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
@@ -334,6 +340,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
     try:
         job.status = "starting"
         job.percent = 0.0
+        if job_id in state.cancel_requests:
+            raise DownloadCancelled("cancelado antes de iniciar")
         log.info(
             "job %s: iniciando descarga (%s, %s)",
             job_id, quality, _sanitize_url(url),
@@ -384,6 +392,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
         mime = "audio/mpeg" if is_audio else "video/mp4"
         job.status = "done"
+        job.finished = time.time()
         job.percent = 100.0
         job.filepath = job.filepath or str(final)
         job.filename = (job.filepath and Path(job.filepath).name) or f"{title}.{ext}"
@@ -410,8 +419,23 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
             state.db.update_job(job_id, extractor=extractor_key, video_id=str(vid))
             state.db.record_download(extractor_key, str(vid), job_id)
         loop.call_soon_threadsafe(evt.set)
+    except DownloadCancelled:
+        job.status = "cancelled"
+        job.finished = time.time()
+        job.error = ""
+        # El archivo final nunca se movió afuera: el workdir es un husk con
+        # descargas parciales. Registrarlo para limpieza (sin keeper adentro).
+        state._schedule_tempdir_cleanup(str(workdir))
+        job.workdir = ""
+        try:
+            state.db.update_job(job_id, status="cancelled")
+        except Exception:
+            log.exception("job %s: no se pudo persistir estado 'cancelled'", job_id)
+        loop.call_soon_threadsafe(evt.set)
+        log.info("job %s: cancelado", job_id)
     except Exception as exc:
         job.status = "error"
+        job.finished = time.time()
         job.error = _friendly_error(exc)
         # Persistir el error en la DB. Si no lo hacemos, un job manual que falla
         # queda 'queued' en SQLite (insert_job lo dejo asi y complete_job nunca corre),
@@ -423,4 +447,5 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         loop.call_soon_threadsafe(evt.set)
         log.error("job %s: falló", job_id, exc_info=True)
     finally:
+        state.cancel_requests.discard(job_id)
         loop.call_soon_threadsafe(evt.set)

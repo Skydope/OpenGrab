@@ -195,7 +195,7 @@
     </div>
 
     <div class="mt-18" x-show="!batchJobIds.length">
-      <button @click="download" :disabled="!url.trim() || downloading || isPlaylist" class="btn-block">Descargar</button>
+      <button @click="download" :disabled="!url.trim() || isPlaylist" class="btn-block">Descargar</button>
     </div>
 
     <!-- Progreso de descarga -->
@@ -228,6 +228,43 @@
           </p>
         </template>
       </div>
+    </div>
+
+    <!-- Descargas de esta sesión (concurrentes + rehidratadas) -->
+    <div class="batch-progress" x-show="!batchJobIds.length && Object.keys(sessionJobs).length"
+         x-transition.duration.200ms style="margin-top:14px">
+      <div class="batch-header">
+        <span class="batch-title">Descargas de esta sesión</span>
+        <span class="batch-count" x-text="sessionActiveCount + ' activa(s) · ' + Object.keys(sessionJobs).length + ' total'"></span>
+      </div>
+      <template x-for="j in sortedSessionJobs" :key="j.id">
+        <div class="batch-row" :class="['status-' + (j.status || 'queued'), {focused: j.id === focusedJobId}]"
+             @click="focusJob(j.id)" style="cursor:pointer">
+          <span class="batch-status-icon" x-text="{
+            queued:'•', starting:'•', downloading:'↓', processing:'⚙', done:'✓', error:'✗', cancelled:'∅'
+          }[j.status] || '•'"></span>
+          <span class="batch-title-cell" x-text="j.title || j.filename || j.id" :title="j.filename || ''"></span>
+          <div class="batch-progress-bar" x-show="j.status === 'downloading' || j.status === 'processing'">
+            <i :style="'width:' + (j.percent || 0) + '%'"></i>
+          </div>
+          <span class="batch-pct" x-text="(j.percent || 0).toFixed(0) + '%'"
+                x-show="j.status === 'downloading' || j.status === 'processing'"></span>
+          <span class="batch-speed" x-text="j.speed || ''" x-show="j.speed && j.status === 'downloading'"></span>
+          <span class="batch-eta" x-text="j.eta || ''" x-show="j.eta && j.status === 'downloading'"></span>
+          <span class="batch-error" x-show="j.status === 'error'" x-text="j.error || 'Error'"></span>
+          <span class="batch-error" x-show="j.status === 'cancelled'">cancelado</span>
+          <span class="job-actions">
+            <a class="job-act" x-show="j.status === 'done'" :href="'/api/jobs/' + j.id + '/file'"
+               :download="j.filename || ''" @click.stop title="Guardar archivo">⬇</a>
+            <button class="job-act job-cancel"
+                    x-show="['queued','starting','downloading','processing'].includes(j.status)"
+                    @click.stop="cancelJob(j.id)" title="Cancelar descarga">✕</button>
+            <button class="job-act"
+                    x-show="j.status === 'done' || j.status === 'error' || j.status === 'cancelled'"
+                    @click.stop="dismissJob(j.id)" title="Descartar">✕</button>
+          </span>
+        </div>
+      </template>
     </div>
 
     <!-- Error -->
@@ -273,7 +310,7 @@
     <div x-show="historyOpen">
       <span x-show="!historyLoaded" class="muted-sm">Cargando…</span>
       <span x-show="historyLoaded && !history.length" class="empty-state">Sin descargas todavía.</span>
-      <template x-for="e in history" :key="e.job_id">
+      <template x-for="e in visibleHistory" :key="e.job_id">
         <div class="h-entry" :data-job-id="e.job_id">
           <img class="h-thumb" x-show="e.thumbnail" :src="e.thumbnail" alt="" loading="lazy">
           <span class="h-title" :title="e.title" x-text="e.title"></span>
@@ -458,7 +495,11 @@ document.addEventListener('alpine:init', () => {
 
     async init() {
       this.initTheme();
-      if (!this.AUTH_REQUIRED) { this.authenticated = true; this.authChecked = true; return; }
+      if (!this.AUTH_REQUIRED) {
+        this.authenticated = true; this.authChecked = true;
+        this.rehydrate();
+        return;
+      }
       try {
         const r = await fetch("/api/history?limit=1");
         this.authenticated = r.status !== 401;
@@ -466,6 +507,7 @@ document.addEventListener('alpine:init', () => {
         this.authenticated = false;
       }
       this.authChecked = true;
+      if (this.authenticated) this.rehydrate();
     },
 
     async doAuth() {
@@ -478,6 +520,7 @@ document.addEventListener('alpine:init', () => {
       });
       if (r.ok) {
         this.authenticated = true;
+        this.rehydrate();
       } else {
         this.errorMsg = "Token invalido.";
       }
@@ -529,6 +572,11 @@ document.addEventListener('alpine:init', () => {
     downloadFilename: "",
     successPath: "",
     lastJobId: "",
+
+    // ── Sesión: descargas concurrentes (tarjetas) ──
+    sessionJobs: {},     // {id: {id,status,percent,speed,eta,note,title,filename,filepath,error,created,finished,lines}}
+    focusedJobId: "",    // job cuyo detalle se ve en la terminal
+    _streams: {},        // {id: EventSource} para no duplicar conexiones
 
     // ── Error ─────────────────────────────────
     errorMsg: "",
@@ -864,13 +912,190 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    // ── Sesión: descargas concurrentes ────────
+    // Jobs vivos ordenados: activos primero (por created asc), luego
+    // terminados (por finished desc). Alimenta la lista de tarjetas.
+    get sortedSessionJobs() {
+      const active = [], done = [];
+      const ACT = ["queued", "starting", "downloading", "processing"];
+      for (const j of Object.values(this.sessionJobs)) {
+        (ACT.includes(j.status) ? active : done).push(j);
+      }
+      active.sort((a, b) => (a.created || 0) - (b.created || 0));
+      done.sort((a, b) => (b.finished || 0) - (a.finished || 0));
+      return [...active, ...done];
+    },
+    get sessionActiveCount() {
+      const ACT = ["queued", "starting", "downloading", "processing"];
+      return Object.values(this.sessionJobs).filter(j => ACT.includes(j.status)).length;
+    },
+    // Historial sin los jobs que ahora se muestran como tarjeta (evita duplicar:
+    // recién terminado = tarjeta; al descartarlo reaparece acá reactivamente).
+    get visibleHistory() {
+      return this.history.filter(e => !(e.job_id in this.sessionJobs));
+    },
+
+    // Inserta/actualiza un job en el mapa preservando sus líneas de log.
+    upsertJob(snap) {
+      const prev = this.sessionJobs[snap.id] || { lines: [] };
+      this.sessionJobs[snap.id] = { ...prev, ...snap, lines: prev.lines };
+    },
+
+    // Rehidrata el estado desde el server (al cargar / reabrir desde el tray).
+    async rehydrate() {
+      let jobs;
+      try {
+        const r = await fetch("/api/jobs", { credentials: "include" });
+        if (!r.ok) return;
+        jobs = await r.json();
+      } catch (e) { return; }
+
+      const ACT = ["queued", "starting", "downloading", "processing"];
+      for (const j of jobs) {
+        this.upsertJob({
+          id: j.id, status: j.status, percent: j.percent || 0,
+          speed: j.speed || "", eta: j.eta || "", note: j.note || "",
+          title: j.title || "", filename: j.filename || "",
+          filepath: j.filepath || "", error: j.error || "",
+          created: j.created || 0, finished: j.finished || 0,
+        });
+        if (ACT.includes(j.status)) this.attachStream(j.id, false);
+      }
+      // Enfocar el activo más reciente para que la terminal muestre algo.
+      const actives = this.sortedSessionJobs.filter(j => ACT.includes(j.status));
+      if (actives.length && !this.focusedJobId) {
+        this.focusJob(actives[actives.length - 1].id);
+      }
+    },
+
+    // Abre (o reusa) el SSE de un job. Alimenta su tarjeta siempre; si está
+    // en foco, espeja a la terminal escalar (preserva la UI actual).
+    attachStream(jobId, focus = true) {
+      if (focus) this.focusJob(jobId);
+      if (this._streams[jobId]) return;  // ya conectado
+
+      const ev = new EventSource("/api/jobs/" + jobId + "/events");
+      this._streams[jobId] = ev;
+      let lastStatus = (this.sessionJobs[jobId] || {}).status || "";
+      let retries = 0;
+
+      ev.onmessage = (m) => {
+        const s = JSON.parse(m.data);
+        this.upsertJob({ id: jobId, ...s });
+        const focused = this.focusedJobId === jobId;
+
+        if (s.status !== lastStatus) {
+          lastStatus = s.status;
+          if (s.status === "downloading") this.jobLine(jobId, "›", "descargando streams…");
+          if (s.status === "processing")  this.jobLine(jobId, "›", s.note || "procesando…");
+        }
+        if (focused) this.mirrorToTerminal(jobId);
+
+        if (s.status === "done") {
+          this.jobLine(jobId, "✓", "listo → " + (s.filename || ""), "ok");
+          if (focused) this.mirrorToTerminal(jobId);
+          if (this.historyLoaded) this.loadHistory();
+          this.closeStream(jobId);
+        }
+        if (s.status === "error") {
+          this.jobLine(jobId, "✗", "error: " + (s.error || "desconocido"), "err");
+          if (focused) this.mirrorToTerminal(jobId);
+          this.closeStream(jobId);
+        }
+        if (s.status === "cancelled") {
+          this.jobLine(jobId, "✕", "cancelado", "err");
+          if (focused) this.mirrorToTerminal(jobId);
+          this.closeStream(jobId);
+        }
+      };
+      ev.onerror = () => {
+        if (retries < 5 && ev.readyState === EventSource.CONNECTING) { retries++; return; }
+        this.closeStream(jobId);
+      };
+    },
+
+    closeStream(jobId) {
+      const ev = this._streams[jobId];
+      if (ev) { ev.close(); delete this._streams[jobId]; }
+    },
+
+    jobLine(jobId, pfx, text, cls = "") {
+      const j = this.sessionJobs[jobId];
+      if (!j) return;
+      j.lines = [...(j.lines || []), { pfx, text, cls }];
+      if (this.focusedJobId === jobId) this.terminal = j.lines;
+    },
+
+    // Pasa un job a foco: la terminal escalar refleja su estado y su log.
+    focusJob(jobId) {
+      const j = this.sessionJobs[jobId];
+      if (!j) return;
+      this.focusedJobId = jobId;
+      this.terminal = j.lines || [];
+      this.mirrorToTerminal(jobId);
+    },
+
+    // Espeja el job en foco a los escalares que usa la terminal (sin tocar
+    // el markup existente).
+    mirrorToTerminal(jobId) {
+      const j = this.sessionJobs[jobId];
+      if (!j || this.focusedJobId !== jobId) return;
+      const active = ["queued", "starting", "downloading", "processing"].includes(j.status);
+      this.downloading = active;
+      this.progress = j.percent || 0;
+      this.dlSpeed = j.status === "downloading" ? (j.speed || "") : "";
+      this.dlEta   = j.status === "downloading" ? (j.eta || "")   : "";
+      this.progressDone = j.status === "done";
+      if (j.status === "done") {
+        this.progress = 100;
+        this.downloadUrl = "/api/jobs/" + jobId + "/file";
+        this.downloadFilename = j.filename || "";
+        this.successPath = j.filepath || j.filename || "";
+        this.lastJobId = jobId;
+        this.errorMsg = ""; this.canRetry = false;
+      } else if (j.status === "error") {
+        this.errorMsg = j.error || "Falló la descarga.";
+        this.canRetry = true;
+        this.downloadUrl = ""; this.successPath = "";
+      } else {
+        this.downloadUrl = ""; this.successPath = "";
+        this.errorMsg = ""; this.canRetry = false;
+      }
+    },
+
+    async cancelJob(jobId) {
+      try {
+        const r = await fetch("/api/jobs/" + jobId + "/cancel", { method: "POST" });
+        if (!r.ok) return;
+        const d = await r.json();
+        // "cancelled": estaba sólo en cola (sin thread ni SSE) -> actualizar acá.
+        // "cancelling": corriendo -> el SSE entregará el estado 'cancelled'.
+        if (d.status === "cancelled" && this.sessionJobs[jobId]) {
+          this.sessionJobs[jobId].status = "cancelled";
+          this.sessionJobs[jobId].finished = Date.now() / 1000;
+          this.closeStream(jobId);
+          if (this.focusedJobId === jobId) this.mirrorToTerminal(jobId);
+        }
+      } catch (e) { /* noop */ }
+    },
+
+    dismissJob(jobId) {
+      this.closeStream(jobId);
+      delete this.sessionJobs[jobId];
+      if (this.focusedJobId === jobId) {
+        this.focusedJobId = "";
+        this.terminal = []; this.downloading = false; this.progress = 0;
+        this.progressDone = false; this.downloadUrl = ""; this.successPath = "";
+        this.lastJobId = ""; this.errorMsg = ""; this.canRetry = false;
+      }
+    },
+
     async download() {
       if (!this.url.trim()) return;
-      this.resetUI();
-      this.downloading = true;
-      this.addLine("$", "yt-dlp -f " + this.quality + " " + this.url.trim());
+      // Reset solo de la vista enfocada (no toca otras tarjetas en curso).
+      this.resetFocusView();
 
-      let jobId;
+      let jobId, title = this.title !== "—" ? this.title : this.url.trim();
       try {
         const r = await fetch("/api/jobs", {
           method: "POST",
@@ -886,58 +1111,15 @@ document.addEventListener('alpine:init', () => {
         return;
       }
 
-      const ev = new EventSource("/api/jobs/" + jobId + "/events");
-      let lastStatus = "";
-
-      ev.onmessage = (m) => {
-        const s = JSON.parse(m.data);
-        this.progress = s.percent != null ? s.percent : this.progress;
-
-        if (s.status !== lastStatus) {
-          lastStatus = s.status;
-          if (s.status === "downloading") this.addLine("›", "descargando streams…");
-          if (s.status === "processing") this.addLine("›", s.note || "procesando…");
-        }
-
-        if (s.status === "downloading") {
-          this.dlSpeed = s.speed || "";
-          this.dlEta = s.eta || "";
-        } else {
-          this.dlSpeed = "";
-          this.dlEta = "";
-        }
-
-        if (s.status === "done") {
-          this.progress = 100;
-          this.progressDone = true;
-          this.addLine("✓", "listo → " + s.filename, "ok");
-          this.downloadUrl = "/api/jobs/" + jobId + "/file";
-          this.downloadFilename = s.filename || "";
-          this.successPath = s.filepath || s.filename || "";
-          this.lastJobId = jobId;
-          this.downloading = false;
-          if (this.historyLoaded) this.loadHistory();
-          ev.close();
-        }
-        if (s.status === "error") {
-          this.addLine("✗", "error: " + (s.error || "desconocido"), "err");
-          this.errorMsg = s.error || "Fallo la descarga.";
-          this.canRetry = true;
-          this.downloading = false;
-          ev.close();
-        }
-      };
-
-      let retries = 0;
-      ev.onerror = () => {
-        if (retries < 5 && ev.readyState === EventSource.CONNECTING) {
-          retries++;
-          return;
-        }
-        this.addLine("✗", "conexion de eventos cerrada", "err");
-        this.downloading = false;
-        ev.close();
-      };
+      // Alta inmediata de la tarjeta; queda enfocada en la terminal.
+      this.upsertJob({
+        id: jobId, status: "queued", percent: 0, speed: "", eta: "",
+        note: "", title, filename: "", filepath: "", error: "",
+        created: Date.now() / 1000, finished: 0,
+      });
+      this.focusJob(jobId);
+      this.jobLine(jobId, "$", "yt-dlp -f " + this.quality + " " + this.url.trim());
+      this.attachStream(jobId, true);
     },
 
     async waitJob(jobId, title) {
@@ -977,7 +1159,10 @@ document.addEventListener('alpine:init', () => {
       this.terminal = [...this.terminal, { pfx, text, cls }];
     },
 
-    resetUI() {
+    // Resetea SOLO la vista del job en foco (escalares de la terminal),
+    // sin tocar las tarjetas de otras descargas en curso.
+    resetFocusView() {
+      this.focusedJobId = "";
       this.terminal = [];
       this.dlSpeed = "";
       this.dlEta = "";
@@ -990,6 +1175,10 @@ document.addEventListener('alpine:init', () => {
       this.lastJobId = "";
       this.errorMsg = "";
       this.canRetry = false;
+    },
+
+    resetUI() {
+      this.resetFocusView();
       this.isPlaylist = false;
       this.playlistAvailable = false;
       this.playlistVideos = [];
