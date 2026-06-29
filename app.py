@@ -129,6 +129,28 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(_SecurityHeadersMiddleware)
 
 
+class _LanguageMiddleware(BaseHTTPMiddleware):
+    """Resuelve el idioma del request: cookie > Accept-Language > default 'es'.
+
+    El frontend persiste la preferencia en la cookie ``opengrab_lang``.
+    Para desktop mode (pywebview), el tray lee el setting ``lang`` del ini.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
+        from i18n import set_lang, detect_lang
+
+        cookie_lang = request.cookies.get("opengrab_lang", "").strip()
+        if cookie_lang in ("es", "en"):
+            set_lang(cookie_lang)
+        else:
+            accept = request.headers.get("accept-language", "")
+            set_lang(detect_lang(accept))
+        return cast(Response, await call_next(request))
+
+
+app.add_middleware(_LanguageMiddleware)
+
+
 class _RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
         t0 = time.monotonic()
@@ -154,9 +176,11 @@ app.add_middleware(_RequestLoggingMiddleware)
 
 
 def _rate_limit_handler(_req: Request, _exc: Exception) -> JSONResponse:
+    from i18n import t
+
     return JSONResponse(
         status_code=429,
-        content={"detail": "Demasiadas solicitudes. Espera un momento."},
+        content={"detail": t("error.rate_limit")},
     )
 
 

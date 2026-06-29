@@ -36,6 +36,7 @@ from download import (
 )
 from models import AuthReq, BatchReq, ChannelReq, Job, JobReq
 from state import AppState
+from i18n import t
 
 log = logging.getLogger("opengrab")
 
@@ -72,7 +73,7 @@ def require_auth(request: Request) -> None:
     if secrets.compare_digest(request.cookies.get("opengrab_token", ""), TOKEN):
         return
     raise HTTPException(
-        401, "Token requerido. Usa Authorization: Bearer <token> o ?token=..."
+        401, t("error.token_required")
     )
 
 
@@ -96,7 +97,7 @@ async def api_auth(request: Request, req: AuthReq, response: Response) -> dict[s
     if not TOKEN:
         return {"ok": True}
     if req.token != TOKEN:
-        raise HTTPException(401, "Token invalido.")
+        raise HTTPException(401, t("error.token_invalid"))
     scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
     response.set_cookie(
         key="opengrab_token",
@@ -126,11 +127,11 @@ async def api_info(
     url = url.strip()
     safe, reason = _is_safe_url(url)
     if not safe:
-        raise HTTPException(400, reason)
+        raise HTTPException(400, t(reason))
     try:
         info = await asyncio.to_thread(_fetch_info, url)
     except Exception as exc:
-        raise HTTPException(502, f"No se pudo leer el video: {exc}")
+        raise HTTPException(502, t("error.info_failed", exc=exc))
 
     dur = info.get("duration") or 0
     raw_formats: list[dict[str, Any]] = info.get("formats") or []
@@ -175,11 +176,11 @@ async def api_playlist(
     url = url.strip()
     safe, reason = _is_safe_url(url)
     if not safe:
-        raise HTTPException(400, reason)
+        raise HTTPException(400, t(reason))
     try:
         info = await asyncio.to_thread(_fetch_playlist, url)
     except Exception as exc:
-        raise HTTPException(502, f"No se pudo leer la playlist: {exc}")
+        raise HTTPException(502, t("error.playlist_failed", exc=exc))
     return JSONResponse(info)
 
 
@@ -193,7 +194,7 @@ async def api_batch_download(
 ) -> dict[str, Any]:
     # Validate quality
     if req.quality not in FORMATS:
-        raise HTTPException(400, "Calidad invalida.")
+        raise HTTPException(400, t("error.quality_invalid"))
     # Validate each URL
     skipped = []
     valid_urls = []
@@ -362,21 +363,20 @@ async def api_create_job(
     url = req.url.strip()
     safe, reason = _is_safe_url(url)
     if not safe:
-        raise HTTPException(400, reason)
+        raise HTTPException(400, t(reason))
     if req.quality not in FORMATS:
-        raise HTTPException(400, "Calidad invalida.")
+        raise HTTPException(400, t("error.quality_invalid"))
     max_jobs = state.resolve("max_jobs", 2, int)[0]
     if state.count_active_jobs() >= max_jobs:
         raise HTTPException(
             429,
-            f"Limite de {max_jobs} descarga(s) simultanea(s). Espera que termine una.",
+            t("error.max_jobs", max_jobs=max_jobs),
         )
     max_total_mb = state.resolve("max_total_mb", 0, int)[0]
     if max_total_mb and state.current_usage_bytes() >= max_total_mb * 1024 * 1024:
         raise HTTPException(
             507,
-            f"Almacenamiento lleno (limite {max_total_mb} MB). "
-            "Borra descargas anteriores antes de seguir.",
+            t("error.storage_full", max_total_mb=max_total_mb),
         )
 
     job_id = uuid.uuid4().hex[:12]
@@ -394,7 +394,7 @@ async def api_cancel_job(
 ) -> dict[str, str]:
     result = state.cancel_job(job_id)
     if result == "noop":
-        raise HTTPException(404, "El job no existe o ya terminó.")
+        raise HTTPException(404, t("error.job_not_found"))
     log.info("job %s: cancelación solicitada (%s)", job_id, result)
     return {"status": result}
 
@@ -437,7 +437,7 @@ async def api_job_events(
     state: AppState = Depends(get_state),
 ) -> StreamingResponse:
     if job_id not in state.jobs:
-        raise HTTPException(404, "Job no encontrado.")
+        raise HTTPException(404, t("error.job_not_found_short"))
     return StreamingResponse(
         _job_events_stream(state, job_id),
         media_type="text/event-stream",
@@ -465,20 +465,20 @@ async def api_job_file(
 ) -> StreamingResponse:
     job = state.jobs.get(job_id)
     if job is None:
-        raise HTTPException(404, "Job no encontrado.")
+        raise HTTPException(404, t("error.job_not_found_short"))
     if job.status != "done":
-        raise HTTPException(409, "El archivo todavia no esta listo.")
+        raise HTTPException(409, t("error.file_not_ready"))
     path = job.filepath
     if not path:
-        raise HTTPException(410, "El archivo ya no esta disponible.")
+        raise HTTPException(410, t("error.file_gone"))
     resolved = Path(path).resolve()
     allowed = [state.out_dir.resolve()]
     if IS_DESKTOP:
         allowed.append(state.resolve_library_dir())
     if not any(resolved.is_relative_to(root) for root in allowed):
-        raise HTTPException(403, "Acceso denegado.")
+        raise HTTPException(403, t("error.access_denied"))
     if not Path(path).exists():
-        raise HTTPException(410, "El archivo ya no esta disponible.")
+        raise HTTPException(410, t("error.file_gone"))
     log.info("job %s: sirviendo archivo -> %s", job_id, job.filename)
 
     file_path = Path(path)
@@ -517,7 +517,7 @@ async def api_history(
         )
     except Exception as exc:
         log.exception("api_history: error al leer historial")
-        raise HTTPException(500, f"Error al leer historial: {exc}")
+        raise HTTPException(500, t("error.history_read_failed", exc=exc))
 
 
 @router.post("/api/jobs/{job_id}/open-folder")
@@ -527,10 +527,10 @@ async def api_open_folder(
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
     if not IS_DESKTOP:
-        raise HTTPException(409, "open-folder solo esta disponible en modo desktop.")
+        raise HTTPException(409, t("error.folder_desktop_only"))
     job = state.jobs.get(job_id)
     if job is None or not job.filepath:
-        raise HTTPException(404, "Job no encontrado o sin archivo.")
+        raise HTTPException(404, t("error.job_not_found_short"))
     folder = str(Path(job.filepath).parent)
     if sys.platform == "win32":
         os.startfile(folder)
@@ -568,21 +568,21 @@ async def api_move_job_file(
     try:
         body = await request.json()
     except Exception:
-        raise HTTPException(400, "JSON invalido.")
+        raise HTTPException(400, t("error.json_invalid"))
     dest = body.get("dest", "") if isinstance(body, dict) else ""
     if not isinstance(dest, str) or not dest.strip():
-        raise HTTPException(400, "Falta el campo 'dest'.")
+        raise HTTPException(400, t("error.missing_field", field="dest"))
     try:
         target = state.move_job_file(job_id, Path(dest.strip()))
     except ValueError:
-        raise HTTPException(409, "El archivo todavia no esta listo.")
+        raise HTTPException(409, t("error.file_not_ready"))
     except FileNotFoundError:
-        raise HTTPException(410, "El archivo ya no esta disponible.")
+        raise HTTPException(410, t("error.file_gone"))
     except NotADirectoryError:
-        raise HTTPException(400, "El destino no es un directorio.")
+        raise HTTPException(400, t("error.dest_not_dir"))
     except OSError as exc:
         log.warning("api_move_job_file: falló move job %s -> %s: %s", job_id, dest, exc)
-        raise HTTPException(500, "No se pudo mover el archivo.")
+        raise HTTPException(500, t("error.move_failed"))
     return JSONResponse({"ok": True, "filepath": str(target)})
 
 
@@ -594,7 +594,7 @@ async def api_delete_history_entry(
 ) -> JSONResponse:
     result = state.delete_history_entry(job_id)
     if result is None:
-        raise HTTPException(404, "Entrada no encontrada.")
+        raise HTTPException(404, t("error.history_entry_not_found"))
     filepath, workdir = result
     if filepath or workdir:
         task = asyncio.create_task(
@@ -674,17 +674,165 @@ async def api_engine_update(
 # --------------------------------------------------------------------------- #
 # Settings catalog + API
 # --------------------------------------------------------------------------- #
-# (key → (type, scope, default)). scope: "runtime" | "desktop".
-_SETTING_CATALOG: dict[str, tuple[str, str, Any]] = {
-    "max_jobs":       ("int",    "runtime", 2),
-    "max_total_mb":   ("int",    "runtime", 0),
-    "max_size_mb":    ("int",    "runtime", 0),
-    "history_max":    ("int",    "runtime", 500),
-    "quality_default":("string", "desktop", "best"),
-    "theme":          ("string", "desktop", "auto"),
-    "library_dir":    ("string", "desktop", ""),
-    "name_template":  ("string", "desktop", "{title}"),
+# Metadata completa por setting:
+#   key → (type, scope, default, description, placeholder, options, tokens, validation)
+_FULL_CATALOG: dict[str, tuple[str, str, Any, str, str, Any, Any, Any]] = {
+    "max_jobs": (
+        "int", "runtime", 2,
+        "Descargas simultáneas",
+        "2",
+        None, None,
+        {"min": 1, "max": 20},
+    ),
+    "max_total_mb": (
+        "int", "runtime", 0,
+        "Almacenamiento máximo (MB, 0 = sin límite)",
+        "0",
+        None, None,
+        {"min": 0},
+    ),
+    "max_size_mb": (
+        "int", "runtime", 0,
+        "Tamaño máximo por archivo (MB, 0 = sin límite)",
+        "0",
+        None, None,
+        {"min": 0},
+    ),
+    "history_max": (
+        "int", "runtime", 500,
+        "Entradas máximas en el historial",
+        "500",
+        None, None,
+        {"min": 10, "max": 10000},
+    ),
+    "quality_default": (
+        "string", "runtime", "best",
+        "Calidad por defecto para nuevas descargas",
+        "best",
+        [
+            {"value": "best", "label": "best mp4"},
+            {"value": "1080p", "label": "1080p"},
+            {"value": "720p", "label": "720p"},
+            {"value": "480p", "label": "480p"},
+            {"value": "audio", "label": "solo audio · mp3"},
+        ],
+        None, None,
+    ),
+    "theme": (
+        "string", "runtime", "auto",
+        "Tema de la interfaz",
+        "auto",
+        [
+            {"value": "dark", "label": "Oscuro"},
+            {"value": "light", "label": "Claro"},
+            {"value": "auto", "label": "Automático"},
+        ],
+        None, None,
+    ),
+    "lang": (
+        "string", "runtime", "auto",
+        "Idioma de la interfaz",
+        "auto",
+        [
+            {"value": "auto", "label": "Automático"},
+            {"value": "es", "label": "Español"},
+            {"value": "en", "label": "English"},
+        ],
+        None, None,
+    ),
+    "notifications_enabled": (
+        "bool", "runtime", False,
+        "Notificaciones del navegador (watch mode)",
+        "",
+        None, None, None,
+    ),
+    "library_dir": (
+        "string", "desktop", "",
+        "Directorio donde se guardan las descargas",
+        "C:\\Users\\...\\Downloads\\OpenGrab",
+        None, None, None,
+    ),
+    "name_template": (
+        "string", "desktop", "{title}",
+        "Plantilla para el nombre del archivo descargado",
+        "{title}",
+        None,
+        ["{title}", "{channel}", "{upload_year}", "{upload_date}",
+         "{extractor}", "{video_id}", "{resolution}"],
+        None,
+    ),
 }
+
+# Catálogo simple para compatibilidad con resolve() y lookup rápido.
+_SETTING_CATALOG: dict[str, tuple[str, str, Any]] = {
+    k: (t, s, d) for k, (t, s, d, *_rest) in _FULL_CATALOG.items()
+}
+
+# Validadores server-side por setting.
+_SETTING_VALIDATORS: dict[str, dict[str, Any]] = {
+    key: (val[7] or {}) for key, val in _FULL_CATALOG.items() if val[7]
+}
+# Settings de tipo select (para validación de valores permitidos).
+_SETTING_OPTIONS: dict[str, set[str]] = {
+    key: {o["value"] for o in val[5]}
+    for key, val in _FULL_CATALOG.items() if val[5]
+}
+
+_VALID_QUALITIES = frozenset(FORMATS)
+_VALID_THEMES = frozenset({"dark", "light", "auto"})
+_VALID_LANGS = frozenset({"es", "en", "auto"})
+
+_NAME_TEMPLATE_TOKENS = frozenset({
+    "{title}", "{channel}", "{upload_year}", "{upload_date}",
+    "{extractor}", "{video_id}", "{resolution}",
+})
+
+
+def _validate_setting_value(key: str, raw_value: str) -> str | None:
+    """Valida un valor para un setting. Devuelve mensaje de error o None."""
+    info = _FULL_CATALOG.get(key)
+    if info is None:
+        return t("error.settings_unknown_key")
+    vtype = info[0]
+
+    if vtype == "int":
+        try:
+            ival = int(raw_value)
+        except (ValueError, TypeError):
+            return t("error.settings_int_invalid")
+        rules = _SETTING_VALIDATORS.get(key, {})
+        if "min" in rules and ival < rules["min"]:
+            return t("error.settings_min_value", min=rules["min"])
+        if "max" in rules and ival > rules["max"]:
+            return t("error.settings_max_value", max=rules["max"])
+        return None
+
+    if vtype == "bool":
+        if str(raw_value).strip().lower() in ("true", "1", "yes"):
+            return None
+        if str(raw_value).strip().lower() in ("false", "0", "no", ""):
+            return None
+        return t("error.settings_bool_invalid")
+
+    if vtype == "string":
+        sval = str(raw_value)
+        # Validar opciones si es un select
+        if key in _SETTING_OPTIONS and sval not in _SETTING_OPTIONS[key]:
+            return t("error.settings_value_not_allowed", options=sorted(_SETTING_OPTIONS[key]))
+        # Validar tokens para name_template
+        if key == "name_template":
+            tokens = re.findall(r"\{[a-z_]+\}", sval)
+            invalid = [t for t in tokens if t not in _NAME_TEMPLATE_TOKENS]
+            if invalid:
+                return t("error.settings_tokens_invalid", tokens=", ".join(invalid))
+        # Validar library_dir: warn si no existe, pero no bloquear
+        if key == "library_dir" and sval:
+            p = Path(sval)
+            if p.exists() and not p.is_dir():
+                return t("error.settings_path_not_dir")
+        return None
+
+    return None
 
 
 def _write_setting_to_ini(key: str, value: str) -> bool:
@@ -723,8 +871,9 @@ async def api_get_settings(
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
     """Devuelve el catálogo completo de settings con valor actual y metadata."""
-    catalog = []
-    for key, (vtype, scope, default) in _SETTING_CATALOG.items():
+    catalog: list[dict[str, Any]] = []
+    for key, (vtype, scope, default, desc, placeholder,
+              options, tokens, validation) in _FULL_CATALOG.items():
         val, origin = state.resolve(key, default, str)
         # Cast para la respuesta
         if vtype == "int":
@@ -732,54 +881,86 @@ async def api_get_settings(
                 val = int(val)
             except (ValueError, TypeError):
                 val = default
+        elif vtype == "bool":
+            if isinstance(val, str):
+                val = val.strip().lower() in ("true", "1", "yes")
+            elif isinstance(val, bool):
+                pass
+            else:
+                val = bool(val)
+
         locked = origin in ("env", "ini")
-        catalog.append({
+        entry: dict[str, Any] = {
             "key": key,
+            "type": vtype,
+            "scope": scope,
             "value": val,
+            "default": default,
             "origin": origin,
             "locked": locked,
-            "scope": scope,
-        })
+            "restart_required": False,
+            "description": desc,
+            "placeholder": placeholder,
+        }
+        if options:
+            entry["options"] = options
+        if tokens:
+            entry["tokens"] = tokens
+        if validation:
+            entry["validation"] = validation
+        catalog.append(entry)
     return JSONResponse(catalog)
 
 
+@router.get("/api/settings/defaults")
+async def api_get_settings_defaults(
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    """Devuelve los defaults que el frontend necesita para inicializar chips."""
+    quality, _origin_q = state.resolve("quality_default", "best", str)
+    theme, _origin_t = state.resolve("theme", "auto", str)
+    lang, _origin_l = state.resolve("lang", "auto", str)
+    notif, _origin_n = state.resolve("notifications_enabled", False, str)
+    notif_enabled = (isinstance(notif, bool) and notif) or str(notif).strip().lower() in ("true", "1", "yes")
+    return JSONResponse({
+        "quality_default": quality,
+        "theme": theme,
+        "lang": lang,
+        "notifications_enabled": notif_enabled,
+    })
+
+
 @router.put("/api/settings")
+@router.patch("/api/settings")
 @limiter.limit("10/minute")
-async def api_put_settings(
+async def api_update_settings(
     request: Request,
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    """Actualiza settings. Keys locked (origin=env/ini) retornan 400."""
+    """Actualiza settings (PUT o PATCH). Keys locked (origin=env/ini) retornan 400."""
     try:
         body = await request.json()
     except Exception:
-        raise HTTPException(400, "JSON invalido.")
+        raise HTTPException(400, t("error.json_invalid"))
     if not isinstance(body, dict):
-        raise HTTPException(400, "Body debe ser un dict {key: value}.")
+        raise HTTPException(400, t("error.settings_body_dict"))
     errors: dict[str, str] = {}
     updated: list[str] = []
     for key, raw_value in body.items():
-        if key not in _SETTING_CATALOG:
-            errors[key] = "key desconocida"
+        if key not in _FULL_CATALOG:
+            errors[key] = t("error.settings_unknown_key")
             continue
-        vtype, _scope, default = _SETTING_CATALOG[key]
-        # Check locked
-        _, origin = state.resolve(key, default, str)
+        _, origin = state.resolve(key, _FULL_CATALOG[key][2], str)
         if origin in ("env", "ini"):
-            errors[key] = f"locked (origin={origin})"
+            errors[key] = t("error.settings_locked", origin=origin)
             continue
-        # Cast and validate
-        casted: Any = None
-        try:
-            if vtype == "int":
-                casted = int(raw_value)
-                str_value = str(casted)
-            else:
-                str_value = str(raw_value)
-                casted = str_value
-        except (ValueError, TypeError):
-            errors[key] = f"tipo invalido: esperado {vtype}"
+        # Validacion server-side
+        str_value = str(raw_value)
+        err = _validate_setting_value(key, str_value)
+        if err:
+            errors[key] = err
             continue
         # Persist: table + ini
         state.db.set_setting(key, str_value)
@@ -789,8 +970,15 @@ async def api_put_settings(
         set_ini(key, str_value)
         updated.append(key)
     if errors and not updated:
-        raise HTTPException(400, {"error": "todas las keys fallaron", "details": errors})
-    return JSONResponse({"ok": True, "updated": updated, "errors": errors if errors else None})
+        raise HTTPException(
+            400,
+            {"error": t("error.settings_all_failed"), "details": errors},
+        )
+    return JSONResponse({
+        "ok": True,
+        "updated": updated,
+        "errors": errors if errors else None,
+    })
 
 
 # --------------------------------------------------------------------------- #
@@ -827,7 +1015,7 @@ async def api_update_channel(
 ) -> JSONResponse:
     ch = state.db.get_channel(channel_id)
     if ch is None:
-        raise HTTPException(404, "Canal no encontrado.")
+        raise HTTPException(404, t("error.canal_not_found"))
     body = await request.json()
     updatable = {"title", "quality", "interval_minutes", "enabled"}
     fields = {k: v for k, v in body.items() if k in updatable}
@@ -845,7 +1033,7 @@ async def api_delete_channel(
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
     if state.db.get_channel(channel_id) is None:
-        raise HTTPException(404, "Canal no encontrado.")
+        raise HTTPException(404, t("error.canal_not_found"))
     state.db.delete_channel(channel_id)
     return JSONResponse({"ok": True})
 
@@ -860,7 +1048,7 @@ async def api_check_channel(
 ) -> JSONResponse:
     ch = state.db.get_channel(channel_id)
     if ch is None:
-        raise HTTPException(404, "Canal no encontrado.")
+        raise HTTPException(404, t("error.canal_not_found"))
     videos = await asyncio.to_thread(_check_channel_watch, state, ch)
     state.db.touch_channel(channel_id)
     return JSONResponse({"ok": True, "new_videos": len(videos), "videos": videos})

@@ -21,7 +21,7 @@
     <span class="logo">Open<b>Grab</b></span>
     <span class="tag"><span class="dot"></span>self-hosted · yt-dlp</span>
     <span class="header-actions">
-      <button class="theme-btn" @click="toggleTheme" :aria-label="theme==='dark'?'Tema claro':'Tema oscuro'">
+      <button class="theme-btn" @click="toggleTheme" :aria-label="theme==='dark'?t('theme.light'):t('theme.dark')">
         <svg x-show="theme==='dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="4"></circle>
@@ -32,7 +32,7 @@
           <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
         </svg>
       </button>
-      <button class="theme-btn" @click="openSettings()" title="Configuración" aria-label="Configuración">
+      <button class="theme-btn" @click="openSettings()" :title="t('ui.settings_title')" :aria-label="t('ui.settings_title')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3"></circle>
@@ -44,13 +44,12 @@
 
   <!-- Auth card -->
   <div class="card auth-card" x-show="authChecked && !authenticated" x-cloak>
-    <label class="fld" for="token">Token de acceso</label>
+    <label class="fld" for="token" x-text="t('ui.token_label')"></label>
     <div class="row">
-      <input id="token" type="password"               placeholder="Ingresa el token configurado en OPENGRAB_TOKEN"
+      <input id="token" type="password" :placeholder="t('ui.token_placeholder')"
              autocomplete="off" spellcheck="false" x-model="token"
              @keydown.enter="doAuth">
-      <button class="go" @click="doAuth" :disabled="authLoading">
-        <span x-show="!authLoading">Conectar</span>
+      <button class="go" @click="doAuth" :disabled="authLoading" x-text="t('ui.connect')">
         <span x-show="authLoading">…</span>
       </button>
     </div>
@@ -58,28 +57,27 @@
 
   <!-- Main card -->
   <div class="card" x-show="authChecked && authenticated" x-cloak>
-    <label class="fld" for="url">URL del video</label>
+    <label class="fld" for="url" x-text="t('ui.url_label')"></label>
     <div class="row url-row" @drop.prevent="onDrop($event)" @dragover.prevent>
       <span class="url-input-wrap">
         <input id="url" type="text" placeholder="https://…"
                autocomplete="off" spellcheck="false" x-model="url"
                @keydown.enter="inspect" @paste="onPaste($event)">
         <button class="url-clear" x-show="url" @click="clearUrl()"
-                aria-label="Limpiar URL" title="Limpiar" x-cloak>✕</button>
+                :aria-label="t('ui.clear_url')" :title="t('ui.clear')" x-cloak>✕</button>
       </span>
       <button class="copy-btn" @click="copyCommand" :disabled="!url"
               :class="{copied: cmdCopied}" x-text="cmdCopied ? '✓' : '📋'"
-              title="Copiar comando yt-dlp"></button>
+              :title="t('ui.copy_command')"></button>
       <button class="paste-btn" @click="pasteFromClipboard"
-              title="Pegar desde el portapapeles y analizar">Pegar</button>
+              :title="t('ui.paste_hint')" x-text="t('ui.paste')"></button>
       <button class="btn-secondary analyze-btn" @click="inspect" :disabled="inspecting">
-        <span x-show="!inspecting">Analizar</span>
+        <span x-show="!inspecting" x-text="t('ui.analyze')"></span>
         <span x-show="inspecting">…</span>
       </button>
     </div>
-    <p class="url-hint muted-sm" x-show="!meta && !inspecting && !isPlaylist && !downloading && !terminal.length" x-cloak>
-      Pegá un link de YouTube, Instagram, TikTok, SoundCloud y ~1800 sitios más.
-    </p>
+    <p class="url-hint muted-sm" x-show="!meta && !inspecting && !isPlaylist && !downloading && !terminal.length" x-cloak
+       x-text="t('ui.url_placeholder')"></p>
 
     <!-- Video metadata -->
     <div class="meta" x-show="inspecting && !meta" x-transition.duration.200ms>
@@ -94,10 +92,10 @@
       <div class="info">
         <p class="t" x-text="title">—</p>
         <p class="s" x-text="subtitle">—</p>
-        <span class="site-badge" x-show="site" x-text="'Sitio detectado: ' + site"></span>
+        <span class="site-badge" x-show="site" x-text="t('ui.site_detected') + ' ' + site"></span>
         <button class="btn-sm mt-14" x-show="playlistAvailable"
                 @click="isPlaylist = true; loadPlaylist()">
-          Ver playlist ▸
+          <span x-text="t('ui.view_playlist')"></span>
         </button>
       </div>
     </div>
@@ -110,7 +108,7 @@
               @click="quality = q.id"
               @keydown.enter.prevent="quality = q.id"
               @keydown.space.prevent="quality = q.id"
-              x-text="q.label"></span>
+              x-text="t('quality.'+q.id)"></span>
       </template>
     </div>
 
@@ -121,9 +119,9 @@
            @click="showFormats = !showFormats"
            @keydown.enter.prevent="showFormats = !showFormats"
            @keydown.space.prevent="showFormats = !showFormats"
-           x-text="showFormats ? 'formatos ▾' : 'formatos ▸ (' + formats.length + ')'"></div>
+           x-text="showFormats ? t('ui.formats_expanded') : t('ui.formats_collapsed') + ' (' + formats.length + ')'"></div>
       <table class="fmt-table" x-show="showFormats" x-transition.duration.200ms>
-        <thead><tr><th>Calidad</th><th>Codec</th><th class="fsize">Tamaño</th></tr></thead>
+        <thead><tr><th x-text="t('shortcuts.calidad')"></th><th x-text="t('shortcuts.codec')"></th><th class="fsize" x-text="t('shortcuts.size')"></th></tr></thead>
         <tbody>
           <template x-for="f in formats" :key="f.format_id">
             <tr role="button" tabindex="0"
@@ -143,10 +141,10 @@
     <!-- Playlist panel -->
     <div x-show="isPlaylist" x-transition.duration.200ms class="mt-14">
       <div class="pl-header">
-        <span class="pl-count" x-text="selectedCount() + ' de ' + playlistCount + ' seleccionados'"></span>
-        <button class="btn-sm" @click="toggleAllPlaylist(true)">Todos</button>
-        <button class="btn-sm" @click="toggleAllPlaylist(false)">Ninguno</button>
-        <button class="btn-sm" @click="downloadPlaylist" :disabled="selectedCount() === 0">Descargar playlist</button>
+        <span class="pl-count" x-text="selectedCount() + '/' + playlistCount + ' ' + t('ui.seleccionados')"></span>
+        <button class="btn-sm" @click="toggleAllPlaylist(true)" x-text="t('ui.all')"></button>
+        <button class="btn-sm" @click="toggleAllPlaylist(false)" x-text="t('ui.none')"></button>
+        <button class="btn-sm" @click="downloadPlaylist" :disabled="selectedCount() === 0" x-text="t('ui.download_playlist')"></button>
       </div>
       <div class="pl-list">
         <template x-for="(v, i) in playlistVideos" :key="v.url || v.video_id || i">
@@ -167,7 +165,7 @@
     <!-- Batch progress display -->
     <div x-show="batchJobIds.length > 0" x-transition.duration.200ms class="batch-progress">
       <div class="batch-header">
-        <span class="batch-title">Descarga en lote</span>
+        <span class="batch-title" x-text="t('ui.batch_section')"></span>
         <span class="batch-count" x-text="Object.keys(batchJobs).length + ' / ' + batchJobIds.length"></span>
       </div>
       <div class="batch-grid">
@@ -189,14 +187,14 @@
             <span class="batch-pct" x-text="(batchJobs[jobId]?.percent || 0).toFixed(0) + '%'" x-show="batchJobs[jobId]?.status === 'downloading' || batchJobs[jobId]?.status === 'processing'"></span>
             <span class="batch-speed" x-text="batchJobs[jobId]?.speed || ''" x-show="batchJobs[jobId]?.speed"></span>
             <span class="batch-eta" x-text="batchJobs[jobId]?.eta || ''" x-show="batchJobs[jobId]?.eta"></span>
-            <span class="batch-error" x-show="batchJobs[jobId]?.status === 'error'" x-text="batchJobs[jobId]?.error || 'Error'"></span>
+            <span class="batch-error" x-show="batchJobs[jobId]?.status === 'error'" x-text="batchJobs[jobId]?.error || t('ui.error')"></span>
           </div>
         </template>
       </div>
     </div>
 
     <div class="mt-18" x-show="!batchJobIds.length">
-      <button @click="download" :disabled="!url.trim() || isPlaylist" class="btn-block">Descargar</button>
+      <button @click="isPlaylist ? downloadPlaylist() : download()" :disabled="isPlaylist ? selectedCount() === 0 : !url.trim()" class="btn-block" x-text="t('ui.download')"></button>
     </div>
 
     <!-- Progreso de descarga -->
@@ -205,7 +203,7 @@
         <span class="tl"><i></i><i></i><i></i></span>
         <span>yt-dlp</span>
         <button class="term-toggle" @click="showTerminal = !showTerminal"
-                x-text="showTerminal ? 'ocultar log' : 'ver log'"></button>
+                x-text="showTerminal ? t('ui.hide_log') : t('ui.show_log')"></button>
       </div>
       <!-- Lectura limpia: % grande + velocidad · ETA -->
       <div class="dl-stats">
@@ -235,7 +233,7 @@
     <div class="batch-progress" x-show="!batchJobIds.length && Object.keys(sessionJobs).length"
          x-transition.duration.200ms style="margin-top:14px">
       <div class="batch-header">
-        <span class="batch-title">Descargas de esta sesión</span>
+        <span class="batch-title" x-text="t('ui.sessions_active')"></span>
         <span class="batch-count" x-text="sessionActiveCount + ' activa(s) · ' + Object.keys(sessionJobs).length + ' total'"></span>
       </div>
       <template x-for="j in sortedSessionJobs" :key="j.id">
@@ -252,17 +250,17 @@
                 x-show="j.status === 'downloading' || j.status === 'processing'"></span>
           <span class="batch-speed" x-text="j.speed || ''" x-show="j.speed && j.status === 'downloading'"></span>
           <span class="batch-eta" x-text="j.eta || ''" x-show="j.eta && j.status === 'downloading'"></span>
-          <span class="batch-error" x-show="j.status === 'error'" x-text="j.error || 'Error'"></span>
+          <span class="batch-error" x-show="j.status === 'error'" x-text="j.error || t('ui.error')"></span>
           <span class="batch-error" x-show="j.status === 'cancelled'">cancelado</span>
           <span class="job-actions">
             <a class="job-act" x-show="j.status === 'done'" :href="'/api/jobs/' + j.id + '/file'"
-               :download="j.filename || ''" @click.stop title="Guardar archivo">⬇</a>
+               :download="j.filename || ''" @click.stop :title="t('ui.save_file')">⬇</a>
             <button class="job-act job-cancel"
                     x-show="['queued','starting','downloading','processing'].includes(j.status)"
-                    @click.stop="cancelJob(j.id)" title="Cancelar descarga">✕</button>
+                     @click.stop="cancelJob(j.id)" :title="t('ui.cancel')">✕</button>
             <button class="job-act"
                     x-show="j.status === 'done' || j.status === 'error' || j.status === 'cancelled'"
-                    @click.stop="dismissJob(j.id)" title="Descartar">✕</button>
+                     @click.stop="dismissJob(j.id)" :title="t('ui.discard')">✕</button>
           </span>
         </div>
       </template>
@@ -272,20 +270,20 @@
     <div class="err-box" :class="{show: errorMsg}">
       <span x-text="errorMsg"></span>
       <button class="btn-sm retry-btn" x-show="canRetry" @click="download"
-              aria-label="Reintentar la descarga">Reintentar</button>
+              :aria-label="t('ui.retry_download')" x-text="t('ui.retry')"></button>
     </div>
 
     <!-- Download / Save link -->
     <div class="actions" :class="{show: downloadUrl}">
       <template x-if="isDesktop">
         <button class="dl" @click="saveTo(lastJobId)" :disabled="savingTo"
-                aria-label="Guardar el archivo en una carpeta">
-          <span x-show="!savingTo">Guardar en…</span>
-          <span x-show="savingTo" x-cloak>Guardando…</span>
+                :aria-label="t('ui.save_to_folder')">
+          <span x-show="!savingTo" x-text="t('ui.save_as')"></span>
+          <span x-show="savingTo" x-cloak x-text="t('ui.saving')"></span>
         </button>
       </template>
       <template x-if="!isDesktop">
-        <a class="dl" :href="downloadUrl" :download="downloadFilename">Guardar archivo</a>
+        <a class="dl" :href="downloadUrl" :download="downloadFilename" x-text="t('ui.save_file')"></a>
       </template>
     </div>
 
@@ -293,20 +291,18 @@
     <div class="success-box" :class="{show: successPath}" x-transition.duration.200ms>
       <span class="success-icon">✓</span>
       <span class="success-path" x-text="successPath"></span>
-      <button class="folder-btn" @click="openFolder(lastJobId)" :disabled="!lastJobId">
-        Abrir carpeta
-      </button>
+      <button class="folder-btn" @click="openFolder(lastJobId)" :disabled="!lastJobId"
+              x-text="t('ui.open_folder')"></button>
     </div>
   </div>
 
   <footer>
-    Corre en tu red. El servidor descarga con <code>yt-dlp</code> + <code>ffmpeg</code> y te entrega el <code>.mp4</code>.
-    Usalo solo con contenido propio, con licencia que lo permita, o bajo fair use.
+    <span x-text="t('ui.footer')"></span>
   </footer>
 
   <!-- Tools section divider -->
   <div class="section-divider" x-show="authenticated" x-cloak>
-    <span class="section-label">Herramientas</span>
+    <span class="section-label" x-text="t('ui.tools')"></span>
   </div>
 
   <!-- History -->
@@ -316,24 +312,24 @@
          @click="toggleHistory"
          @keydown.enter.prevent="toggleHistory"
          @keydown.space.prevent="toggleHistory"
-                   x-text="historyOpen ? 'historial ▾' : 'historial ▸' + historyBadge()"></div>
+                    x-text="historyOpen ? t('ui.history_expanded') : t('ui.history_collapsed') + historyBadge()"></div>
     <div x-show="historyOpen">
-      <span x-show="!historyLoaded" class="muted-sm">Cargando…</span>
-      <span x-show="historyLoaded && !history.length" class="empty-state">Sin descargas todavía.</span>
+      <span x-show="!historyLoaded" class="muted-sm" x-text="t('ui.loading')"></span>
+      <span x-show="historyLoaded && !history.length" class="empty-state" x-text="t('ui.no_downloads')"></span>
       <template x-for="e in visibleHistory" :key="e.job_id">
         <div class="h-entry" :data-job-id="e.job_id">
           <img class="h-thumb" x-show="e.thumbnail" :src="e.thumbnail" alt="" loading="lazy">
           <span class="h-title" :title="e.title" x-text="e.title"></span>
           <span class="h-meta" x-text="e.quality"></span>
           <span class="h-size" x-show="e.size" x-text="(e.size/1048576).toFixed(1) + ' MB'"></span>
-          <button class="h-del" @click.stop="deleteHistoryEntry(e.job_id)" title="Borrar">×</button>
+          <button class="h-del" @click.stop="deleteHistoryEntry(e.job_id)" :title="t('ui.delete')">×</button>
         </div>
       </template>
       <div class="engine-row">
-        <button class="btn-sm" @click="clearAllHistory" x-show="history.length">Limpiar historial</button>
+        <button class="btn-sm" @click="clearAllHistory" x-show="history.length" x-text="t('ui.clear_history')"></button>
         <button class="btn-sm" @click="updateEngine" :disabled="engineUpdating"
-                aria-label="Actualizar el motor de descarga yt-dlp"
-                x-text="engineUpdating ? 'Actualizando…' : 'Actualizar motor (yt-dlp)'"></button>
+                :aria-label="t('ui.update_engine_aria')"
+                x-text="engineUpdating ? t('ui.updating_engine') : t('ui.update_engine')"></button>
         <span class="muted-sm" x-show="engineMsg" x-text="engineMsg" aria-live="polite"></span>
       </div>
     </div>
@@ -346,23 +342,23 @@
          @click="toggleStorage"
          @keydown.enter.prevent="toggleStorage"
          @keydown.space.prevent="toggleStorage"
-                   x-text="storageOpen ? 'almacenamiento ▾' : 'almacenamiento ▸' + storageBadge()"></div>
+                    x-text="storageOpen ? t('ui.storage_expanded') : t('ui.storage_collapsed') + storageBadge()"></div>
     <div x-show="storageOpen">
-      <span x-show="!storageLoaded" class="muted-sm">Cargando…</span>
+      <span x-show="!storageLoaded" class="muted-sm" x-text="t('ui.loading')"></span>
       <div x-show="storageLoaded">
         <div class="storage-summary">
-          <span x-text="'Total usado: ' + formatMB(storage.total_usage_bytes)"></span>
+          <span x-text="t('ui.total_used') + ' ' + formatMB(storage.total_usage_bytes)"></span>
           <span class="muted-sm" x-show="storage.db_size_bytes" x-text="' · DB: ' + formatMB(storage.db_size_bytes)"></span>
         </div>
         <div x-show="storageLoaded && !storage.workdirs.length && !(storage.loose_files && storage.loose_files.length)"
-             class="empty-state"><span class="success-icon">✓</span> Almacenamiento limpio</div>
+             class="empty-state"><span class="success-icon">✓</span> <span x-text="t('ui.clean_storage')"></span></div>
         <template x-if="storage.workdirs.length">
           <div>
-            <div class="muted-sm" style="margin:8px 0 4px">Workdirs temporales:</div>
+            <div class="muted-sm" style="margin:8px 0 4px" x-text="t('ui.temp_workdirs')"></div>
             <template x-for="w in storage.workdirs" :key="w.name">
               <div class="wd-entry">
                 <span class="wd-name" x-text="w.name"></span>
-                <span class="wd-badge" x-show="w.active">activo</span>
+                <span class="wd-badge" x-show="w.active" x-text="t('ui.active_badge')"></span>
                 <span class="h-meta" x-text="formatMB(w.size_bytes)"></span>
                 <span class="h-meta" x-text="formatAge(w.age_hours)"></span>
               </div>
@@ -371,7 +367,7 @@
         </template>
         <template x-if="storage.loose_files && storage.loose_files.length">
           <div>
-            <div class="muted-sm" style="margin:8px 0 4px">Archivos sueltos:</div>
+            <div class="muted-sm" style="margin:8px 0 4px" x-text="t('ui.loose_files')"></div>
             <template x-for="f in storage.loose_files" :key="f.name">
               <div class="wd-entry">
                 <span class="wd-name" x-text="f.name"></span>
@@ -382,8 +378,8 @@
           </div>
         </template>
         <div class="engine-row">
-          <button class="btn-sm" @click="cleanupStorage">Limpiar workdirs viejos (&gt;24h)</button>
-          <button class="btn-sm" @click="cleanupAllStorage">Borrar todos los workdirs</button>
+          <button class="btn-sm" @click="cleanupStorage" x-text="t('ui.cleanup_old')"></button>
+          <button class="btn-sm" @click="cleanupAllStorage" x-text="t('ui.cleanup_all')"></button>
           <span class="muted-sm" x-show="storageMsg" x-text="storageMsg" aria-live="polite"></span>
         </div>
       </div>
@@ -397,9 +393,9 @@
          @click="toggleChannels"
          @keydown.enter.prevent="toggleChannels"
          @keydown.space.prevent="toggleChannels"
-                   x-text="channelsOpen ? 'canales ▾' : 'canales ▸' + channelsBadge()"></div>
+                    x-text="channelsOpen ? t('ui.channels_expanded') : t('ui.channels_collapsed') + channelsBadge()"></div>
     <div x-show="channelsOpen">
-      <span x-show="!channelsLoaded" class="muted-sm">Cargando…</span>
+      <span x-show="!channelsLoaded" class="muted-sm" x-text="t('ui.loading')"></span>
 
       <template x-for="ch in channels" :key="ch.id">
         <div class="ch-entry">
@@ -407,17 +403,17 @@
           <span class="ch-meta" x-text="ch.quality"></span>
           <span class="ch-meta" x-text="'cada ' + ch.interval_minutes + 'm'"></span>
           <button class="btn-sm" @click="checkChannel(ch.id)" :disabled="ch._checking"
-                  x-text="ch._checking ? '…' : 'Chequear'"></button>
+                  x-text="ch._checking ? '…' : t('ui.check_channel')"></button>
           <button class="btn-sm" :class="{toggled: ch.enabled}"
                   @click="toggleChannel(ch)"
-                  x-text="ch.enabled ? 'ON' : 'OFF'"></button>
+                  x-text="ch.enabled ? t('ui.on') : t('ui.off')"></button>
           <button class="btn-sm" @click="deleteChannel(ch.id)">✕</button>
         </div>
       </template>
-      <span x-show="channelsLoaded && !channels.length" class="empty-state">Sin canales. Agregá uno para monitorear.</span>
+      <span x-show="channelsLoaded && !channels.length" class="empty-state" x-text="t('ui.no_channels')"></span>
 
       <div class="ch-add">
-        <input type="text" placeholder="URL del canal o playlist" x-model="newChannelUrl"
+        <input type="text" :placeholder="t('ui.url_channel_placeholder')" x-model="newChannelUrl"
                @keydown.enter="addChannel">
         <select x-model="newChannelQuality">
           <option value="best">best</option>
@@ -427,8 +423,8 @@
           <option value="audio">audio</option>
         </select>
         <input type="number" x-model="newChannelInterval" min="5" max="1440" style="width:60px"
-               title="Intervalo en minutos">
-        <button class="btn-sm" @click="addChannel" :disabled="!newChannelUrl">Agregar</button>
+               :title="t('ui.interval_minutes_title')">
+        <button class="btn-sm" @click="addChannel" :disabled="!newChannelUrl" x-text="t('ui.add_channel')"></button>
       </div>
     </div>
   </div>
@@ -440,32 +436,91 @@
          @click="toggleSettings"
          @keydown.enter.prevent="toggleSettings"
          @keydown.space.prevent="toggleSettings"
-         x-text="settingsOpen ? 'configuración ▾' : 'configuración ▸'"></div>
+          x-text="settingsOpen ? t('ui.settings_expanded') : t('ui.settings_collapsed')"></div>
     <div x-show="settingsOpen">
-      <div x-show="!settings.length" class="muted-sm">Cargando…</div>
+      <div x-show="settingsLoading" aria-busy="true">
+        <div class="skeleton" style="height:40px;margin:8px 0;"></div>
+        <div class="skeleton" style="height:40px;margin:8px 0;"></div>
+        <div class="skeleton" style="height:40px;margin:8px 0;"></div>
+      </div>
       <template x-for="s in settings" :key="s.key">
-        <div class="set-row" x-show="isDesktop || s.scope !== 'desktop'">
-          <span class="set-label" x-text="s.key"></span>
-          <span class="set-origin muted-sm" x-show="s.locked"
-                :title="'Origen: ' + s.origin + ' (no editable)'">🔒</span>
-          <input x-show="!s.locked && s.scope !== 'desktop'" type="text"
-                 x-model="s._editValue" @keydown.enter="saveSetting(s)">
-          <span x-show="s.locked || s.scope === 'desktop'" class="set-value muted-sm"
-                x-text="s.value"></span>
-          <button x-show="!s.locked && s.scope !== 'desktop'" class="btn-sm"
-                  @click="saveSetting(s)">Guardar</button>
+        <div class="set-row"
+             x-show="s.scope !== 'desktop' || isDesktop"
+             :class="{ 'set-err-row': s._error }">
+          <!-- Label + description -->
+          <div class="set-info">
+            <span class="set-label" x-text="s.description || s.key"></span>
+            <span x-show="s.tokens && s.key==='name_template'" class="set-help">
+              Tokens: <template x-for="t in s.tokens"><code class="set-token" x-text="t"></code></template>
+            </span>
+          </div>
+
+          <!-- Lock badge -->
+          <span class="set-origin" x-show="s.locked"
+                :title="'Origen: ' + s.origin + ' (no editable)'">&#128274;</span>
+
+          <!-- Editable: select -->
+          <select x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.options"
+                  x-model="s._editValue"
+                  @change="saveSetting(s)">
+            <template x-for="opt in s.options" :key="opt.value">
+              <option :value="opt.value" x-text="opt.label"
+                      :selected="String(s._editValue) === String(opt.value)"></option>
+            </template>
+          </select>
+
+          <!-- Editable: number -->
+          <input x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='int'"
+                 type="number"
+                 x-model="s._editValue"
+                 :min="s.validation?.min"
+                 :max="s.validation?.max"
+                 @keydown.enter="validateAndSave(s)"
+                 @blur="validateAndSave(s)">
+
+          <!-- Editable: bool (checkbox toggle) -->
+          <label x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='bool'"
+                 class="set-toggle">
+            <input type="checkbox"
+                   :checked="s._editValue === true || s._editValue === 'true'"
+                   @change="s._editValue = $event.target.checked; saveSetting(s)">
+            <span class="set-toggle-label"
+                  x-text="(s._editValue === true || s._editValue === 'true') ? t('ui.on') : t('ui.off')"></span>
+          </label>
+
+          <!-- Editable: text -->
+          <input x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.type==='string' && !s.options"
+                 type="text"
+                 x-model="s._editValue"
+                 :placeholder="s.placeholder"
+                 @keydown.enter="validateAndSave(s)">
+
+          <!-- Read-only (locked or desktop-scope on web) -->
+          <span x-show="s.locked || (s.scope === 'desktop' && !isDesktop)"
+                class="set-value" x-text="s.value"></span>
+
+          <!-- Save button (only for text/number inputs; selects auto-save on change) -->
+          <button x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && !s.options"
+                  class="btn-sm" @click="validateAndSave(s)"
+                  :disabled="s._saving"
+                  x-text="s._saving ? t('ui.saving') : t('ui.save')"></button>
+
+          <!-- Saving spinner -->
+          <span x-show="s._saving" class="set-spin" :aria-label="t('ui.saving')"></span>
+
+          <!-- Error inline -->
+          <div x-show="s._error" class="set-err" x-text="s._error"></div>
         </div>
       </template>
-      <div class="set-note muted-sm" x-show="settings.length">
-        🔒 = origen env/ini, no editable desde la UI.
+      <div class="set-note muted-sm" x-show="settings.length && !settingsLoading" x-text="t('ui.settings_lock_note')">
       </div>
     </div>
   </div>
 
   <div class="toast" :class="{show: toast.show, success: toast.type === 'success'}">
     <span x-text="toast.message"></span>
-    <button @click="undoDelete" x-show="toast.type === 'pending'">Deshacer</button>
-    <button @click="acceptDeletes" x-show="toast.type === 'pending'">Aceptar</button>
+    <button @click="undoDelete" x-show="toast.type === 'pending'" x-text="t('ui.undo')"></button>
+    <button @click="acceptDeletes" x-show="toast.type === 'pending'" x-text="t('ui.accept')"></button>
     <button @click="dismissToast" x-show="toast.type === 'success'" class="toast-close">✕</button>
   </div>
 
@@ -503,11 +558,104 @@ document.addEventListener('alpine:init', () => {
       document.documentElement.setAttribute("data-theme", this.theme);
     },
 
+    // ── i18n ─────────────────────────────────
+    i18n: {},
+    lang: "es",
+
+    async loadI18n(lang) {
+      try {
+        const r = await fetch(`/static/i18n/${lang}.json`);
+        if (r.ok) {
+          this.i18n = await r.json();
+          this.lang = lang;
+        } else if (lang !== "en") {
+          await this.loadI18n("en");
+        }
+      } catch (e) {
+        if (lang !== "en") await this.loadI18n("en");
+      }
+      document.documentElement.lang = this.lang;
+      document.cookie = `opengrab_lang=${this.lang};path=/;SameSite=Lax`;
+    },
+    t(key, ...args) {
+      let text = this.i18n[key];
+      if (text === undefined) return key;
+      if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+        const obj = args[0];
+        for (const [k, v] of Object.entries(obj)) {
+          text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+        }
+      } else {
+        args.forEach((a, i) => {
+          text = text.replace(new RegExp(`\\{${i}\\}`, 'g'), String(a));
+        });
+      }
+      return text;
+    },
+    async reloadI18n(lang) {
+      await this.loadI18n(lang);
+      this.i18n = { ...this.i18n };  // trigger reactivity
+    },
+
+    // ── Watch Notifications ──────────────────
+    _notifPerm: "default",
+    _watchPollTimer: null,
+    _lastKnownVideoCount: 0,
+
+    async requestNotifPermission() {
+      if (!("Notification" in window)) return "unsupported";
+      if (Notification.permission === "granted") return "granted";
+      const perm = await Notification.requestPermission();
+      this._notifPerm = perm;
+      return perm;
+    },
+    notify(title, body) {
+      if (!("Notification" in window)) return;
+      if (Notification.permission !== "granted") return;
+      new Notification(title, {
+        body: body,
+        icon: "/static/icon-192.png",
+        tag: "opengrab-watch",
+      });
+    },
+    startWatchPoll() {
+      if (this._watchPollTimer) return;
+      this._watchPollTimer = setInterval(() => { this.pollWatch(); }, 60000);
+      this.pollWatch();  // primera consulta inmediata para inicializar el contador
+    },
+    stopWatchPoll() {
+      if (this._watchPollTimer) {
+        clearInterval(this._watchPollTimer);
+        this._watchPollTimer = null;
+      }
+    },
+    async pollWatch() {
+      try {
+        const r = await fetch("/api/channels");
+        if (!r.ok) return;
+        const channels = await r.json();
+        let totalChecked = 0;
+        for (const ch of channels) {
+          if (ch.last_checked) {
+            const ageSec = (Date.now() / 1000) - ch.last_checked;
+            if (ageSec < 120) totalChecked++;
+          }
+        }
+        if (this._lastKnownVideoCount > 0 && totalChecked > this._lastKnownVideoCount) {
+          const newVideos = totalChecked - this._lastKnownVideoCount;
+          this.notify("OpenGrab", this.t("ui.videos_found", {count: newVideos}));
+        }
+        this._lastKnownVideoCount = totalChecked;
+      } catch (e) { /* silencioso: el poller no debe romper nada */ }
+    },
+
     async init() {
       this.initTheme();
+      await this.loadI18n(navigator.language.startsWith('en') ? 'en' : 'es');
       if (!this.AUTH_REQUIRED) {
         this.authenticated = true; this.authChecked = true;
-        this.rehydrate();
+        await this.rehydrate();
+        await this.fetchDefaults();
         return;
       }
       try {
@@ -517,7 +665,10 @@ document.addEventListener('alpine:init', () => {
         this.authenticated = false;
       }
       this.authChecked = true;
-      if (this.authenticated) this.rehydrate();
+      if (this.authenticated) {
+        await this.rehydrate();
+        await this.fetchDefaults();
+      }
     },
 
     async doAuth() {
@@ -530,9 +681,10 @@ document.addEventListener('alpine:init', () => {
       });
       if (r.ok) {
         this.authenticated = true;
-        this.rehydrate();
+        await this.rehydrate();
+        await this.fetchDefaults();
       } else {
-        this.errorMsg = "Token invalido.";
+        this.errorMsg = this.t('error.token_invalid');
       }
       this.authLoading = false;
     },
@@ -619,36 +771,146 @@ document.addEventListener('alpine:init', () => {
     // ── Settings ──────────────────────────────
     isDesktop: "__IS_DESKTOP__" === "true",
     settingsOpen: false,
+    settingsLoaded: false,
+    settingsLoading: false,
     settings: [],
 
     async openSettings() {
       this.settingsOpen = true;
-      if (!this.settings.length) {
+      if (!this.settingsLoaded) {
+        this.settingsLoading = true;
         const r = await fetch("/api/settings");
         if (r.ok) {
           const data = await r.json();
-          this.settings = data.map(s => ({ ...s, _editValue: s.value }));
+          this.settings = data.map(s => ({ ...s, _editValue: s.value, _error: null, _saving: false }));
+          this.settingsLoaded = true;
         }
+        this.settingsLoading = false;
       }
+    },
+    refreshSettings() {
+      this.settingsLoaded = false;
+      this.settings = [];
+      if (this.settingsOpen) this.openSettings();
+    },
+    async fetchDefaults() {
+      try {
+        const r = await fetch("/api/settings/defaults");
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.quality_default && this.quality === "best") {
+          this.quality = d.quality_default;
+        }
+        if (d.theme && d.theme !== "auto") {
+          const local = localStorage.getItem("opengrab-theme");
+          if (!local || local === "dark" || local === "light") {
+            this.theme = d.theme;
+            localStorage.setItem("opengrab-theme", d.theme);
+            this.applyTheme();
+          }
+        }
+        if (d.lang && d.lang !== "auto" && d.lang !== this.lang) {
+          await this.reloadI18n(d.lang);
+        }
+        if (d.notifications_enabled) {
+          const perm = await this.requestNotifPermission();
+          if (perm === "granted") this.startWatchPoll();
+        }
+      } catch (e) { /* no-op: defaults no bloquean el inicio */ }
     },
     toggleSettings() {
       if (this.settingsOpen) { this.settingsOpen = false; }
       else { this.openSettings(); }
     },
-    async saveSetting(s) {
+    validateAndSave(s) {
+      s._error = null;
       if (s.locked) return;
-      const r = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [s.key]: s._editValue }),
-      });
-      if (r.ok) {
+      const raw = s._editValue;
+      if (s.type === "int") {
+        const v = parseInt(String(raw), 10);
+        if (isNaN(v) || String(v) !== String(raw).trim()) {
+          s._error = this.t('ui.validate_int');
+          return;
+        }
+        if (s.validation) {
+          if (s.validation.min !== null && v < s.validation.min) {
+            s._error = this.t('ui.validate_min', {min: s.validation.min});
+            return;
+          }
+          if (s.validation.max !== null && v > s.validation.max) {
+            s._error = this.t('ui.validate_max', {max: s.validation.max});
+            return;
+          }
+        }
+        s._editValue = v;
+      }
+      if (s.type === "string" && !s.options && String(raw).trim() === "") {
+        s._error = this.t('ui.validate_empty');
+        return;
+      }
+      this.saveSetting(s);
+    },
+    async saveSetting(s) {
+      if (s.locked || s._error) return;
+      s._saving = true;
+      s._error = null;
+      try {
+        const body = JSON.stringify({ [s.key]: String(s._editValue) });
+        const r = await fetch("/api/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: body,
+        });
         const d = await r.json();
-        if (d.updated && d.updated.includes(s.key)) {
+        if (r.ok && d.updated && d.updated.includes(s.key)) {
           s.value = s._editValue;
           s.origin = "table";
+          s.locked = false;
+          this.showToast(this.t("ui.settings_saved", {setting_key: s.description || s.key}), "success");
+          // Side effects
+          if (s.key === "theme") {
+            localStorage.setItem("opengrab-theme", s._editValue);
+            this.theme = s._editValue;
+            this.applyTheme();
+          }
+          if (s.key === "quality_default") {
+            this.quality = s._editValue;
+          }
+          if (s.key === "lang") {
+            await this.reloadI18n(s._editValue);
+          }
+          if (s.key === "notifications_enabled") {
+            const enabled = s._editValue === true || s._editValue === "true";
+            if (enabled) {
+              const perm = await this.requestNotifPermission();
+              if (perm === "granted") {
+                this.startWatchPoll();
+              } else if (perm === "denied") {
+                s._error = this.t('ui.validate_notif_denied');
+              }
+            } else {
+              this.stopWatchPoll();
+            }
+          }
+        } else {
+          s._error = (d.errors && d.errors[s.key]) || d.detail || d.error || this.t('ui.error_save_setting');
         }
+      } catch (e) {
+        s._error = this.t('ui.error_connection');
+      } finally {
+        s._saving = false;
       }
+    },
+    showToast(msg, type) {
+      this.toast = { show: true, message: msg, type: type };
+      if (this._toastTimer) clearTimeout(this._toastTimer);
+      this._toastTimer = setTimeout(() => {
+        this.toast.show = false;
+      }, 3000);
+    },
+    dismissToast() {
+      this.toast.show = false;
+      if (this._toastTimer) clearTimeout(this._toastTimer);
     },
 
     // ── Batch Playlist Download ────────────────
@@ -668,7 +930,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     async inspect() {
-      if (!this.url.trim()) { this.errorMsg = "Pega una URL primero."; return; }
+      if (!this.url.trim()) { this.errorMsg = this.t('ui.error_url_first'); return; }
       this.resetUI();
       const kind = this.classifyUrl(this.url.trim());
 
@@ -685,7 +947,7 @@ document.addEventListener('alpine:init', () => {
       try {
         const r = await fetch("/api/info?url=" + encodeURIComponent(this.url.trim()));
         if (!r.ok) {
-          let msg = "Error al analizar.";
+          let msg = this.t('ui.error_analyze');
           try { msg = (await r.json()).detail || msg; } catch (e) {}
           throw new Error(msg);
         }
@@ -727,7 +989,7 @@ document.addEventListener('alpine:init', () => {
           this.inspect();
         }
       } catch (e) {
-        this.errorMsg = "No pude leer el portapapeles. Pegá la URL a mano y tocá Analizar.";
+        this.errorMsg = this.t('ui.error_clipboard');
       }
     },
     // Soltar una URL (o texto con link) sobre la tarjeta también analiza.
@@ -767,14 +1029,14 @@ document.addEventListener('alpine:init', () => {
       try {
         const r = await fetch("/api/playlist?url=" + encodeURIComponent(this.url.trim()));
         if (!r.ok) {
-          let msg = "Error al cargar playlist.";
+          let msg = this.t('ui.error_playlist_load');
           try { msg = (await r.json()).detail || msg; } catch (e) {}
           throw new Error(msg);
         }
         const data = await r.json();
         this.playlistVideos = (data.videos || []).map(v => ({
           ...v,
-          selected: !v.unavailable,
+          selected: false,
         }));
         this.playlistCount = data.count || 0;
       } catch (err) {
@@ -797,7 +1059,7 @@ document.addEventListener('alpine:init', () => {
 
     async downloadPlaylist() {
       const selected = this.playlistVideos.filter(v => v.selected && v.url);
-      if (!selected.length) { this.errorMsg = "Selecciona al menos un video."; return; }
+      if (!selected.length) { this.errorMsg = this.t('ui.select_at_least_one'); return; }
       this.resetUI();
       this.downloading = true;
       this.addLine("$", "playlist: " + selected.length + " videos");
@@ -813,18 +1075,18 @@ document.addEventListener('alpine:init', () => {
         });
 
         if (r.status === 429) {
-          this.errorMsg = "Demasiadas solicitudes. Espera un minuto.";
+          this.errorMsg = this.t('ui.error_rate_limit_short');
           this.downloading = false;
           return;
         }
         if (r.status === 507) {
-          this.errorMsg = "Almacenamiento lleno.";
+          this.errorMsg = this.t('ui.error_storage_full_short');
           this.downloading = false;
           return;
         }
         if (!r.ok) {
           const data = await r.json().catch(() => ({}));
-          this.errorMsg = data.detail || "No se pudo iniciar la descarga por lotes.";
+          this.errorMsg = data.detail || this.t('ui.error_batch_failed');
           this.downloading = false;
           return;
         }
@@ -841,7 +1103,7 @@ document.addEventListener('alpine:init', () => {
         this.pollBatchStatus();
 
       } catch (err) {
-        this.errorMsg = "Error de red. Revisa tu conexión y reintenta.";
+        this.errorMsg = this.t('ui.error_network_short');
         this.downloading = false;
       }
     },
@@ -885,7 +1147,7 @@ document.addEventListener('alpine:init', () => {
             const skipped = this.batchJobIds.filter(id => this.batchJobs[id]?.status === 'interrupted').length;
             this.addLine(
               fail === 0 ? "✓" : "✗",
-              `completado: ${ok} ok, ${fail} fallidos, ${skipped} omitidos`,
+              this.t('ui.batch_summary', {ok: ok, failed: fail, skipped: skipped}),
               fail === 0 ? "ok" : "err"
             );
             this.downloading = false;
@@ -896,7 +1158,7 @@ document.addEventListener('alpine:init', () => {
             if (ok > 0) {
               const firstDone = this.batchJobIds.find(id => this.batchJobs[id]?.status === 'done');
               if (firstDone) {
-                this.successPath = `Playlist: ${ok} ok${fail ? ', ' + fail + ' fallidos' : ''}${skipped ? ', ' + skipped + ' omitidos' : ''}`;
+                this.successPath = this.t('ui.playlist_success', {ok: ok, failed: fail, skipped: skipped});
                 this.lastJobId = firstDone;
               }
             }
@@ -909,16 +1171,16 @@ document.addEventListener('alpine:init', () => {
     async updateEngine() {
       if (this.engineUpdating) return;
       this.engineUpdating = true;
-      this.engineMsg = "Actualizando motor…";
+      this.engineMsg = this.t('ui.updating_engine');
       try {
         const r = await fetch("/api/engine/update", { method: "POST" });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.detail || "No se pudo actualizar.");
+        if (!r.ok) throw new Error(d.detail || this.t('ui.engine_update_failed_short'));
         this.engineMsg = d.updated
-          ? "Motor actualizado a yt-dlp " + d.version
-          : "Ya estabas en la última versión.";
+          ? this.t('ui.engine_updated', {version: d.version})
+          : this.t('ui.engine_latest');
       } catch (err) {
-        this.engineMsg = "Error: " + err.message;
+        this.engineMsg = this.t('ui.engine_update_error', {msg: err.message});
       } finally {
         this.engineUpdating = false;
       }
@@ -998,24 +1260,24 @@ document.addEventListener('alpine:init', () => {
 
         if (s.status !== lastStatus) {
           lastStatus = s.status;
-          if (s.status === "downloading") this.jobLine(jobId, "›", "descargando streams…");
-          if (s.status === "processing")  this.jobLine(jobId, "›", s.note || "procesando…");
+          if (s.status === "downloading") this.jobLine(jobId, "›", this.t('download.downloading_streams'));
+          if (s.status === "processing")  this.jobLine(jobId, "›", s.note || this.t('download.processing'));
         }
         if (focused) this.mirrorToTerminal(jobId);
 
         if (s.status === "done") {
-          this.jobLine(jobId, "✓", "listo → " + (s.filename || ""), "ok");
+          this.jobLine(jobId, "✓", this.t('download.done_to', {filename: s.filename || ""}), "ok");
           if (focused) this.mirrorToTerminal(jobId);
           if (this.historyLoaded) this.loadHistory();
           this.closeStream(jobId);
         }
         if (s.status === "error") {
-          this.jobLine(jobId, "✗", "error: " + (s.error || "desconocido"), "err");
+          this.jobLine(jobId, "✗", this.t('download.error_with_msg', {msg: s.error || this.t('ui.unknown')}), "err");
           if (focused) this.mirrorToTerminal(jobId);
           this.closeStream(jobId);
         }
         if (s.status === "cancelled") {
-          this.jobLine(jobId, "✕", "cancelado", "err");
+          this.jobLine(jobId, "✕", this.t('download.cancelled'), "err");
           if (focused) this.mirrorToTerminal(jobId);
           this.closeStream(jobId);
         }
@@ -1066,7 +1328,7 @@ document.addEventListener('alpine:init', () => {
         this.lastJobId = jobId;
         this.errorMsg = ""; this.canRetry = false;
       } else if (j.status === "error") {
-        this.errorMsg = j.error || "Falló la descarga.";
+        this.errorMsg = j.error || this.t('ui.error_download_failed');
         this.canRetry = true;
         this.downloadUrl = ""; this.successPath = "";
       } else {
@@ -1114,7 +1376,7 @@ document.addEventListener('alpine:init', () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: this.url.trim(), quality: this.quality }),
         });
-        if (!r.ok) throw new Error((await r.json()).detail || "No se pudo crear el job.");
+        if (!r.ok) throw new Error((await r.json()).detail || this.t('ui.error_create_job'));
         ({ job_id: jobId } = await r.json());
       } catch (err) {
         this.errorMsg = err.message;
@@ -1140,7 +1402,7 @@ document.addEventListener('alpine:init', () => {
         let lastLiveIdx = -1;
         let retries = 0;
         const timeout = setTimeout(() => {
-          this.addLine("✗", "timeout: " + title, "err");
+          this.addLine("✗", this.t('download.timeout_title', {title: title}), "err");
           ev.close(); resolve();
         }, 600000);
         ev.onmessage = (m) => {
@@ -1156,8 +1418,8 @@ document.addEventListener('alpine:init', () => {
               lastLiveIdx = idx;
             }
           }
-          if (s.status === "done") { clearTimeout(timeout); this.addLine("✓", "ok: " + title, "ok"); ev.close(); resolve(); }
-          if (s.status === "error") { clearTimeout(timeout); this.addLine("✗", "error: " + (s.error || "desconocido"), "err"); ev.close(); resolve(); }
+          if (s.status === "done") { clearTimeout(timeout); this.addLine("✓", this.t('download.ok_filename', {filename: title}), "ok"); ev.close(); resolve(); }
+          if (s.status === "error") { clearTimeout(timeout); this.addLine("✗", this.t('download.error_title', {title: s.error || this.t('ui.unknown')}), "err"); ev.close(); resolve(); }
         };
         ev.onerror = () => {
           if (retries < 3 && ev.readyState === EventSource.CONNECTING) { retries++; return; }
@@ -1230,7 +1492,7 @@ document.addEventListener('alpine:init', () => {
         catch (e) { dest = null; }
         if (!dest) return;  // usuario canceló
       } else {
-        dest = window.prompt("Carpeta de destino (ruta en el servidor):",
+        dest = window.prompt(this.t('ui.save_as'),
                              this.libraryDirDefault());
         if (!dest || !dest.trim()) return;
         dest = dest.trim();
@@ -1243,7 +1505,7 @@ document.addEventListener('alpine:init', () => {
           body: JSON.stringify({ dest }),
         });
         if (!r.ok) {
-          let msg = "No se pudo guardar el archivo.";
+          let msg = this.t('ui.error_save_file');
           try { const e = await r.json(); if (e.detail) msg = e.detail; } catch (_) {}
           this.errorMsg = msg;
           return;
@@ -1255,7 +1517,7 @@ document.addEventListener('alpine:init', () => {
         if (this.sessionJobs[jobId]) this.sessionJobs[jobId].filepath = d.filepath;
         this.errorMsg = "";
       } catch (e) {
-        this.errorMsg = "No se pudo guardar el archivo.";
+        this.errorMsg = this.t('ui.error_save_file');
       } finally {
         this.savingTo = false;
       }
@@ -1314,7 +1576,7 @@ document.addEventListener('alpine:init', () => {
       try {
         const r = await fetch("/api/history/" + jobId, { method: "DELETE" });
         if (!r.ok) {
-          let detail = "Error del servidor";
+          let detail = this.t('ui.error_server');
           try { detail = (await r.json()).detail || detail; } catch (_) {}
           throw new Error(detail);
         }
@@ -1323,14 +1585,14 @@ document.addEventListener('alpine:init', () => {
         if (Object.keys(this.pendingDeletes).length || this._clearAllPending) {
           this._updateToast();
         } else {
-          this.toast = { show: true, message: "Eliminado ✓", type: 'success' };
+          this.toast = { show: true, message: this.t('ui.deleted'), type: 'success' };
           setTimeout(() => { if (this.toast.type === 'success') this.dismissToast(); }, 3000);
         }
       } catch (e) {
         // El DELETE fallo: el archivo sigue intacto, restauramos el item.
         this.history.push(pending.entry);
         this.history.sort((a, b) => (b.completed || 0) - (a.completed || 0));
-        this.errorMsg = "Error al borrar entrada: " + e.message;
+        this.errorMsg = this.t('ui.error_delete_entry', {msg: e.message});
         delete this.pendingDeletes[jobId];
         this._updateToast();
       }
@@ -1354,9 +1616,9 @@ document.addEventListener('alpine:init', () => {
     _updateToast() {
       const n = Object.keys(this.pendingDeletes).length;
       if (this._clearAllPending) {
-        this.toast = { show: true, message: "Historial borrado", type: 'pending' };
+        this.toast = { show: true, message: this.t('ui.history_cleared'), type: 'pending' };
       } else if (n > 0) {
-        this.toast = { show: true, message: n + (n === 1 ? " borrado" : " borrados"), type: 'pending' };
+        this.toast = { show: true, message: this.t('ui.history_cleared_count', {count: n}), type: 'pending' };
       } else {
         this.toast = { show: false, message: "", type: null };
       }
@@ -1369,7 +1631,7 @@ document.addEventListener('alpine:init', () => {
       const hasClearAll = !!this._clearAllPending;
       Object.values(this.pendingDeletes).forEach(p => clearTimeout(p.timeoutId));
       if (this._clearAllPending) clearTimeout(this._clearAllPending.timeoutId);
-      this.toast = { show: true, message: "Eliminando...", type: 'pending' };
+      this.toast = { show: true, message: this.t('ui.deleting_history'), type: 'pending' };
       for (const jobId of ids) this._executeDelete(jobId);
       if (hasClearAll) this._executeClearAll();
     },
@@ -1396,16 +1658,16 @@ document.addEventListener('alpine:init', () => {
       try {
         const r = await fetch("/api/history", { method: "DELETE" });
         if (!r.ok) {
-          let detail = "Error del servidor";
+          let detail = this.t('ui.error_server');
           try { detail = (await r.json()).detail || detail; } catch (_) {}
           throw new Error(detail);
         }
         this._clearAllPending = null;
-        this.toast = { show: true, message: "Historial eliminado ✓", type: 'success' };
+        this.toast = { show: true, message: this.t('ui.history_deleted'), type: 'success' };
         setTimeout(() => { if (this.toast.type === 'success') this.dismissToast(); }, 3000);
       } catch (e) {
         this.history = pending.history;
-        this.errorMsg = "Error al limpiar historial: " + e.message;
+        this.errorMsg = this.t('ui.error_clear_history', {msg: e.message});
         this._clearAllPending = null;
         this._updateToast();
       }
@@ -1439,27 +1701,27 @@ document.addEventListener('alpine:init', () => {
       this.storageLoaded = true;
     },
     async cleanupStorage() {
-      if (!confirm("¿Limpiar workdirs con más de 24 horas? Los archivos se eliminarán de forma segura.")) return;
-      this.storageMsg = "Limpiando…";
+      if (!confirm(this.t('ui.confirm_cleanup'))) return;
+      this.storageMsg = this.t('ui.cleaning');
       try {
         const r = await fetch("/api/storage/cleanup", { method: "POST" });
         const d = await r.json();
-        this.storageMsg = d.cleaned + " workdirs limpiados · " + this.formatMB(d.freed_bytes) + " liberados";
+        this.storageMsg = this.t('ui.cleanup_success', {count: d.cleaned, bytes: this.formatMB(d.freed_bytes)});
         await this.loadStorage();
       } catch (e) {
-        this.storageMsg = "Error al limpiar.";
+        this.storageMsg = this.t('ui.error_cleanup');
       }
     },
     async cleanupAllStorage() {
-      if (!confirm("¿Borrar TODOS los workdirs? Los archivos de descargas activas también se eliminarán.")) return;
-      this.storageMsg = "Borrando…";
+      if (!confirm(this.t('ui.confirm_cleanup_all'))) return;
+      this.storageMsg = this.t('ui.deleting');
       try {
         const r = await fetch("/api/storage/cleanup-all", { method: "POST" });
         const d = await r.json();
-        this.storageMsg = d.cleaned + " workdirs borrados · " + this.formatMB(d.freed_bytes) + " liberados";
+        this.storageMsg = this.t('ui.cleanup_all_success', {count: d.cleaned, bytes: this.formatMB(d.freed_bytes)});
         await this.loadStorage();
       } catch (e) {
-        this.storageMsg = "Error al borrar.";
+        this.storageMsg = this.t('ui.error_delete_workdirs');
       }
     },
 
@@ -1496,7 +1758,7 @@ document.addEventListener('alpine:init', () => {
             interval_minutes: parseInt(this.newChannelInterval) || 60,
           }),
         });
-        if (!r.ok) throw new Error((await r.json()).detail || "Error");
+        if (!r.ok) throw new Error((await r.json()).detail || this.t('ui.error'));
         this.newChannelUrl = "";
         await this.loadChannels();
       } catch (err) {
@@ -1520,9 +1782,9 @@ document.addEventListener('alpine:init', () => {
       try {
         const r = await fetch("/api/channels/" + channelId + "/check", { method: "POST" });
         const d = await r.json();
-        if (d.new_videos > 0) this.errorMsg = d.new_videos + " videos nuevos encontrados";
+        if (d.new_videos > 0) this.errorMsg = this.t('ui.videos_found', {count: d.new_videos});
       } catch (err) {
-        this.errorMsg = "Error al chequear canal";
+        this.errorMsg = this.t('ui.error_check_channel');
       }
       ch._checking = false;
     },

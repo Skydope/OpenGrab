@@ -70,13 +70,13 @@ def _resolve_hostname(hostname: str) -> tuple[bool, str]:
     except socket.gaierror:
         return False, "no se pudo resolver el host"
     except (UnicodeError, OSError):
-        return False, "host invalido"
+        return False, "host inválido"
     for info in infos:
         ip_str = info[4][0]
         try:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
-            return False, "host invalido"
+            return False, "host inválido"
         if _is_ip_unsafe(ip):
             return False, "el host resuelve a una IP privada o reservada"
     return True, ""
@@ -94,14 +94,20 @@ def _is_safe_url(url: str) -> tuple[bool, str]:
         parsed = urlparse(url.strip())
         host = parsed.hostname
     except ValueError:
-        return False, "URL invalida"
+        return False, "URL inválida"
     if parsed.scheme not in ("http", "https") or not host:
         return False, (
-            "Pega un enlace http(s) valido. Si el sitio no anda, proba "
-            "'Actualizar motor' o revisa el formato del link."
+            "Pegá un enlace http(s) válido. Si el sitio no anda, probá "
+            "'Actualizar motor' o revisá el formato del link."
         )
     host_l = host.lower()
     if host_l in _BLOCKED_HOSTS or host_l.endswith((".local", ".localhost")):
+        return False, "el host apunta a un destino interno"
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return _resolve_hostname(host)
+    if _is_ip_unsafe(ip):
         return False, "el host apunta a un destino interno"
     try:
         ip = ipaddress.ip_address(host)
@@ -122,8 +128,9 @@ def _enforce_size(path: Path, max_mb: int) -> None:
             path.unlink()
         except OSError:
             pass
+        from i18n import t
         raise RuntimeError(
-            f"El archivo supera el limite de {max_mb} MB (OPENGRAB_MAX_SIZE_MB)."
+            t("error.size_exceeded", max_mb=max_mb)
         )
 
 
@@ -139,38 +146,40 @@ def _sanitize_url(url: str) -> str:
     return clean[:200]
 
 
-# (patrón en minúsculas → mensaje humano). El primero que matchee gana.
+# (patrón en minúsculas → key i18n). El primero que matchee gana.
 _ERROR_MAP: list[tuple[str, str]] = [
-    ("403", "YouTube rechazó la solicitud. Probá 'Actualizar motor' o esperá unos minutos."),
-    ("404", "El video no existe o fue eliminado."),
-    ("private video", "El video es privado."),
-    ("members-only", "El video es solo para miembros del canal."),
-    ("sign in to confirm your age", "El video requiere verificación de edad."),
-    ("age", "El video requiere verificación de edad o inicio de sesión."),
-    ("sign in", "El video requiere iniciar sesión."),
-    ("not available in your country", "El video está bloqueado en tu región."),
-    ("geo", "El video está bloqueado en tu región."),
-    ("video unavailable", "El video no está disponible."),
-    ("is not available", "El video no está disponible."),
-    ("unsupported url", "URL no soportada por el motor de descarga."),
-    ("ffmpeg", "Falló el procesamiento (ffmpeg). Si es un build de escritorio, reinstalá."),
-    ("ffprobe", "Falló el procesamiento (ffmpeg). Si es un build de escritorio, reinstalá."),
-    ("timed out", "Problema de red: la conexión expiró. Reintentá."),
-    ("connection", "Problema de red. Revisá tu conexión y reintentá."),
-    ("urlopen error", "Problema de red. Revisá tu conexión y reintentá."),
+    ("403", "error.yt_403"),
+    ("404", "error.yt_404"),
+    ("private video", "error.yt_private"),
+    ("members-only", "error.yt_members_only"),
+    ("sign in to confirm your age", "error.yt_age"),
+    ("age", "error.yt_age"),
+    ("sign in", "error.yt_sign_in"),
+    ("not available in your country", "error.yt_geo"),
+    ("geo", "error.yt_geo"),
+    ("video unavailable", "error.yt_unavailable"),
+    ("is not available", "error.yt_unavailable"),
+    ("unsupported url", "error.url_unsupported"),
+    ("ffmpeg", "error.ffmpeg"),
+    ("ffprobe", "error.ffmpeg"),
+    ("timed out", "error.network_timeout"),
+    ("connection", "error.network"),
+    ("urlopen error", "error.network"),
 ]
 
 
 def _friendly_error(exc: Exception) -> str:
     """Traduce errores técnicos de yt-dlp a mensajes que un humano entiende.
 
-    Los mensajes internos ya en español (límite de tamaño, 'No se generó…') se devuelven
+    Los mensajes internos (RuntimeError con ``t()`` ya aplicado) se devuelven
     tal cual; lo desconocido cae al texto crudo recortado."""
+    from i18n import t
+
     raw = str(exc)
     low = raw.lower()
-    for needle, msg in _ERROR_MAP:
+    for needle, i18n_key in _ERROR_MAP:
         if needle in low:
-            return msg
+            return t(i18n_key)
     return raw[:300]
 
 
@@ -187,7 +196,8 @@ def _fetch_info(url: str) -> dict[str, Any]:
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if info is None:
-        raise RuntimeError("yt-dlp no devolvió información.")
+        from i18n import t
+        raise RuntimeError(t("error.ytdl_no_info"))
     return info  # type: ignore[no-any-return]
 
 
@@ -270,7 +280,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
     job.workdir = str(workdir)
     evt = state.job_events.get(job_id)
     if evt is None:
-        raise RuntimeError("job event no encontrado")
+        from i18n import t
+        raise RuntimeError(t("error.job_not_found_short"))
 
     def hook(d: dict[str, Any]) -> None:
         if evt is None:
@@ -278,7 +289,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         if job_id in state.cancel_requests:
             # Abortar yt-dlp desde el hook: la excepción propaga fuera de
             # extract_info y la captura el except DownloadCancelled de abajo.
-            raise DownloadCancelled("cancelado por el usuario")
+            from i18n import t
+            raise DownloadCancelled(t("error.cancelled_by_user"))
         status = d.get("status")
         if status == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
@@ -294,10 +306,11 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         elif status == "finished":
             job.status = "processing"
             job.percent = 100.0
+            from i18n import t as _t
             job.note = (
-                "Extrayendo audio y convirtiendo a mp3…"
+                _t("download.extracting_audio")
                 if quality == "audio"
-                else "Muxeando / remuxeando a mp4…"
+                else _t("download.muxing")
             )
             loop.call_soon_threadsafe(evt.set)
 
@@ -341,7 +354,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
         job.status = "starting"
         job.percent = 0.0
         if job_id in state.cancel_requests:
-            raise DownloadCancelled("cancelado antes de iniciar")
+            from i18n import t
+            raise DownloadCancelled(t("error.cancelled_before_start"))
         log.info(
             "job %s: iniciando descarga (%s, %s)",
             job_id, quality, _sanitize_url(url),
@@ -350,7 +364,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
             info = ydl.extract_info(url, download=True)
 
         if info is None:
-            raise RuntimeError("yt-dlp no devolvió información.")
+            from i18n import t
+            raise RuntimeError(t("error.ytdl_no_info"))
 
         final = None
         requested = info.get("requested_downloads") or []
@@ -365,11 +380,13 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str, loop: as
             )
             produced = [p for p in produced if p.is_file()]
             if not produced:
-                raise RuntimeError("No se generó ningún archivo.")
+                from i18n import t
+                raise RuntimeError(t("error.no_file_generated"))
             final = produced[0]
 
         if not final.exists():
-            raise RuntimeError(f"Archivo no encontrado: {final}")
+            from i18n import t
+            raise RuntimeError(t("error.file_not_found", final=str(final)))
 
         _enforce_size(final, max_size_mb)
 

@@ -203,7 +203,7 @@ def test_run_download_size_enforcement(dl_state, monkeypatch):
 
     job = dl_state.jobs[jid]
     assert job.status == "error"
-    assert "supera el limite" in job.error
+    assert "supera" in job.error and "MB" in job.error
     assert not big.exists()
 
 

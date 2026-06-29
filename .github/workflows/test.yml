@@ -43,4 +43,5 @@ jobs:
           python-version: "3.13"
       - run: pip install ruff
       - run: ruff check .
+      - run: python scripts/check_i18n.py
       - run: shellcheck scripts/*.sh docker/*.sh

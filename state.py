@@ -17,8 +17,12 @@ from db import Database
 from models import Job
 
 import config
+from i18n import t
 
 log = logging.getLogger("opengrab")
+
+# Timestamp global del último dispatch de watch mode (para el tray de desktop).
+_latest_watch_ts: float = 0.0
 
 
 class AppState:
@@ -39,6 +43,7 @@ class AppState:
         self._usage_lock = threading.Lock()
         self._start_time = time.monotonic()
         self._pending_cleanups: set[str] = set()
+        self._last_watch_dispatch: float = 0.0  # timestamp del último dispatch de watch mode
         atexit.register(self.db.close)
 
     # ------------------------------------------------------------------ #
@@ -547,6 +552,8 @@ class AppState:
                             self._spawn_download(job_id, v["url"], quality)
                             dispatched += 1
                         if dispatched:
+                            self._last_watch_dispatch = time.time()
+                            _latest_watch_ts = time.time()  # global para desktop tray
                             log.info(
                                 "watch: canal %s → %d videos despachados",
                                 ch.get("title") or ch["url"], dispatched,
@@ -580,7 +587,7 @@ class AppState:
                     continue
                 max_total_mb = self.resolve("max_total_mb", 0, int)[0]
                 if max_total_mb and self.current_usage_bytes() >= max_total_mb * 1024 * 1024:
-                    self.db.update_job(job_id, status="error", error="Almacenamiento lleno")
+                    self.db.update_job(job_id, status="error", error=t("error.storage_full_short"))
                     continue
                 self.db.update_job(job_id, status="starting")
                 self._spawn_download(job_id, job_dict["url"], job_dict["quality"])
@@ -745,17 +752,17 @@ class AppState:
         """
         job = self.jobs.get(job_id)
         if job is None or not job.filepath:
-            raise FileNotFoundError("Job sin archivo asociado.")
+            raise FileNotFoundError(t("error.job_no_file"))
         if job.status != "done":
-            raise ValueError("El job todavía no está terminado.")
+            raise ValueError(t("error.job_not_done"))
         src = Path(job.filepath)
         if not src.exists():
-            raise FileNotFoundError("El archivo ya no existe en disco.")
+            raise FileNotFoundError(t("error.file_not_on_disk"))
 
         with self._finalize_lock:
             dest_dir = dest_dir.expanduser()
             if dest_dir.exists() and not dest_dir.is_dir():
-                raise NotADirectoryError(f"{dest_dir} no es un directorio.")
+                raise NotADirectoryError(t("error.dest_not_dir"))
 
             # Si ya está en la carpeta pedida, no hacemos nada (idempotente).
             if src.resolve().parent == dest_dir.resolve():

@@ -49,6 +49,17 @@ def _reset_settings_table():
 
 
 @pytest.fixture(autouse=True)
+def _reset_test_ini():
+    """Borra el config.ini de test entre tests para evitar leaks de ``set_setting``."""
+    ini_path = Path(tempfile.gettempdir()) / "opengrab_test_nonexistent.ini"
+    if ini_path.exists():
+        ini_path.unlink()
+    yield
+    if ini_path.exists():
+        ini_path.unlink()
+
+
+@pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     monkeypatch.setenv("OPENGRAB_HOST", "127.0.0.1")
     monkeypatch.setenv("OPENGRAB_PORT", "8880")

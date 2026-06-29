@@ -106,7 +106,7 @@ body{
 /* ---- Header -------------------------------------------------------------- */
 header{display:flex; align-items:center; gap:12px; margin-bottom:30px}
 .logo{
-  font-family:var(--sans); font-size:22px; font-weight:700; letter-spacing:-.03em;
+  font-family:var(--sans); font-size:32px; font-weight:700; letter-spacing:-.03em;
   color:var(--text);
 }
 .logo b{color:var(--amber); font-weight:700}
@@ -130,6 +130,25 @@ header{display:flex; align-items:center; gap:12px; margin-bottom:30px}
 }
 .theme-btn:hover{border-color:var(--line-2); color:var(--text); background:var(--panel-2)}
 .theme-btn svg{width:17px; height:17px; display:block}
+
+/* Notification dot (watch mode pulse) */
+.notif-dot{
+  position:relative;
+}
+.notif-dot::after{
+  content:''; position:absolute; top:-2px; right:-2px;
+  width:8px; height:8px; background:var(--amber); border-radius:50%;
+  opacity:0; transform:scale(0);
+  transition:opacity .2s, transform .2s;
+}
+.notif-dot.active::after{
+  opacity:1; transform:scale(1);
+  animation:notif-pulse 2s ease-in-out infinite;
+}
+@keyframes notif-pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(232,160,44,.5)}
+  50%{box-shadow:0 0 0 6px rgba(232,160,44,0)}
+}
 
 /* ---- Cards --------------------------------------------------------------- */
 .card{
@@ -269,7 +288,12 @@ button.btn-secondary:hover:not(:disabled){background:var(--chip-active-bg); bord
 
 /* ---- Playlist ----------------------------------------------------------- */
 .pl-header{display:flex; gap:8px; align-items:center; margin-bottom:11px; flex-wrap:wrap}
-.pl-count{font-family:var(--mono); font-size:13px; color:var(--muted); margin-right:auto}
+.pl-count{
+  font-family:var(--mono); font-size:13px; font-weight:600;
+  color:var(--amber); background:var(--chip-active-bg);
+  padding:4px 12px; border-radius:var(--radius-pill);
+  display:inline-flex; align-items:center; gap:5px; margin-right:auto;
+}
 .pl-list{
   max-height:300px; overflow:auto; border:1px solid var(--line); border-radius:10px;
   background:var(--ink);
@@ -285,7 +309,8 @@ button.btn-secondary:hover:not(:disabled){background:var(--chip-active-bg); bord
   color:var(--text);
 }
 .pl-video .pl-dur{color:var(--muted); font-family:var(--mono); font-size:11px; flex:none}
-.pl-video input[type=checkbox]{flex:none; accent-color:var(--amber); width:15px; height:15px}
+.pl-video input[type=checkbox]{flex:none; accent-color:var(--amber); width:18px; height:18px; cursor:pointer}
+.pl-video input[type=checkbox]:hover + .pl-title{color:var(--amber)}
 
 /* ---- Batch progress ----------------------------------------------------- */
 .batch-progress{
@@ -531,14 +556,52 @@ footer code{color:var(--muted)}
 .btn-sm.toggled{border-color:var(--ok); color:var(--ok); background:var(--ok-soft)}
 
 /* ---- Settings ----------------------------------------------------------- */
-.set-row{display:flex; gap:9px; align-items:center; padding:8px 0}
+.set-row{display:flex; gap:9px; align-items:center; padding:8px 0; flex-wrap:wrap}
 .set-row + .set-row{border-top:1px solid var(--line)}
-.set-label{font-family:var(--mono); font-size:12.5px; color:var(--text); min-width:130px}
+.set-info{min-width:130px; display:flex; flex-direction:column; gap:3px}
+.set-label{font-family:var(--mono); font-size:12.5px; color:var(--text)}
 .set-origin{font-size:11px; margin-left:-4px}
 .set-value{font-family:var(--mono); font-size:12.5px; color:var(--muted); flex:1}
 .set-row input[type=text]{
   flex:1; font-size:12.5px; padding:8px 11px; background:var(--ink);
   border:1px solid var(--line); color:var(--text); border-radius:8px;
+}
+.set-row input[type=number]{
+  flex:0 0 100px; font-size:12.5px; padding:8px 11px; background:var(--ink);
+  border:1px solid var(--line); color:var(--text); border-radius:8px;
+  font-family:var(--mono);
+}
+.set-row select{
+  flex:1; font-size:12.5px; padding:8px 11px; background:var(--ink);
+  border:1px solid var(--line); color:var(--text); border-radius:8px;
+  font-family:var(--mono); cursor:pointer;
+}
+.set-row select:focus-visible{outline:none; box-shadow:0 0 0 3px var(--focus-ring)}
+.set-row input[type=number]:focus-visible{outline:none; box-shadow:0 0 0 3px var(--focus-ring)}
+.set-help{font-size:10.5px; color:var(--muted); line-height:1.6}
+.set-token{
+  font-family:var(--mono); font-size:10px; color:var(--amber);
+  background:var(--chip-active-bg); padding:1px 5px; border-radius:4px;
+  margin-right:4px;
+}
+.set-err-row{background:var(--err-bg); border-radius:8px; padding:8px 12px; margin:4px 0}
+.set-err-row + .set-err-row{border-top:none}
+.set-err{font-size:11.5px; color:var(--danger); flex-basis:100%; margin-top:4px}
+.set-spin{
+  display:inline-block; width:14px; height:14px; border:2px solid var(--line);
+  border-top-color:var(--amber); border-radius:50%; animation:spin .6s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.set-toggle{display:flex; align-items:center; gap:8px; cursor:pointer}
+.set-toggle input[type=checkbox]{display:none}
+.set-toggle-label{
+  font-family:var(--mono); font-size:12px; font-weight:600;
+  color:var(--muted); padding:6px 14px; border-radius:var(--radius-pill);
+  border:1px solid var(--line); background:var(--panel-2);
+  transition:all .15s;
+}
+.set-toggle input:checked + .set-toggle-label{
+  color:var(--ok); border-color:var(--ok); background:var(--ok-soft);
 }
 .set-note{font-size:11px; color:var(--muted); margin-top:10px}
 
@@ -637,10 +700,28 @@ input[type=checkbox]:focus-visible{outline:none; box-shadow:0 0 0 3px var(--focu
   .ch-add{flex-wrap:wrap}
   .ch-add input[type=text]{flex:1 1 100%}
   .ch-add select,.ch-add input[type=number]{flex:1 1 0}
-  .set-row{flex-wrap:wrap}
+  .set-row{gap:6px}
+  .set-info{min-width:100%}
+  .set-row input[type=text],
+  .set-row select{flex:1 1 100%; font-size:16px; padding:11px 14px}
+  .set-row input[type=number]{flex:1 1 100%; font-size:16px; padding:11px 14px}
+  .set-row .btn-sm{flex:1 1 100%; min-height:44px; margin-top:4px}
+  .set-help{font-size:11px}
   .pl-header{flex-wrap:wrap}
 
   .ch-entry{flex-wrap:wrap}
   .ch-entry .ch-title{flex:1 1 100%}
+
+  /* History entries */
+  .tools-section button{min-height:44px; font-size:13px}
+  .tools-section .btn-sm{padding:8px 14px}
+
+  /* Playlist: touch-friendly checkboxes */
+  .pl-video{padding:11px 13px}
+  .pl-video input[type=checkbox]{width:22px; height:22px; margin-right:4px}
+  .pl-video .pl-title{font-size:14px}
+
+  /* Storage summary */
+  .storage-summary{flex-direction:column; gap:8px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}

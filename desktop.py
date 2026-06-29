@@ -381,6 +381,13 @@ def _format_tray_status(jobs: list[dict[str, Any]]) -> tuple[bool, str, str]:
     queued = [j for j in jobs if j.get("status") in ("queued", "starting")]
     if queued:
         return False, "OpenGrab — en cola", f"En cola ({len(queued)})"
+    # Watch mode: si hubo dispatch reciente, mostrar notificación en tooltip
+    try:
+        from state import _latest_watch_ts
+        if time.time() - _latest_watch_ts < 30:
+            return False, "OpenGrab — nuevos videos detectados", "Nuevos videos"
+    except Exception:
+        pass
     return False, "OpenGrab — inactivo", "Inactivo"
 
 

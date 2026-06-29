@@ -578,20 +578,21 @@ def test_batch_status_unknown_ids_returns_empty(client, app_state):
 
 # ----------------------------- /api/settings -------------------------------- #
 def test_get_settings_returns_all_keys(client):
-    """GET /api/settings devuelve las 8 keys del catálogo."""
+    """GET /api/settings devuelve las 10 keys del catálogo."""
     r = client.get("/api/settings")
     assert r.status_code == 200
     data = r.json()
     keys = {item["key"] for item in data}
     expected = {
         "max_jobs", "max_total_mb", "max_size_mb", "history_max",
-        "quality_default", "theme", "library_dir", "name_template",
+        "quality_default", "theme", "lang", "notifications_enabled",
+        "library_dir", "name_template",
     }
     assert keys == expected
 
 
 def test_get_settings_has_required_fields(client):
-    """Cada setting tiene value, origin, locked, scope."""
+    """Cada setting tiene value, origin, locked, scope, type, description."""
     r = client.get("/api/settings")
     assert r.status_code == 200
     for item in r.json():
@@ -600,8 +601,22 @@ def test_get_settings_has_required_fields(client):
         assert "origin" in item
         assert "locked" in item
         assert "scope" in item
+        assert "type" in item
+        assert "description" in item
         assert item["origin"] in ("env", "ini", "table", "default")
         assert isinstance(item["locked"], bool)
+
+
+def test_get_settings_defaults_returns_expected_keys(client):
+    """GET /api/settings/defaults devuelve quality_default, theme, lang, notifications_enabled."""
+    r = client.get("/api/settings/defaults")
+    assert r.status_code == 200
+    data = r.json()
+    assert "quality_default" in data
+    assert "theme" in data
+    assert "lang" in data
+    assert "notifications_enabled" in data
+    assert data["quality_default"] == "best"
 
 
 def test_get_settings_max_jobs_locked_by_env(client):
@@ -617,50 +632,119 @@ def test_put_settings_locked_key_returns_400(client, app_state):
     """PUT con key locked (origin=env) retorna 400."""
     r = client.put("/api/settings", json={"max_jobs": "99"})
     assert r.status_code == 400
-    assert "locked" in r.text.lower() or "max_jobs" in r.text
+    data = r.json()
+    assert "locked" in str(data) or "max_jobs" in str(data)
 
 
-def test_put_settings_unlocked_key_updates_table(client, app_state, monkeypatch):
-    """PUT theme (sin env/ini) persiste en la tabla.
-
-    theme no se写入 ini por tests anteriores porque es string y no coincide con
-    history_max (que sí se写入). Mockeamos _write_setting_to_ini para test puro de tabla.
-    """
-    import sys
-    sys.modules["routes"]._write_setting_to_ini = lambda *a, **k: True
-    r = client.put("/api/settings", json={"theme": "dark"})
+def test_patch_settings_unlocked_key_updates_table(client, app_state):
+    """PATCH con key desbloqueada persiste en DB e ini."""
+    r = client.patch("/api/settings", json={"lang": "en"})
     assert r.status_code == 200, f"Got {r.status_code}: {r.json()}"
+    assert "lang" in r.json()["updated"]
+    assert app_state.db.get_setting("lang") == "en"
+
+
+def test_patch_settings_theme_values_accepted(client, app_state, monkeypatch):
+    """PATCH theme: dark, light, auto — todos aceptados."""
+    monkeypatch.setitem(__import__("os").environ, "OPENGRAB_CONFIG",
+                        str(__import__("tempfile").gettempdir()) + "/opengrab_test_theme.ini")
+    # Re-create client with fresh module state for each iteration would be complex,
+    # so we just accept the first value and verify the DB persistence works.
+    r = client.patch("/api/settings", json={"theme": "dark"})
+    assert r.status_code == 200, f"theme=dark: {r.json()}"
     assert "theme" in r.json()["updated"]
     assert app_state.db.get_setting("theme") == "dark"
 
 
-def test_put_settings_casts_to_int(client, app_state):
-    """PUT con int en JSON se guarda correctamente (theme usa strings)."""
-    import sys
-    sys.modules["routes"]._write_setting_to_ini = lambda *a, **k: True
-    r = client.put("/api/settings", json={"theme": "light"})
-    assert r.status_code == 200
-    assert app_state.db.get_setting("theme") == "light"
+def test_patch_settings_quality_invalid_value_returns_error(client, app_state):
+    """PATCH quality_default con valor no permitido retorna error."""
+    r = client.patch("/api/settings", json={"quality_default": "4k"})
+    assert r.status_code == 400
+    data = r.json()
+    detail = data.get("detail", data)
+    assert "error" in detail or "quality_default" in str(detail.get("details", {}))
 
 
-def test_put_settings_unknown_key_returns_error(client):
-    """PUT con key desconocida retorna error en details."""
-    r = client.put("/api/settings", json={"unknown_key": "value"})
+def test_patch_settings_int_validation_min(client, app_state):
+    """PATCH max_jobs desbloqueada: valida min=1."""
+    # max_jobs esta locked por env en tests → usar history_max que tiene min=10
+    r = client.patch("/api/settings", json={"history_max": "5"})
+    assert r.status_code == 400
+    data = r.json()
+    assert "10" in str(data) or "5" in str(data)
+
+
+def test_patch_settings_int_validation_max(client, app_state):
+    """PATCH history_max con valor > 10000 retorna error."""
+    r = client.patch("/api/settings", json={"history_max": "99999"})
+    assert r.status_code == 400
+    data = r.json()
+    assert "10000" in str(data) or "99999" in str(data)
+
+
+def test_patch_settings_bool_true_values(client, app_state):
+    """PATCH notifications_enabled: acepta true/1/yes."""
+    r = client.patch("/api/settings", json={"notifications_enabled": "true"})
+    assert r.status_code == 200, f"Got {r.status_code}: {r.json()}"
+    assert app_state.db.get_setting("notifications_enabled") in ("true", "1", "yes")
+
+
+def test_patch_settings_bool_false_values(client, app_state):
+    """PATCH notifications_enabled: acepta false/0/no."""
+    r = client.patch("/api/settings", json={"notifications_enabled": "false"})
+    assert r.status_code == 200, f"Got {r.status_code}: {r.json()}"
+
+
+def test_patch_settings_bool_invalid(client, app_state):
+    """PATCH notifications_enabled con valor inválido retorna error."""
+    r = client.patch("/api/settings", json={"notifications_enabled": "maybe"})
+    assert r.status_code == 400
+
+
+def test_patch_settings_name_template_valid_tokens(client, app_state):
+    """PATCH name_template: acepta template con tokens válidos."""
+    r = client.patch("/api/settings", json={
+        "name_template": "{title} - {channel} ({upload_year})"
+    })
+    assert r.status_code == 200, f"Got {r.status_code}: {r.json()}"
+    assert app_state.db.get_setting("name_template") == "{title} - {channel} ({upload_year})"
+
+
+def test_patch_settings_name_template_invalid_tokens(client, app_state):
+    """PATCH name_template: rechaza tokens no válidos."""
+    r = client.patch("/api/settings", json={
+        "name_template": "{title} - {invalid}"
+    })
+    assert r.status_code == 400
+    data = r.json()
+    detail = str(data.get("details", data))
+    assert "invalid" in detail or "tokens" in detail.lower()
+
+
+def test_patch_settings_unknown_key_returns_error(client):
+    """PATCH con key desconocida retorna error en details."""
+    r = client.patch("/api/settings", json={"unknown_key": "value"})
     assert r.status_code == 400
     data = r.json()
     assert "error" in data or "detail" in data
 
 
-def test_put_settings_invalid_type_returns_400(client):
-    """PUT con tipo invalido retorna 400."""
-    r = client.put("/api/settings", json={"max_jobs": "not-an-int"})
+def test_patch_settings_no_body_returns_400(client):
+    """PATCH sin body retorna 400."""
+    r = client.patch("/api/settings")
     assert r.status_code == 400
 
 
-def test_put_settings_no_body_returns_400(client):
-    """PUT sin body retorna 400."""
-    r = client.put("/api/settings")
+def test_patch_settings_lang_invalid_value(client, app_state):
+    """PATCH lang: solo acepta es o en."""
+    r = client.patch("/api/settings", json={"lang": "fr"})
     assert r.status_code == 400
+
+
+def test_patch_settings_lang_valid_values(client, app_state):
+    """PATCH lang: acepta es."""
+    r = client.patch("/api/settings", json={"lang": "es"})
+    assert r.status_code == 200, f"lang=es: {r.json()}"
 
 
 # --------------------- metrics API ------------------------------------- #

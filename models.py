@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -40,3 +42,25 @@ class Job(BaseModel):
 class BatchReq(BaseModel):
     urls: list[str]
     quality: str = "best"
+
+
+class SettingDef(BaseModel):
+    """Metadata completa de un setting para exponer en la API."""
+    key: str
+    type: str
+    scope: str
+    value: Any
+    default: Any
+    origin: str
+    locked: bool
+    restart_required: bool = False
+    description: str = ""
+    placeholder: str = ""
+    options: list[dict[str, str]] | None = None
+    tokens: list[str] | None = None
+    validation: dict[str, Any] | None = None
+
+
+class SettingUpdate(BaseModel):
+    """Request para PATCH /api/settings: body dict {key: value}."""
+    pass
