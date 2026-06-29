@@ -50,18 +50,25 @@ class AppState:
     # Settings resolver (env > ini > tabla > default)
     # ------------------------------------------------------------------ #
     def resolve(self, key: str, default: Any, cast: type = str) -> tuple[Any, str]:
-        """Resuelve una setting con precedencia env > ini > tabla > default.
+        """Resuelve una setting con precedencia env > tabla > ini > default.
 
-        Devuelve (valor, origin) donde origin ∈ {env, ini, table, default}.
+        Devuelve (valor, origin) donde origin ∈ {env, table, ini, default}.
+
+        La tabla SQLite (lo que el usuario edita desde la UI) gana sobre el ini.
+        El ini es solo una *semilla* que escribe el instalador; una vez que el
+        usuario toca una setting, su valor vive en la tabla y se aplica en vivo
+        (hot-reload) porque resolve() se consulta en cada uso. ``env`` mantiene
+        la máxima precedencia para overrides declarativos de ops (Docker), que
+        no se pueden sobrescribir en caliente sin romper esa semántica.
         """
         env_key = config._SETTING_ENV.get(key)
         if env_key and env_key in os.environ:
             return cast(os.environ[env_key]), "env"
-        if key in config._ini:
-            return cast(config._ini[key]), "ini"
         v = self.db.get_setting(key)
         if v is not None:
             return cast(v), "table"
+        if key in config._ini:
+            return cast(config._ini[key]), "ini"
         return default, "default"
 
     def resolve_library_dir(self) -> Path:

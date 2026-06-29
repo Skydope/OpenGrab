@@ -126,6 +126,24 @@ _FULL_CATALOG: dict[str, tuple[str, str, Any, str, str, Any, Any, Any]] = {
     ),
 }
 
+# Agrupación de settings para las pestañas del modal de configuración.
+# key → group ∈ {downloads, storage, interface, advanced}
+_SETTING_GROUP: dict[str, str] = {
+    "quality_default": "downloads",
+    "max_jobs": "downloads",
+    "subs_default": "downloads",
+    "thumb_default": "downloads",
+    "infojson_default": "downloads",
+    "name_template": "downloads",
+    "library_dir": "storage",
+    "max_total_mb": "storage",
+    "max_size_mb": "storage",
+    "history_max": "storage",
+    "theme": "interface",
+    "lang": "interface",
+    "notifications_enabled": "interface",
+}
+
 # Catálogo simple para compatibilidad con resolve() y lookup rápido.
 _SETTING_CATALOG: dict[str, tuple[str, str, Any]] = {
     k: (vtype, scope, default) for k, (vtype, scope, default, *_rest) in _FULL_CATALOG.items()
@@ -248,7 +266,11 @@ async def api_get_settings(
             else:
                 val = bool(val)
 
-        locked = origin in ("env", "ini")
+        # Solo ``env`` bloquea: es un override declarativo de ops (Docker) que
+        # no se puede sobrescribir en caliente. El ini ya no bloquea porque la
+        # tabla gana sobre él (ver state.resolve), así que toda setting es
+        # editable y se aplica al instante desde la UI.
+        locked = origin == "env"
         entry: dict[str, Any] = {
             "key": key,
             "type": vtype,
@@ -260,6 +282,7 @@ async def api_get_settings(
             "restart_required": False,
             "description": desc,
             "placeholder": placeholder,
+            "group": _SETTING_GROUP.get(key, "advanced"),
         }
         if options:
             entry["options"] = options
@@ -322,7 +345,7 @@ async def api_update_settings(
             errors[key] = _t("error.settings_unknown_key")
             continue
         _, origin = state.resolve(key, _FULL_CATALOG[key][2], str)
-        if origin in ("env", "ini"):
+        if origin == "env":
             errors[key] = _t("error.settings_locked", origin=origin)
             continue
         # Validacion server-side

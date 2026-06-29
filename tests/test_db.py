@@ -445,6 +445,39 @@ def test_resolve_table_over_default(monkeypatch, tmp_path):
     assert origin == "table"
 
 
+def test_resolve_table_over_ini(monkeypatch, tmp_path):
+    """La tabla (edición del usuario) gana sobre el ini (semilla del instalador).
+
+    Garantiza el hot-reload: una vez que el usuario edita una setting, su valor
+    en la tabla se aplica en vivo aunque el instalador haya sembrado el ini.
+    """
+    import config as _config
+    from state import AppState
+
+    monkeypatch.delenv("OPENGRAB_MAX_JOBS", raising=False)
+    monkeypatch.setitem(_config._ini, "max_jobs", "3")
+    db = Database(":memory:")
+    db.set_setting("max_jobs", "9")
+    state = AppState(db, tmp_path)
+    val, origin = state.resolve("max_jobs", 2, int)
+    assert val == 9
+    assert origin == "table"
+
+
+def test_resolve_ini_over_default(monkeypatch, tmp_path):
+    """Sin env ni tabla, el ini actúa como semilla por encima del default."""
+    import config as _config
+    from state import AppState
+
+    monkeypatch.delenv("OPENGRAB_MAX_JOBS", raising=False)
+    monkeypatch.setitem(_config._ini, "max_jobs", "4")
+    db = Database(":memory:")
+    state = AppState(db, tmp_path)
+    val, origin = state.resolve("max_jobs", 2, int)
+    assert val == 4
+    assert origin == "ini"
+
+
 def test_resolve_casts_to_requested_type(monkeypatch, tmp_path):
     """El casteo funciona: string en tabla → int."""
     from state import AppState
