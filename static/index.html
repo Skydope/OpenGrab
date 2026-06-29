@@ -476,7 +476,7 @@
           <span x-text="t('ui.settings_title')"></span>
         </div>
         <button class="sm-close" @click="closeSettingsModal()"
-                :aria-label="t('ui.close')" title="Esc">&#10005;</button>
+                :aria-label="t('ui.close')" :title="t('ui.press_esc')">&#10005;</button>
       </div>
 
       <!-- Tabs -->
@@ -505,9 +505,9 @@
               <div class="sm-field" x-show="s.scope !== 'desktop' || isDesktop"
                    :class="{ 'sm-field-err': s._error }">
                 <div class="sm-field-info">
-                  <span class="sm-field-label" x-text="s.description || s.key"></span>
+                  <span class="sm-field-label" x-text="t(s.description || s.key)"></span>
                   <span x-show="s.tokens && s.key==='name_template'" class="sm-field-help">
-                    Tokens: <template x-for="tok in s.tokens"><code class="set-token" x-text="tok"></code></template>
+                    <span x-text="t('ui.tokens_label')"></span>: <template x-for="tok in s.tokens"><code class="set-token" x-text="tok"></code></template>
                   </span>
                 </div>
                 <div class="sm-field-control">
@@ -517,7 +517,7 @@
                   <select x-show="!s.locked && (s.scope !== 'desktop' || isDesktop) && s.options"
                           x-model="s._editValue" @change="saveSetting(s)">
                     <template x-for="opt in s.options" :key="opt.value">
-                      <option :value="opt.value" x-text="opt.label"></option>
+                      <option :value="opt.value" x-text="t(opt.label)"></option>
                     </template>
                   </select>
 
@@ -946,7 +946,7 @@ document.addEventListener('alpine:init', () => {
           s.value = s._editValue;
           s.origin = "table";
           s.locked = false;
-          this.showToast(this.t("ui.settings_saved", {setting_key: s.description || s.key}), "success");
+          this.showToast(this.t("ui.settings_saved", {setting_key: this.t(s.description || s.key)}), "success");
           // Side effects
           if (s.key === "theme") {
             localStorage.setItem("opengrab-theme", s._editValue);

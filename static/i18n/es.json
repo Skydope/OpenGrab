@@ -277,5 +277,10 @@
   "ui.tab_advanced": "Avanzado",
   "ui.settings_empty_group": "No hay ajustes en esta sección.",
   "ui.backup_title": "Copia de seguridad",
-  "ui.backup_desc": "Exportá o importá tu configuración, historial y canales en un archivo JSON."
+  "ui.backup_desc": "Exportá o importá tu configuración, historial y canales en un archivo JSON.",
+  "ui.tokens_label": "Tokens",
+  "ui.press_esc": "Presioná Esc",
+  "settings.subs_default": "Descargar subtítulos (.srt/.vtt) por defecto",
+  "settings.thumb_default": "Descargar miniatura (.jpg) por defecto",
+  "settings.infojson_default": "Descargar info JSON por defecto"
 }

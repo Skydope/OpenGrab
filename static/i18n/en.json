@@ -277,5 +277,10 @@
   "ui.tab_advanced": "Advanced",
   "ui.settings_empty_group": "No settings in this section.",
   "ui.backup_title": "Backup",
-  "ui.backup_desc": "Export or import your settings, history and channels as a JSON file."
+  "ui.backup_desc": "Export or import your settings, history and channels as a JSON file.",
+  "ui.tokens_label": "Tokens",
+  "ui.press_esc": "Press Esc",
+  "settings.subs_default": "Download subtitles (.srt/.vtt) by default",
+  "settings.thumb_default": "Download thumbnail (.jpg) by default",
+  "settings.infojson_default": "Download info JSON by default"
 }
