@@ -18,6 +18,7 @@ dev = [
     "mypy>=2.1",
     "ruff>=0.8",
     "rich>=13",
+    "pillow>=11",
 ]
 desktop = ["pywebview>=5.0", "pystray>=0.19"]
 build = ["pyinstaller>=6.0"]
