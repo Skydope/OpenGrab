@@ -837,6 +837,16 @@ def test_patch_settings_bool_invalid(client, app_state):
     assert r.status_code == 400
 
 
+def test_coerce_bool_helper():
+    """_coerce_bool: bool pasa tal cual, strings se normalizan vs _BOOL_TRUE."""
+    from routers.settings import _coerce_bool
+
+    for truthy in (True, "true", "TRUE", " 1 ", "yes", "Yes"):
+        assert _coerce_bool(truthy) is True, truthy
+    for falsy in (False, "false", "0", "no", "", "  ", "maybe", "2", None):
+        assert _coerce_bool(falsy) is False, falsy
+
+
 def test_patch_settings_name_template_valid_tokens(client, app_state):
     """PATCH name_template: acepta template con tokens válidos."""
     r = client.patch("/api/settings", json={

@@ -161,6 +161,23 @@ _NAME_TEMPLATE_TOKENS = frozenset({
     "{extractor}", "{video_id}", "{resolution}",
 })
 
+# Tokens aceptados para settings de tipo bool. Fuente unica de verdad: la
+# validacion y la coercion comparten estos sets para no divergir.
+_BOOL_TRUE = frozenset({"true", "1", "yes"})
+_BOOL_FALSE = frozenset({"false", "0", "no", ""})
+
+
+def _coerce_bool(raw: Any) -> bool:
+    """Coerciona un valor (str del resolver, o bool) a bool.
+
+    Un bool se devuelve tal cual; cualquier otra cosa se normaliza y se compara
+    contra ``_BOOL_TRUE``. Centraliza la logica que antes estaba duplicada en
+    el GET de settings, el GET de defaults y el validador.
+    """
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in _BOOL_TRUE
+
 
 def _validate_setting_value(key: str, raw_value: str) -> str | None:
     """Valida un valor para un setting. Devuelve mensaje de error o None."""
@@ -182,9 +199,8 @@ def _validate_setting_value(key: str, raw_value: str) -> str | None:
         return None
 
     if vtype == "bool":
-        if str(raw_value).strip().lower() in ("true", "1", "yes"):
-            return None
-        if str(raw_value).strip().lower() in ("false", "0", "no", ""):
+        norm = str(raw_value).strip().lower()
+        if norm in _BOOL_TRUE or norm in _BOOL_FALSE:
             return None
         return _t("error.settings_bool_invalid")
 
@@ -226,12 +242,7 @@ async def api_get_settings(
             except (ValueError, TypeError):
                 val = default
         elif vtype == "bool":
-            if isinstance(val, str):
-                val = val.strip().lower() in ("true", "1", "yes")
-            elif isinstance(val, bool):
-                pass
-            else:
-                val = bool(val)
+            val = _coerce_bool(val)
 
         # Solo ``env`` bloquea: es un override declarativo de ops (Docker) que
         # no se puede sobrescribir en caliente. El ini ya no bloquea porque la
@@ -271,14 +282,11 @@ async def api_get_settings_defaults(
     theme, _origin_t = state.resolve("theme", "auto", str)
     lang, _origin_l = state.resolve("lang", "auto", str)
     notif, _origin_n = state.resolve("notifications_enabled", False, str)
-    notif_enabled = (isinstance(notif, bool) and notif) or str(notif).strip().lower() in ("true", "1", "yes")
+    notif_enabled = _coerce_bool(notif)
 
-    def _to_bool(raw: Any) -> bool:
-        return bool(raw) if isinstance(raw, bool) else str(raw).strip().lower() in ("true", "1", "yes")
-
-    subs_val = _to_bool(state.resolve("subs_default", False, str)[0])
-    thumb_val = _to_bool(state.resolve("thumb_default", False, str)[0])
-    infojson_val = _to_bool(state.resolve("infojson_default", False, str)[0])
+    subs_val = _coerce_bool(state.resolve("subs_default", False, str)[0])
+    thumb_val = _coerce_bool(state.resolve("thumb_default", False, str)[0])
+    infojson_val = _coerce_bool(state.resolve("infojson_default", False, str)[0])
     return JSONResponse({
         "quality_default": quality,
         "theme": theme,
