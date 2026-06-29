@@ -2,8 +2,6 @@
 husk en modo desktop, con guard ante finalize fallido (el keeper sigue
 dentro del workdir -> no se borra)."""
 
-from pathlib import Path
-
 import pytest
 
 from db import Database
