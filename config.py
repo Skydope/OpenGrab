@@ -128,9 +128,11 @@ else:
     TOKEN = _raw_token
     TOKEN_WAS_GENERATED = False
 
-MAX_JOBS = _int_env("OPENGRAB_MAX_JOBS", _ini_int("max_jobs", 2), min_val=1)
-MAX_SIZE_MB = _int_env("OPENGRAB_MAX_SIZE_MB", _ini_int("max_size_mb", 0), min_val=0)
-MAX_TOTAL_MB = _int_env("OPENGRAB_MAX_TOTAL_MB", _ini_int("max_total_mb", 0), min_val=0)
+# Nota: max_jobs / max_size_mb / max_total_mb NO viven como constantes acá.
+# Son settings con respaldo en la tabla y se consumen en vivo via
+# state.resolve(...) (dispatcher, download, limites), lo que permite editarlas
+# desde la UI sin reiniciar. Mantener constantes import-time aca duplicaria la
+# fuente de verdad y confundiria (editarlas no tendria efecto).
 
 LOG_FORMAT = os.environ.get(
     "OPENGRAB_LOG_FORMAT", _ini.get("log_format", "text")

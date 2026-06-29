@@ -65,16 +65,19 @@ def test_max_total_mb_allows_under_budget(client, app_state, monkeypatch):
 
 
 # ------------------------------- config ---------------------------------- #
-def test_limits_default_unlimited(monkeypatch):
+def test_limits_default_unlimited(app_state, monkeypatch):
+    """Sin env, ini ni tabla, los límites resuelven a 0 (ilimitado) por default.
+
+    Antes este test recomputaba las constantes import-time config.MAX_*; esas
+    constantes se eliminaron por muertas (el runtime consume los límites via
+    state.resolve). Ahora se valida el default por el camino real de resolución.
+    """
     import config as _config
 
-    # Clear ini values so defaults apply (env vars already deleted by conftest)
     monkeypatch.delenv("OPENGRAB_MAX_TOTAL_MB", raising=False)
     monkeypatch.delenv("OPENGRAB_MAX_SIZE_MB", raising=False)
     _config._ini.pop("max_total_mb", None)
     _config._ini.pop("max_size_mb", None)
-    # Force reload of the computed constants
-    _config.MAX_TOTAL_MB = _config._int_env("OPENGRAB_MAX_TOTAL_MB", _config._ini_int("max_total_mb", 0), min_val=0)
-    _config.MAX_SIZE_MB = _config._int_env("OPENGRAB_MAX_SIZE_MB", _config._ini_int("max_size_mb", 0), min_val=0)
-    assert _config.MAX_TOTAL_MB == 0
-    assert _config.MAX_SIZE_MB == 0
+
+    assert app_state.resolve("max_total_mb", 0, int) == (0, "default")
+    assert app_state.resolve("max_size_mb", 0, int) == (0, "default")

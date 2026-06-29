@@ -48,10 +48,8 @@ def _mock_ydl(info):
 
 # ------------------------------------------------------------------ T1 ----
 def test_run_download_video_success(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t1")
@@ -75,10 +73,8 @@ def test_run_download_video_success(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T2 ----
 def test_run_download_audio_success(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t2")
@@ -98,10 +94,8 @@ def test_run_download_audio_success(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T3 ----
 def test_run_download_fallback_glob(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t3")
@@ -122,10 +116,8 @@ def test_run_download_fallback_glob(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T4 ----
 def test_run_download_extract_info_none(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t4")
@@ -143,10 +135,8 @@ def test_run_download_extract_info_none(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T5 ----
 def test_run_download_no_files(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t5")
@@ -163,10 +153,8 @@ def test_run_download_no_files(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T6 ----
 def test_run_download_file_not_found(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t6")
@@ -209,10 +197,8 @@ def test_run_download_size_enforcement(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T8 ----
 def test_run_download_hook_percent(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "t8")
@@ -407,10 +393,8 @@ def test_check_channel_watch_handles_fetch_error(dl_state, monkeypatch):
 
 # ---------------- _run_download: dedup en camino de éxito ----------------- #
 def test_run_download_records_dedup(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "dedup-ok")
@@ -436,10 +420,8 @@ def test_run_download_records_dedup(dl_state, monkeypatch):
 
 
 def test_run_download_does_not_record_on_error(dl_state, monkeypatch):
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "dedup-fail")
@@ -460,10 +442,8 @@ def test_run_download_persists_error_status_to_db(dl_state, monkeypatch):
     Si quedara 'queued', el dispatch_loop lo re-despacharia tras evict_once
     (regresion: descarga fantasma ~1h despues de un fallo manual).
     """
-    import config
     from download import _run_download
 
-    monkeypatch.setattr(config, "MAX_SIZE_MB", 0)
     loop = asyncio.new_event_loop()
 
     jid = _make_job(dl_state, "err-persist")
