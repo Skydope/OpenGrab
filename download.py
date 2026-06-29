@@ -107,12 +107,6 @@ def _is_safe_url(url: str) -> tuple[bool, str]:
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        return _resolve_hostname(host)
-    if _is_ip_unsafe(ip):
-        return False, "error.url_internal"
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
         # Hostname de dominio: resolver y validar todas las IPs.
         return _resolve_hostname(host)
     # IP literal en la URL: validar directo, sin resolver.
