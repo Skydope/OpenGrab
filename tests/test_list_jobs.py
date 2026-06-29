@@ -8,7 +8,6 @@ import pytest
 
 from db import Database
 from models import Job
-from routes import api_list_jobs
 from state import AppState
 
 
@@ -28,6 +27,8 @@ def _job(jid, status, created, finished=0.0):
 
 
 async def _call(st, recent=900.0):
+    from routes import api_list_jobs
+
     resp = await api_list_jobs(recent=recent, _=None, state=st)
     return json.loads(bytes(resp.body))
 

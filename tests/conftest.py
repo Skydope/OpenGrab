@@ -1,9 +1,18 @@
+import asyncio
+import inspect
 import os
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+# Fix slowapi DeprecationWarning en Python 3.14+:
+# asyncio.iscoroutinefunction esta deprecado; el reemplazo es inspect.iscoroutinefunction.
+# Este parche a nivel modulo asegura que cualquier import de routes.py
+# (directo o via app.py) tenga el monkeypatch aplicado antes de que
+# los decoradores @limiter.limit llamen a asyncio.iscoroutinefunction().
+asyncio.iscoroutinefunction = inspect.iscoroutinefunction  # type: ignore[assignment]
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
