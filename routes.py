@@ -549,6 +549,41 @@ async def api_open_folder(
     return JSONResponse({"ok": True, "folder": folder})
 
 
+@router.post("/api/jobs/{job_id}/move")
+async def api_move_job_file(
+    job_id: str,
+    request: Request,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> JSONResponse:
+    """Mueve el archivo de un job ``done`` a un directorio del servidor.
+
+    Body: ``{"dest": "<ruta del servidor>"}``. Respalda al botón "Guardar en…":
+    el archivo ya vive en el FS del servidor y el usuario elige otra carpeta.
+    Pensado para modo desktop (server == cliente). El directorio se crea si no
+    existe. Devuelve la ruta destino final.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "JSON invalido.")
+    dest = body.get("dest", "") if isinstance(body, dict) else ""
+    if not isinstance(dest, str) or not dest.strip():
+        raise HTTPException(400, "Falta el campo 'dest'.")
+    try:
+        target = state.move_job_file(job_id, Path(dest.strip()))
+    except ValueError:
+        raise HTTPException(409, "El archivo todavia no esta listo.")
+    except FileNotFoundError:
+        raise HTTPException(410, "El archivo ya no esta disponible.")
+    except NotADirectoryError:
+        raise HTTPException(400, "El destino no es un directorio.")
+    except OSError as exc:
+        log.warning("api_move_job_file: falló move job %s -> %s: %s", job_id, dest, exc)
+        raise HTTPException(500, "No se pudo mover el archivo.")
+    return JSONResponse({"ok": True, "filepath": str(target)})
+
+
 @router.delete("/api/history/{job_id}")
 async def api_delete_history_entry(
     job_id: str,

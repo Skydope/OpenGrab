@@ -723,3 +723,56 @@ class AppState:
                             final, target, exc)
                 # No propagar — la descarga ya está completa en workdir
         return
+
+    def move_job_file(self, job_id: str, dest_dir: Path) -> Path:
+        """Mueve el archivo final de un job ``done`` a ``dest_dir`` (server-side).
+
+        Pensado para el botón "Guardar en…": el archivo ya está descargado en
+        el FS del servidor (out_dir/library_dir) y el usuario elige otra
+        carpeta destino. Reusa ``_finalize_lock`` para serializar con los
+        movimientos de ``_finalize_desktop`` y ``_deduplicate`` para no pisar
+        un archivo existente. Conserva el nombre actual (no aplica
+        ``name_template``). Actualiza ``job.filepath`` en RAM y en la fila de
+        historial (DB) para que la API siga sirviendo desde la ruta nueva.
+
+        Devuelve la ruta destino final.
+
+        Lanza:
+            ValueError: el job no está ``done``.
+            FileNotFoundError: el job no tiene archivo o ya no existe en disco.
+            NotADirectoryError: ``dest_dir`` existe pero no es un directorio.
+            OSError: falló la creación del directorio o el movimiento.
+        """
+        job = self.jobs.get(job_id)
+        if job is None or not job.filepath:
+            raise FileNotFoundError("Job sin archivo asociado.")
+        if job.status != "done":
+            raise ValueError("El job todavía no está terminado.")
+        src = Path(job.filepath)
+        if not src.exists():
+            raise FileNotFoundError("El archivo ya no existe en disco.")
+
+        with self._finalize_lock:
+            dest_dir = dest_dir.expanduser()
+            if dest_dir.exists() and not dest_dir.is_dir():
+                raise NotADirectoryError(f"{dest_dir} no es un directorio.")
+
+            # Si ya está en la carpeta pedida, no hacemos nada (idempotente).
+            if src.resolve().parent == dest_dir.resolve():
+                return src
+
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            target = self._deduplicate(dest_dir / src.name)
+            shutil.move(str(src), str(target))
+            log.info("move_job_file: %s -> %s", src.name, target)
+
+            job.filepath = str(target)
+            # El workdir pudo quedar registrado para limpieza apuntando al
+            # padre anterior; lo dejamos como está — schedule_workdir_if_external
+            # ya corrió en el finalize original. Solo persistimos la ruta nueva.
+            try:
+                self.db.update_job(job_id, filepath=str(target))
+            except Exception:
+                log.warning("move_job_file: no se pudo persistir filepath en DB",
+                            exc_info=True)
+        return target
