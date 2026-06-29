@@ -148,6 +148,20 @@ async def api_cancel_job(
     return {"status": result}
 
 
+@router.post("/api/jobs/{job_id}/dismiss")
+async def api_dismiss_job(
+    job_id: str,
+    _: None = Depends(require_auth),
+    state: AppState = Depends(get_state),
+) -> dict[str, bool]:
+    """Descarta un job terminado de la vista de sesion.
+
+    Remueve el job de memoria para que GET /api/jobs no lo devuelva al
+    rehidratar. No borra la DB ni los archivos — el job sigue en Historial."""
+    ok = state.dismiss_job_from_view(job_id)
+    return {"ok": ok}
+
+
 async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str, None]:
     last = None
     while True:

@@ -1517,6 +1517,7 @@ document.addEventListener('alpine:init', () => {
         this.progressDone = false; this.downloadUrl = ""; this.successPath = "";
         this.lastJobId = ""; this.errorMsg = ""; this.canRetry = false;
       }
+      fetch("/api/jobs/" + jobId + "/dismiss", { method: "POST" }).catch(() => {});
     },
 
     async download() {

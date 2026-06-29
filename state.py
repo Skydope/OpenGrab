@@ -106,6 +106,17 @@ class AppState:
             if j.status in ("queued", "starting", "downloading", "processing")
         )
 
+    def dismiss_job_from_view(self, job_id: str) -> bool:
+        """Remueve un job terminado de la vista de sesion sin tocar DB ni archivos.
+
+        El job sigue disponible en Historial y sus archivos permanecen intactos.
+        Evita que GET /api/jobs lo devuelva al rehidratar la UI tras reload."""
+        if job_id in self.jobs:
+            self.jobs.pop(job_id)
+            self.job_events.pop(job_id, None)
+            return True
+        return False
+
     # ------------------------------------------------------------------ #
     # Task lifecycle
     # ------------------------------------------------------------------ #
