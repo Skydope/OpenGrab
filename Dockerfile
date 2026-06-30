@@ -10,7 +10,10 @@ RUN useradd --create-home --no-log-init opengrab \
 WORKDIR /app
 COPY pyproject.toml .
 RUN pip install --no-cache-dir -e .
+# *.py NO matchea routers/ (es un directorio). Tras el refactor de routers
+# hay que copiar el paquete explícitamente, igual que i18n.py y demás módulos.
 COPY *.py ./
+COPY routers/ routers/
 COPY static/ static/
 
 # Entrypoint. yt-dlp se pinea exacto en pyproject.toml (imagen reproducible).
