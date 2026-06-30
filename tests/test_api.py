@@ -252,7 +252,7 @@ def test_content_disposition_escape(client, app_state):
     from models import Job
 
     workdir = app_state.out_dir / "escape_test"
-    workdir.mkdir()
+    workdir.mkdir(exist_ok=True)
     test_file = workdir / "video.mp4"
     test_file.write_bytes(b"content")
 
@@ -325,7 +325,7 @@ def test_content_disposition_unicode_filename(client, app_state):
     from models import Job
 
     workdir = app_state.out_dir / "unicode_test"
-    workdir.mkdir()
+    workdir.mkdir(exist_ok=True)
     test_file = workdir / "video.mp4"
     test_file.write_bytes(b"content")
 
@@ -348,7 +348,7 @@ def test_content_disposition_control_chars_stripped(client, app_state):
     from models import Job
 
     workdir = app_state.out_dir / "newline_test"
-    workdir.mkdir()
+    workdir.mkdir(exist_ok=True)
     test_file = workdir / "video.mp4"
     test_file.write_bytes(b"content")
 

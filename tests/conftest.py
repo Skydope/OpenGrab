@@ -161,9 +161,11 @@ def authed_client(monkeypatch):
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_test_downloads():
-    yield
     import shutil
 
     test_dir = Path(__file__).parent / "_test_downloads"
+    if test_dir.exists():
+        shutil.rmtree(test_dir, ignore_errors=True)
+    yield
     if test_dir.exists():
         shutil.rmtree(test_dir, ignore_errors=True)
