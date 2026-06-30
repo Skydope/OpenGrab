@@ -303,6 +303,41 @@ def test_fetch_playlist_includes_unavailable():
     assert videos[2]["unavailable"] is False
 
 
+# ------- _fetch_playlist: usa extract_flat="in_playlist" ------- #
+def test_fetch_playlist_uses_in_playlist_flat():
+    # Regresion: con extract_flat=True yt-dlp resuelve watch?v=...&list=...
+    # al video (entries=None -> 0/0). Debe pedir "in_playlist".
+    from download import _fetch_playlist
+
+    captured = {}
+
+    def _factory(opts):
+        captured.update(opts)
+        return _mock_ydl({"title": "PL", "entries": []})
+
+    with patch("download.yt_dlp.YoutubeDL", side_effect=_factory):
+        _fetch_playlist("https://x.com/watch?v=a&list=b")
+
+    assert captured.get("extract_flat") == "in_playlist"
+    assert captured.get("ignoreerrors") is True
+
+
+# ------- _fetch_playlist: materializa entries perezosas (generador) ------- #
+def test_fetch_playlist_handles_generator_entries():
+    from download import _fetch_playlist
+
+    def _entries_gen():
+        yield {"title": "V1", "url": "https://x.com/1", "id": "v1"}
+        yield {"title": "V2", "url": "https://x.com/2", "id": "v2"}
+
+    info = {"title": "PL", "entries": _entries_gen()}
+    with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
+        result = _fetch_playlist("https://x.com/playlist?list=test")
+
+    assert result["count"] == 2
+    assert [v["title"] for v in result["videos"]] == ["V1", "V2"]
+
+
 # --------------------- watch mode: channel check ------------------------ #
 def test_check_channel_watch_finds_new_videos(dl_state, monkeypatch):
     from download import _check_channel_watch

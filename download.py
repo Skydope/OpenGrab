@@ -200,15 +200,21 @@ def _fetch_playlist(url: str) -> dict[str, Any]:
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "extract_flat": True,
+        # "in_playlist" aplana SOLO el primer nivel: para watch?v=...&list=...
+        # yt-dlp devuelve _type:"playlist" con sus entries. Con True (aplanado
+        # recursivo) resuelve la URL al video y entrega entries=None -> 0/0.
+        "extract_flat": "in_playlist",
         "skip_download": True,
+        # Un video privado/borrado no debe abortar el aplanado de toda la lista.
+        "ignoreerrors": True,
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if info is None:
         from i18n import t
         raise RuntimeError(t("error.ytdl_no_info"))
-    entries = info.get("entries") or []
+    # entries puede ser un generador perezoso (LazyList): materializarlo.
+    entries = list(info.get("entries") or [])
     videos = []
     for e in entries:
         if e is None:

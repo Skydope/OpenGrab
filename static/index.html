@@ -1015,6 +1015,18 @@ document.addEventListener('alpine:init', () => {
       const hasList = /[?&]list=/.test(u);
       if (hasList && !hasV) return "playlist";
       if (hasV && hasList) return "video+list";
+
+      // Detect non-YouTube playlists by URL pattern
+      const lower = u.toLowerCase();
+      // SoundCloud sets: /username/sets/set-name
+      if (/\/sets\/[^/?#]+/.test(lower)) return "playlist";
+      // Vimeo channels/showcases: /channels/name or /showcase/name
+      if (/\/(channels|showcase)\/[^/?#]+/.test(lower)) return "playlist";
+      // TikTok user pages (not single video): /@username without /video/
+      if (/\/@[^/?#]+$/.test(lower) || /\/@[^/?#]+\/?$/.test(lower)) return "playlist";
+      // Generic playlist paths: Dailymotion /playlist/..., etc.
+      if (/\/playlist\/[^/?#]+/.test(lower)) return "playlist";
+
       return "video";
     },
 
@@ -1034,11 +1046,12 @@ document.addEventListener('alpine:init', () => {
 
       this.inspecting = true;
       try {
-        const r = await fetch("/api/info?url=" + encodeURIComponent(this.url.trim()));
+        const r = await fetch("/api/info?url=" + encodeURIComponent(this.url.trim()),
+          { credentials: "include" });
         if (!r.ok) {
           let msg = this.t('ui.error_analyze');
           try { msg = (await r.json()).detail || msg; } catch (e) {}
-          throw new Error(msg);
+          throw new Error(msg + " (HTTP " + r.status + ")");
         }
         const data = await r.json();
         this.meta = true;
@@ -1114,13 +1127,18 @@ document.addEventListener('alpine:init', () => {
 
     // ── Playlist ──────────────────────────────
     async loadPlaylist() {
+      if (!this.url || !this.url.trim()) {
+        this.errorMsg = this.t('ui.error_url_first');
+        return;
+      }
       this.playlistLoading = true;
       try {
-        const r = await fetch("/api/playlist?url=" + encodeURIComponent(this.url.trim()));
+        const r = await fetch("/api/playlist?url=" + encodeURIComponent(this.url.trim()),
+          { credentials: "include" });
         if (!r.ok) {
           let msg = this.t('ui.error_playlist_load');
           try { msg = (await r.json()).detail || msg; } catch (e) {}
-          throw new Error(msg);
+          throw new Error(msg + " (HTTP " + r.status + ")");
         }
         const data = await r.json();
         this.playlistVideos = (data.videos || []).map(v => ({
@@ -1131,6 +1149,7 @@ document.addEventListener('alpine:init', () => {
       } catch (err) {
         this.playlistVideos = [];
         this.errorMsg = err.message;
+        console.error("loadPlaylist failed:", err);
       } finally {
         this.playlistLoading = false;
       }
@@ -1169,6 +1188,7 @@ document.addEventListener('alpine:init', () => {
         const r = await fetch("/api/playlist/download", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ urls: urls, quality: this.quality }),
         });
 
@@ -1203,6 +1223,7 @@ document.addEventListener('alpine:init', () => {
       } catch (err) {
         this.errorMsg = this.t('ui.error_network_short');
         this.downloading = false;
+        console.error("downloadPlaylist failed:", err);
       }
     },
 
@@ -1539,14 +1560,16 @@ document.addEventListener('alpine:init', () => {
         const r = await fetch("/api/jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ url: this.url.trim(), quality: this.quality, subs: this.subsEnabled, thumb: this.thumbEnabled, infojson: this.infojsonEnabled }),
         });
-        if (!r.ok) throw new Error((await r.json()).detail || this.t('ui.error_create_job'));
+        if (!r.ok) throw new Error(((await r.json()).detail || this.t('ui.error_create_job')) + " (HTTP " + r.status + ")");
         ({ job_id: jobId } = await r.json());
       } catch (err) {
         this.errorMsg = err.message;
         this.canRetry = true;
         this.downloading = false;
+        console.error("download failed:", err);
         return;
       }
 
