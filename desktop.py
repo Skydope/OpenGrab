@@ -409,20 +409,20 @@ def _format_tray_status(jobs: list[dict[str, Any]]) -> tuple[bool, str, str]:
         short = title if len(title) <= 60 else title[:59] + "…"
         n = len(downloading)
         suffix = f" (+{n - 1})" if n > 1 else ""
-        tooltip = f"OpenGrab — ↓ {pct}% · {short}{suffix}"
+        tooltip = f"OpenGrab - {pct}% - {short}{suffix}"
         estado = f"Descargando {pct}% · {short}{suffix}"
         return True, tooltip[:120], estado
     queued = [j for j in jobs if j.get("status") in ("queued", "starting")]
     if queued:
-        return False, "OpenGrab — en cola", f"En cola ({len(queued)})"
+        return False, "OpenGrab - en cola", f"En cola ({len(queued)})"
     # Watch mode: si hubo dispatch reciente, mostrar notificación en tooltip
     try:
         from state import _latest_watch_ts
         if time.time() - _latest_watch_ts < 30:
-            return False, "OpenGrab — nuevos videos detectados", "Nuevos videos"
+            return False, "OpenGrab - nuevos videos detectados", "Nuevos videos"
     except Exception:
         pass
-    return False, "OpenGrab — inactivo", "Inactivo"
+    return False, "OpenGrab - inactivo", "Inactivo"
 
 
 def _poll_tray_status(port: int) -> None:
@@ -448,7 +448,11 @@ def _poll_tray_status(port: int) -> None:
         if icon is None:
             continue
         try:
-            icon.title = tooltip
+            # El backend X11 de pystray (Xlib) escribe WM_NAME como STRING
+            # (latin-1) en vez de UTF8_STRING; títulos de video con emojis,
+            # CJK, cirílico, etc. tiran UnicodeEncodeError. Sustituimos lo
+            # no representable en vez de perder el tooltip entero.
+            icon.title = tooltip.encode("latin-1", "replace").decode("latin-1")
             if active != last_active:
                 icon.icon = _get_tray_image(active)
                 last_active = active

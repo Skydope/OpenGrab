@@ -22,7 +22,7 @@ class TestFormatTrayStatus:
     def test_inactivo_sin_jobs(self) -> None:
         active, tooltip, estado = desktop._format_tray_status([])
         assert active is False
-        assert tooltip == "OpenGrab — inactivo"
+        assert tooltip == "OpenGrab - inactivo"
         assert estado == "Inactivo"
 
     def test_inactivo_solo_terminados(self) -> None:
@@ -78,6 +78,23 @@ class TestFormatTrayStatus:
         active, _tooltip, estado = desktop._format_tray_status(jobs)
         assert active is True
         assert "Descargando" in estado
+
+    def test_tooltip_literales_son_latin1(self) -> None:
+        """Los tooltips de estados sin título de usuario deben ser latin-1-safe
+        (el backend X11 de pystray escribe WM_NAME como STRING, no UTF8_STRING)."""
+        for jobs in ([], [_job("queued")]):
+            _active, tooltip, _estado = desktop._format_tray_status(jobs)
+            tooltip.encode("latin-1")  # no debe lanzar UnicodeEncodeError
+
+    def test_tooltip_con_titulo_no_latin1_es_sanitizable(self) -> None:
+        """Un título con emoji/CJK no debe poder romper icon.title: la
+        sanitización latin-1 'replace' que aplica _poll_tray_status no lanza."""
+        jobs = [_job("downloading", percent=12.0, title="动画 🎬 фильм")]
+        _active, tooltip, _estado = desktop._format_tray_status(jobs)
+        # Replica la transformación de _poll_tray_status antes de icon.title.
+        safe = tooltip.encode("latin-1", "replace").decode("latin-1")
+        safe.encode("latin-1")  # round-trip sin excepción
+        assert "12%" in safe
 
 
 # --------------------------------------------------------------------------- #
