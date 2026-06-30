@@ -109,6 +109,14 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await dispatch_task
     except asyncio.CancelledError:
         pass
+    tasks = list(state.running_tasks)
+    for t in tasks:
+        t.cancel()
+    for t in tasks:
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
     db.close()
 
 

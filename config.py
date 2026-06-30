@@ -180,6 +180,7 @@ FORMATS = {
     "480p":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/"
              "best[height<=480][ext=mp4]/bv*[height<=480]+ba/b[height<=480]",
     "audio": "bestaudio/best",
+    "worst": "worst[ext=mp4]/worst",
 }
 
 

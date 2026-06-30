@@ -333,6 +333,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
         "progress_hooks": [hook],
         "merge_output_format": "mp4",
         "postprocessors": [],
+        "socket_timeout": 30,
         # Reintentos para extractors/redes frágiles (HLS fragmentado, rate limits).
         "extractor_retries": 3,
         "fragment_retries": 5,
