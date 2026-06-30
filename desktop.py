@@ -186,6 +186,40 @@ def acquire_single_instance(name: str = "OpenGrab_SingleInstance") -> bool:
     return True
 
 
+def _open_in_browser(url: str) -> None:
+    """Abre ``url`` en el navegador default del sistema (fallback sin webview nativo).
+
+    PyInstaller reescribe ``LD_LIBRARY_PATH`` (GNU/Linux) para que el binario
+    bundleado encuentre sus propias libs, posiblemente de otra versión/ABI que
+    las del sistema, y guarda el valor original en ``LD_LIBRARY_PATH_ORIG``.
+    Esa variable parchada se hereda en cualquier subproceso — incluido el que
+    ``webbrowser.open()`` lanza para invocar ``xdg-open`` — y rompe binarios
+    del sistema con errores tipo "symbol lookup error: undefined symbol: ...".
+    Restauramos el valor original antes de lanzar el navegador y lo dejamos
+    como estaba después (no tocamos esto en win32/darwin, que no lo usan).
+    """
+    if sys.platform in ("win32", "darwin"):
+        webbrowser.open(url)
+        return
+
+    lp_key = "LD_LIBRARY_PATH"
+    patched = os.environ.get(lp_key)
+    orig = os.environ.get(lp_key + "_ORIG")
+    if orig is not None:
+        os.environ[lp_key] = orig
+    else:
+        os.environ.pop(lp_key, None)
+    try:
+        webbrowser.open(url)
+    except Exception:
+        _log.exception("_open_in_browser: webbrowser.open falló")
+    finally:
+        if patched is not None:
+            os.environ[lp_key] = patched
+        else:
+            os.environ.pop(lp_key, None)
+
+
 def _wait_healthy(port: int, timeout: float = _HEALTH_TIMEOUT) -> bool:
     """Reintenta GET /health hasta 200 o timeout. True si el server quedó vivo."""
     deadline = time.time() + timeout
@@ -332,9 +366,9 @@ def _open_ui_window(port: int) -> None:
             webview.start()
         except Exception:
             _log.exception("webview falló, abriendo en navegador")
-            webbrowser.open(url)
+            _open_in_browser(url)
     else:
-        webbrowser.open(url)
+        _open_in_browser(url)
 
 
 def _get_tray_image(active: bool | None = None) -> object:
@@ -447,10 +481,10 @@ def _system_tray(port: int) -> None:
             if _native_webview_available():
                 _reopen_event.set()
             else:
-                webbrowser.open(f"http://127.0.0.1:{port}")
+                _open_in_browser(f"http://127.0.0.1:{port}")
 
         def _on_open_web(icon: pystray.Icon, item: pystray.MenuItem) -> None:
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            _open_in_browser(f"http://127.0.0.1:{port}")
 
         def _on_exit(icon: pystray.Icon, item: pystray.MenuItem) -> None:
             _log.info("tray: salir solicitado por usuario")
@@ -543,7 +577,7 @@ def main() -> int:
             _open_ui_window(port)
             _log.info("ventana cerrada, app sigue en tray")
         else:
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            _open_in_browser(f"http://127.0.0.1:{port}")
 
         while tray_thread.is_alive():
             if _reopen_event.wait(timeout=0.5):
@@ -552,7 +586,7 @@ def main() -> int:
                     _log.info("reabriendo ventana WebView2 desde tray")
                     _open_ui_window(port)
                 else:
-                    webbrowser.open(f"http://127.0.0.1:{port}")
+                    _open_in_browser(f"http://127.0.0.1:{port}")
     finally:
         tray_thread.join(timeout=8)
         if tray_thread.is_alive():

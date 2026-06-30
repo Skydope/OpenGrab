@@ -5,6 +5,7 @@ No levantan uvicorn ni abren navegadores: cubren las funciones puras y las costu
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 import types
@@ -192,6 +193,55 @@ def test_open_ui_no_msgbox_on_browser_fallback(monkeypatch):
 
     desktop._open_ui_window(12345)
     assert len(msgbox_calls) == 0
+
+
+def test_open_in_browser_restores_ld_library_path(monkeypatch):
+    """En Linux restaura LD_LIBRARY_PATH a _ORIG mientras corre webbrowser.open
+    (evita el symbol lookup error de xdg-open bajo PyInstaller) y lo deja como estaba."""
+    monkeypatch.setattr(desktop.sys, "platform", "linux")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/meipass/lib")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib:/usr/local/lib")
+
+    seen = {}
+    monkeypatch.setattr(
+        desktop.webbrowser, "open",
+        lambda u: seen.update(url=u, ld=os.environ.get("LD_LIBRARY_PATH")),
+    )
+
+    desktop._open_in_browser("http://127.0.0.1:8800")
+
+    # Durante la llamada, LD_LIBRARY_PATH debió ser el valor _ORIG.
+    assert seen["ld"] == "/usr/lib:/usr/local/lib"
+    # Después, restaurado al valor parchado por PyInstaller.
+    assert os.environ["LD_LIBRARY_PATH"] == "/meipass/lib"
+
+
+def test_open_in_browser_unsets_when_no_orig(monkeypatch):
+    """Si no hay _ORIG (LD_LIBRARY_PATH no estaba seteado originalmente), lo quita
+    durante la llamada y luego restaura el valor parchado."""
+    monkeypatch.setattr(desktop.sys, "platform", "linux")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/meipass/lib")
+    monkeypatch.delenv("LD_LIBRARY_PATH_ORIG", raising=False)
+
+    seen = {}
+    monkeypatch.setattr(
+        desktop.webbrowser, "open",
+        lambda u: seen.update(ld=os.environ.get("LD_LIBRARY_PATH")),
+    )
+
+    desktop._open_in_browser("http://127.0.0.1:8800")
+
+    assert seen["ld"] is None  # quitada durante la llamada
+    assert os.environ["LD_LIBRARY_PATH"] == "/meipass/lib"  # restaurada después
+
+
+def test_open_in_browser_no_touch_on_windows(monkeypatch):
+    """En win32 no toca el entorno: llama webbrowser.open directo."""
+    monkeypatch.setattr(desktop.sys, "platform", "win32")
+    called = {}
+    monkeypatch.setattr(desktop.webbrowser, "open", lambda u: called.setdefault("url", u))
+    desktop._open_in_browser("http://127.0.0.1:8800")
+    assert called["url"] == "http://127.0.0.1:8800"
 
 
 # ----------------------- engine_update (hot-swap) ------------------------ #
