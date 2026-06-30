@@ -28,7 +28,8 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["app", "config", "db", "desktop", "download", "engine_update", "logging_setup", "models", "routes", "state"]
+py-modules = ["app", "config", "db", "desktop", "download", "engine_update", "i18n", "logging_setup", "models", "state"]
+packages = ["routers"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
