@@ -13,7 +13,6 @@ no quality="best". Los archivos descargados se borran al terminar el test.
 
 from __future__ import annotations
 
-import shutil
 import time
 from pathlib import Path
 
