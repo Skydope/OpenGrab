@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 import threading
 import time
 import uuid
@@ -84,7 +85,7 @@ class AppState:
         fields.setdefault("completed", int(time.time()))
         try:
             self.db.update_job(job_id, **fields)
-        except Exception:
+        except sqlite3.Error:
             log.exception("job %s: error al persistir en DB", job_id)
 
     # ------------------------------------------------------------------ #
@@ -272,7 +273,7 @@ class AppState:
         for dirpath in list(self._pending_cleanups):
             try:
                 self._secure_delete_workdir(dirpath)
-            except Exception:
+            except OSError:
                 log.exception("flush_pending_cleanups: no se pudo borrar %s", dirpath)
             if not os.path.exists(dirpath):
                 self._pending_cleanups.discard(dirpath)
@@ -371,13 +372,13 @@ class AppState:
         try:
             if filepath:
                 self._secure_delete_file(str(filepath))
-        except Exception:
+        except OSError:
             pass
         try:
             if workdir:
                 if self.db.count_jobs_by_workdir(workdir) == 0:
                     self._secure_delete_workdir(str(workdir))
-        except Exception:
+        except OSError:
             pass
 
     def delete_history_entry(
@@ -403,7 +404,7 @@ class AppState:
             if r.get("filepath"):
                 try:
                     self._secure_delete_file(str(r["filepath"]))
-                except Exception:
+                except OSError:
                     pass
         workdirs_seen: set[str] = set()
         for r in rows:
@@ -412,7 +413,7 @@ class AppState:
                 workdirs_seen.add(str(wd))
                 try:
                     self._secure_delete_workdir(str(wd))
-                except Exception:
+                except OSError:
                     pass
         count = self.db.clear_history()
         self.jobs = {k: v for k, v in self.jobs.items()
@@ -484,7 +485,7 @@ class AppState:
                 self._secure_delete_workdir(str(d))
                 freed += freed_before
                 cleaned += 1
-            except Exception:
+            except OSError:
                 pass
         with self._usage_lock:
             self._usage_cache_ts = 0.0
@@ -503,7 +504,7 @@ class AppState:
                 self._secure_delete_workdir(str(d))
                 freed += freed_before
                 cleaned += 1
-            except Exception:
+            except OSError:
                 pass
         with self._usage_lock:
             self._usage_cache_ts = 0.0
@@ -601,7 +602,7 @@ class AppState:
                                 "watch: canal %s → %d videos despachados",
                                 ch.get("title") or ch["url"], dispatched,
                             )
-                    except Exception:
+                    except Exception:  # watch_loop: yt-dlp + DB + dispatch; el loop no debe caerse
                         log.exception("watch: error en canal %s", ch["url"])
 
     # ------------------------------------------------------------------ #
@@ -846,7 +847,7 @@ class AppState:
         # ya corrió en el finalize original. Solo persistimos la ruta nueva.
         try:
             self.db.update_job(job_id, filepath=str(target))
-        except Exception:
+        except sqlite3.Error:
             log.warning("move_job_file: no se pudo persistir filepath en DB",
                         exc_info=True)
         return target
