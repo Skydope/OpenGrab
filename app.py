@@ -102,6 +102,12 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     db.prune_history(keep=state.resolve("history_max", 500, int)[0])
 
+    import yt_dlp  # type: ignore[import-untyped]
+    from metrics import ytdlp_version
+
+    version_str = getattr(getattr(yt_dlp, "version", None), "__version__", "unknown")
+    ytdlp_version.info({"version": version_str})
+
     _app.state.opengrab = state
 
     task = asyncio.create_task(state.storage.evict_loop())
@@ -192,6 +198,15 @@ class _RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "duration_ms": round(dur_ms, 1),
                 },
             )
+        from metrics import http_requests
+
+        route = request.scope.get("route")
+        endpoint = route.path if route else request.url.path
+        http_requests.labels(
+            endpoint=endpoint,
+            method=request.method,
+            status_code=str(response.status_code),
+        ).inc()
         return response
 
 

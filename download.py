@@ -356,6 +356,7 @@ def _finalize_download(
     loop: asyncio.AbstractEventLoop, evt: asyncio.Event,
     job: Any, workdir: Path, final: Path, info: dict[str, Any],
     title: str, ext: str, mime: str,
+    t_start: float = 0.0,
 ) -> None:
     """Post-descarga normal: desktop finalize + server move + DB persist."""
     state.library._finalize_desktop(ctx.job_id, workdir, final, info, ctx.quality, ctx.playlist_subdir)
@@ -392,6 +393,22 @@ def _finalize_download(
     if extractor_key and vid:
         state.db.update_job(ctx.job_id, extractor=extractor_key, video_id=str(vid))
         state.db.record_download(extractor_key, str(vid), ctx.job_id)
+
+    from metrics import download_total, download_duration, download_bytes
+
+    extractor = extractor_key or "unknown"
+    download_total.labels(status="done", extractor=extractor).inc()
+    download_duration.labels(extractor=extractor, quality=ctx.quality).observe(
+        time.monotonic() - t_start
+    )
+    if job.filepath:
+        try:
+            download_bytes.labels(extractor=extractor).inc(
+                Path(job.filepath).stat().st_size
+            )
+        except OSError:
+            pass
+
     loop.call_soon_threadsafe(evt.set)
 
 
@@ -399,7 +416,8 @@ def _handle_termination(
     state: AppState, ctx: DownloadContext,
     loop: asyncio.AbstractEventLoop, evt: asyncio.Event,
     job: Any, workdir: Path,
-    is_cancelled: bool, exc: Exception | None = None,
+    t_start: float = 0.0,
+    is_cancelled: bool = False, exc: Exception | None = None,
 ) -> None:
     """Cancelación y error: cleanup + DB, con bifurcación incógnito."""
     if is_cancelled:
@@ -446,6 +464,16 @@ def _handle_termination(
             except (sqlite3.DatabaseError, ValueError):
                 log.exception("job %s: no se pudo persistir estado 'error' en DB", ctx.job_id)
             log.error("job %s: falló", ctx.job_id, exc_info=True)
+
+    from metrics import download_total, download_duration
+
+    status = "cancelled" if is_cancelled else "error"
+    download_total.labels(status=status, extractor="unknown").inc()
+    if t_start:
+        download_duration.labels(extractor="unknown", quality=ctx.quality).observe(
+            time.monotonic() - t_start
+        )
+
     loop.call_soon_threadsafe(evt.set)
 
 
@@ -521,6 +549,7 @@ def _run_download(state: AppState, ctx: DownloadContext,
     if evt is None:
         from i18n import t
         raise RuntimeError(t("error.job_not_found_short"))
+    t_start = time.monotonic()
 
     def hook(d: dict[str, Any]) -> None:
         if evt is None:
@@ -555,64 +584,67 @@ def _run_download(state: AppState, ctx: DownloadContext,
 
     opts = _build_ydl_opts(ctx, workdir, max_size_mb, hook)
 
-    try:
-        job.status = "starting"
-        job.percent = 0.0
-        if ctx.job_id in state.cancel_requests:
-            from i18n import t
-            raise DownloadCancelled(t("error.cancelled_before_start"))
-        if ctx.incognito:
-            log.info("job %s: iniciando descarga incógnito (%s)", ctx.job_id, ctx.quality)
-        else:
-            log.info(
-                "job %s: iniciando descarga (%s, %s)",
-                ctx.job_id, ctx.quality, _sanitize_url(ctx.url),
-            )
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(ctx.url, download=True)
+    from metrics import jobs_active
 
-        if info is None:
-            from i18n import t
-            raise RuntimeError(t("error.ytdl_no_info"))
-
-        final = None
-        requested = info.get("requested_downloads") or []
-        if requested and requested[0].get("filepath"):
-            final = Path(requested[0]["filepath"])
-
-        if final is None:
-            produced = sorted(
-                workdir.glob("*"),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-            produced = [p for p in produced if p.is_file()]
-            if not produced:
+    with jobs_active.track_inprogress():
+        try:
+            job.status = "starting"
+            job.percent = 0.0
+            if ctx.job_id in state.cancel_requests:
                 from i18n import t
-                raise RuntimeError(t("error.no_file_generated"))
-            final = produced[0]
+                raise DownloadCancelled(t("error.cancelled_before_start"))
+            if ctx.incognito:
+                log.info("job %s: iniciando descarga incógnito (%s)", ctx.job_id, ctx.quality)
+            else:
+                log.info(
+                    "job %s: iniciando descarga (%s, %s)",
+                    ctx.job_id, ctx.quality, _sanitize_url(ctx.url),
+                )
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(ctx.url, download=True)
 
-        if not final.exists():
-            from i18n import t
-            raise RuntimeError(t("error.file_not_found", final=str(final)))
+            if info is None:
+                from i18n import t
+                raise RuntimeError(t("error.ytdl_no_info"))
 
-        _enforce_size(final, max_size_mb)
+            final = None
+            requested = info.get("requested_downloads") or []
+            if requested and requested[0].get("filepath"):
+                final = Path(requested[0]["filepath"])
 
-        is_audio = ctx.quality == "audio"
-        title = _safe_name(info.get("title", "video"))
-        ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
-        mime = "audio/mpeg" if is_audio else "video/mp4"
+            if final is None:
+                produced = sorted(
+                    workdir.glob("*"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                produced = [p for p in produced if p.is_file()]
+                if not produced:
+                    from i18n import t
+                    raise RuntimeError(t("error.no_file_generated"))
+                final = produced[0]
 
-        if ctx.incognito:
-            _handle_incognito_completion(state, ctx, loop, evt, job, workdir, final, title, mime)
-            return
+            if not final.exists():
+                from i18n import t
+                raise RuntimeError(t("error.file_not_found", final=str(final)))
 
-        # Desktop finalize + server move + DB persist
-        _finalize_download(state, ctx, loop, evt, job, workdir, final, info, title, ext, mime)
-    except DownloadCancelled:
-        _handle_termination(state, ctx, loop, evt, job, workdir, is_cancelled=True)
-    except (DownloadError, OSError, RuntimeError) as exc:  # thread boundary: fallas esperables de yt-dlp + filesystem
-        _handle_termination(state, ctx, loop, evt, job, workdir, is_cancelled=False, exc=exc)
-    finally:
-        state.cancel_requests.discard(ctx.job_id)
-        loop.call_soon_threadsafe(evt.set)
+            _enforce_size(final, max_size_mb)
+
+            is_audio = ctx.quality == "audio"
+            title = _safe_name(info.get("title", "video"))
+            ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
+            mime = "audio/mpeg" if is_audio else "video/mp4"
+
+            if ctx.incognito:
+                _handle_incognito_completion(state, ctx, loop, evt, job, workdir, final, title, mime)
+                return
+
+            # Desktop finalize + server move + DB persist
+            _finalize_download(state, ctx, loop, evt, job, workdir, final, info, title, ext, mime, t_start)
+        except DownloadCancelled:
+            _handle_termination(state, ctx, loop, evt, job, workdir, t_start, is_cancelled=True)
+        except (DownloadError, OSError, RuntimeError) as exc:  # fallas esperables de yt-dlp + filesystem
+            _handle_termination(state, ctx, loop, evt, job, workdir, t_start, is_cancelled=False, exc=exc)
+        finally:
+            state.cancel_requests.discard(ctx.job_id)
+            loop.call_soon_threadsafe(evt.set)

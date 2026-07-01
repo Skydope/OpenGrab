@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn>=0.48,<1.0",
     "yt-dlp==2026.6.9",
     "slowapi>=0.1.9,<1.0",
+    "prometheus_client>=0.20,<1.0",
 ]
 
 [project.optional-dependencies]

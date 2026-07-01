@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Preguntas de uso
+    url: https://github.com/Skydope/OpenGrab/discussions
+    about: ¿Tenés dudas sobre cómo usar OpenGrab? Preguntá en Discussions.
+  - name: Reporte de vulnerabilidad
+    url: https://github.com/Skydope/OpenGrab/security/advisories/new
+    about: ¿Encontraste una vulnerabilidad de seguridad? Reportala de forma privada.

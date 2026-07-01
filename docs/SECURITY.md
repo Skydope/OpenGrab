@@ -42,6 +42,34 @@ sudo ./scripts/egress-lockdown.sh --remove     # deactivate
 
 All write/expensive endpoints are rate-limited via slowapi. Limits are documented in the [API Reference](API.md).
 
+## Prometheus Metrics Endpoint
+
+The `/metrics` endpoint exposes Prometheus-format metrics **without authentication**.
+This follows the industry convention: Prometheus scrape jobs use `GET /metrics` with
+no credentials by default.
+
+Protection is **network-level**, not application-level:
+
+- **Docker**: place Prometheus and OpenGrab on the same Docker network. `/metrics` is
+  only reachable from within that network — not exposed to the host or internet
+  unless explicitly port-mapped.
+- **Bare-metal / reverse proxy**: use a firewall (`iptables`, `nftables`) or
+  reverse proxy (nginx, Caddy) to restrict access to the scraper's IP. Example
+  nginx snippet:
+
+  ```nginx
+  location /metrics {
+      allow 10.0.0.100;   # Prometheus server
+      deny all;
+      proxy_pass http://opengrab:8800;
+  }
+  ```
+
+- **Tailscale / WireGuard**: the endpoint is only reachable by devices on the VPN.
+
+If defense-in-depth is desired, place a reverse proxy with IP allowlisting in
+front of OpenGrab and bind the application to `127.0.0.1`.
+
 ## Incognito Mode — Threat Model & Limitations
 
 Incognito downloads skip history/dedup persistence, deliver the file to a
@@ -70,7 +98,12 @@ generic User-Agent), and drop the DB row on every terminal state. What it does
 
 ## Reporting a Vulnerability
 
-Please report security issues privately to **skydope [at] proton.me**. Do not open public issues until a fix is released.
+Please report security issues through one of these channels:
+
+- **Preferred**: [GitHub Security Advisories](https://github.com/Skydope/OpenGrab/security/advisories/new)
+- **Alternative**: **skydope [at] proton.me**
+
+Do not open public issues until a fix is released.
 
 ---
 
@@ -115,4 +148,9 @@ genérico) y borran la fila de DB en todo estado terminal. Lo que **no** garanti
 
 ### Reportar Vulnerabilidades
 
-Reportá issues de seguridad de forma privada a **skydope [at] proton.me**. No divulgar issues públicos hasta que se resuelvan.
+Reportá issues de seguridad a través de estos canales:
+
+- **Preferido**: [GitHub Security Advisories](https://github.com/Skydope/OpenGrab/security/advisories/new)
+- **Alternativo**: **skydope [at] proton.me**
+
+No divulgues issues públicos hasta que se resuelvan.

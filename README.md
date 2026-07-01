@@ -11,8 +11,8 @@
   > Self-hosted video & audio downloader — paste a URL from any site, get an MP4. Wraps yt-dlp (1800+ sites) + ffmpeg behind a clean web UI.
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-1.10.0-green.svg)](https://github.com/Skydope/OpenGrab/releases/latest)
-  [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
+  [![Version](https://img.shields.io/github/v/tag/Skydope/OpenGrab?label=version)](https://github.com/Skydope/OpenGrab/releases/latest)
+  [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org)
   [![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker)](https://github.com/Skydope/OpenGrab/pkgs/container/opengrab)
   [![Stars](https://img.shields.io/github/stars/Skydope/OpenGrab?style=social)](https://github.com/Skydope/OpenGrab/stargazers)
 

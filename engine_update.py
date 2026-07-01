@@ -110,6 +110,11 @@ def check_and_update(force: bool = False) -> dict[str, object]:
             _install_wheel(url, engine_dir)
             _write_stamp(engine_dir)
             result.update(updated=True, version=version)
+            try:
+                from metrics import ytdlp_version
+                ytdlp_version.info({"version": version})
+            except Exception:
+                pass  # metrics module may not be loaded yet (pre-lifespan)
         except Exception as exc:
             result["error"] = str(exc)
 

@@ -164,6 +164,15 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/metrics")
+async def api_metrics_prometheus() -> Response:
+    from metrics import generate_latest
+    return Response(
+        content=generate_latest(),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
 @router.get("/")
 async def index() -> HTMLResponse:
     from config import TOKEN

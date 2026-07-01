@@ -67,7 +67,15 @@ para todos los jobs de ese batch. `_run_download` lo antepone al destino final
 desktop). Hoy no interactúa con `incognito`: `BatchReq` (endpoint de playlist)
 no tiene campo `incognito`, y `JobReq` (endpoint de job individual, el único
 que puede setear `incognito=True`) no tiene `playlist_subdir` — son caminos
-disjuntos. Si en el futuro se unifican, falta definir precedencia.
+disjuntos.
+
+**Decisión (2026-07-01):** si en el futuro `BatchReq` acepta
+`incognito=True`, la precedencia será: `playlist_subdir` se sanitiza y se
+antepone al `incognito_dir` del usuario (`<incognito_dir>/<playlist_subdir>/`).
+El secure-wipe forzado (3-pass) aplica al workdir temporal; la subcarpeta en
+`incognito_dir` **no se toca** — es del usuario y su ciclo de vida está fuera
+del alcance de OpenGrab. Esto preserva la semántica de "el usuario elige dónde
+se entrega" del modo incógnito sin perder la organización por playlist.
 
 **Estados y transiciones:**
 
