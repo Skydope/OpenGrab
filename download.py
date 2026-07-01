@@ -302,19 +302,74 @@ class DownloadContext:
     playlist_subdir: str | None = None
 
 
+def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
+                    max_size_mb: int, hook: Any) -> dict[str, Any]:
+    is_audio = ctx.quality == "audio"
+    outtmpl = str(workdir / "%(title)s.%(ext)s")
+    fmt = FORMATS.get(ctx.quality, FORMATS["best"])
+    if max_size_mb and not is_audio:
+        fmt += f"[filesize_approx<{max_size_mb}M]"
+    opts: dict[str, Any] = {
+        "format": fmt,
+        "outtmpl": outtmpl,
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "progress_hooks": [hook],
+        "merge_output_format": "mp4",
+        "postprocessors": [],
+        "socket_timeout": 30,
+        "extractor_retries": 3,
+        "fragment_retries": 5,
+        "retries": 5,
+    }
+    if is_audio:
+        opts["postprocessors"] = [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ]
+        opts.pop("merge_output_format", None)
+
+    # Sidecars: forzados off si incógnito (ctx es frozen, no podemos mutarlo).
+    subs = False if ctx.incognito else ctx.subs
+    thumb = False if ctx.incognito else ctx.thumb
+    infojson = False if ctx.incognito else ctx.infojson
+
+    if subs:
+        opts["writesubtitles"] = True
+        opts["writeautomaticsub"] = True
+        opts["subtitleslangs"] = ["es", "en"]
+    if thumb:
+        opts["writethumbnail"] = True
+    if infojson:
+        opts["writeinfojson"] = True
+
+    # Hardening de privacidad para modo incógnito: sin caché en disco (evita
+    # ~/.cache/yt-dlp con rastros de qué se consultó) y User-Agent genérico de
+    # navegador en lugar del default de yt-dlp (que delata la herramienta).
+    if ctx.incognito:
+        opts["cachedir"] = False
+        opts["http_headers"] = {"User-Agent": _INCOGNITO_USER_AGENT}
+
+    # En el binario de escritorio, ffmpeg viaja bundleado y no está en el PATH.
+    # Guard: solo seteamos ffmpeg_location si el binario existe junto al recurso;
+    # en Docker/dev no existe y yt-dlp usa el ffmpeg del PATH como siempre.
+    _ffmpeg = resource_path("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+    if _ffmpeg.exists():
+        opts["ffmpeg_location"] = str(_ffmpeg)
+
+    return opts
+
+
 def _run_download(state: AppState, ctx: DownloadContext,
                   loop: asyncio.AbstractEventLoop) -> None:
     job = state.jobs[ctx.job_id]
     workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
     max_size_mb, _ = state.resolve("max_size_mb", 0, int)
     job.workdir = str(workdir)
-    # Extraer sidecars a variables locales: si el download es incógnito se
-    # fuerzan off sin mutar el ctx (que es frozen).
-    subs = ctx.subs
-    thumb = ctx.thumb
-    infojson = ctx.infojson
-    if ctx.incognito:
-        subs = thumb = infojson = False
     evt = state.job_events.get(ctx.job_id)
     if evt is None:
         from i18n import t
@@ -351,58 +406,7 @@ def _run_download(state: AppState, ctx: DownloadContext,
             )
             loop.call_soon_threadsafe(evt.set)
 
-    is_audio = ctx.quality == "audio"
-    outtmpl = str(workdir / "%(title)s.%(ext)s")
-    fmt = FORMATS.get(ctx.quality, FORMATS["best"])
-    if max_size_mb and not is_audio:
-        fmt += f"[filesize_approx<{max_size_mb}M]"
-    opts: dict[str, Any] = {
-        "format": fmt,
-        "outtmpl": outtmpl,
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "progress_hooks": [hook],
-        "merge_output_format": "mp4",
-        "postprocessors": [],
-        "socket_timeout": 30,
-        # Reintentos para extractors/redes frágiles (HLS fragmentado, rate limits).
-        "extractor_retries": 3,
-        "fragment_retries": 5,
-        "retries": 5,
-    }
-    if is_audio:
-        opts["postprocessors"] = [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ]
-        opts.pop("merge_output_format", None)
-
-    if subs:
-        opts["writesubtitles"] = True
-        opts["writeautomaticsub"] = True
-        opts["subtitleslangs"] = ["es", "en"]
-    if thumb:
-        opts["writethumbnail"] = True
-    if infojson:
-        opts["writeinfojson"] = True
-
-    # Hardening de privacidad para modo incógnito: sin caché en disco (evita
-    # ~/.cache/yt-dlp con rastros de qué se consultó) y User-Agent genérico de
-    # navegador en lugar del default de yt-dlp (que delata la herramienta).
-    if ctx.incognito:
-        opts["cachedir"] = False
-        opts["http_headers"] = {"User-Agent": _INCOGNITO_USER_AGENT}
-
-    # En el binario de escritorio, ffmpeg viaja bundleado y no está en el PATH.
-    # Guard: solo seteamos ffmpeg_location si el binario existe junto al recurso;
-    # en Docker/dev no existe y yt-dlp usa el ffmpeg del PATH como siempre.
-    _ffmpeg = resource_path("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
-    if _ffmpeg.exists():
-        opts["ffmpeg_location"] = str(_ffmpeg)
+    opts = _build_ydl_opts(ctx, workdir, max_size_mb, hook)
 
     try:
         job.status = "starting"
@@ -447,6 +451,7 @@ def _run_download(state: AppState, ctx: DownloadContext,
 
         _enforce_size(final, max_size_mb)
 
+        is_audio = ctx.quality == "audio"
         title = _safe_name(info.get("title", "video"))
         ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
         mime = "audio/mpeg" if is_audio else "video/mp4"
