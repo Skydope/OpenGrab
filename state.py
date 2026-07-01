@@ -18,6 +18,7 @@ from secure_delete import wipe_file, wipe_workdir
 
 from db import Database
 from models import Job
+from storage_manager import StorageManager
 
 import config
 from i18n import t
@@ -41,12 +42,14 @@ class AppState:
         self.cancel_requests: set[str] = set()  # job_ids cuya cancelación se pidió
         self.running_tasks: set[asyncio.Task[None]] = set()
         self._finalize_lock = threading.Lock()
-        self._usage_cache: int | None = None
-        self._usage_cache_ts: float = 0.0
-        self._usage_lock = threading.Lock()
         self._start_time = time.monotonic()
-        self._pending_cleanups: set[str] = set()
         self._last_watch_dispatch: float = 0.0  # timestamp del último dispatch de watch mode
+
+        # StorageManager: delegates cleanup, usage, and eviction
+        self.storage = StorageManager(
+            out_dir=out_dir, db=db,
+            jobs=self.jobs, job_events=self.job_events, resolve=self.resolve,
+        )
         atexit.register(self.db.close)
 
     # ------------------------------------------------------------------ #
@@ -187,103 +190,40 @@ class AppState:
         self._track_task(task)
 
     # ------------------------------------------------------------------ #
-    # Storage accounting
+    # Storage (delega en StorageManager) — wrappers temporales (→ commit 5)
     # ------------------------------------------------------------------ #
     def _scan_usage_bytes(self) -> int:
-        total = 0
-        for p in self.out_dir.rglob("*"):
-            try:
-                if p.is_file():
-                    total += p.stat().st_size
-            except OSError:
-                pass
-        return total
+        return self.storage._scan_usage_bytes()
 
     def current_usage_bytes(self, max_age: float = 5.0) -> int:
-        now = time.monotonic()
-        with self._usage_lock:
-            if self._usage_cache is not None and now - self._usage_cache_ts < max_age:
-                return self._usage_cache
-        total = self._scan_usage_bytes()
-        with self._usage_lock:
-            self._usage_cache = total
-            self._usage_cache_ts = now
-        return total
+        return self.storage.current_usage_bytes(max_age)
 
-    # ------------------------------------------------------------------ #
-    # Filesystem housekeeping
-    # ------------------------------------------------------------------ #
     def cleanup_old_workdirs(self) -> None:
-        cutoff = time.time() - 86400
-        count = 0
-        for pattern in ("opengrab_*", "opengrab_batch_*"):
-            for d in self.out_dir.glob(pattern):
-                if not d.is_dir():
-                    continue
-                try:
-                    is_empty = not any(d.iterdir())
-                    if is_empty or d.stat().st_mtime < cutoff:
-                        shutil.rmtree(d)
-                        count += 1
-                except OSError:
-                    pass
-        if count:
-            log.info("limpiados %d workdirs viejos o vacios", count)
+        return self.storage.cleanup_old_workdirs()
 
     def _schedule_tempdir_cleanup(self, workdir: str) -> None:
-        """Registra un workdir para limpieza diferida. Se invoca SIEMPRE
-        después de mover el archivo final fuera del workdir, así que el
-        husk restante (fragmentos, streams sin mergear) es descartable.
-        Lo draina flush_pending_cleanups (dispatch_loop al quedar 0 jobs
-        activos, y evict_loop como red de seguridad)."""
-        self._pending_cleanups.add(workdir)
+        self.storage._schedule_tempdir_cleanup(workdir)
 
     def schedule_workdir_if_external(self, job: Job) -> bool:
-        """Registra el workdir del job para limpieza si el archivo final quedó
-        FUERA de él (p.ej. _finalize_desktop lo movió a library_dir). Limpia
-        job.workdir y devuelve True si lo hizo.
-
-        No-op (devuelve False) si no hay workdir, no hay filepath, o el filepath
-        sigue dentro del workdir. Ese último caso cubre un finalize fallido: el
-        keeper quedó en el workdir y se sirve desde ahí, así que NO debe
-        borrarse — evict_once lo limpiará luego por la vía job-based una vez
-        expirado. Unifica el cleanup de desktop con el de server (download.py),
-        que ya hace move + _schedule_tempdir_cleanup en su propio path."""
-        if not job.workdir or not job.filepath:
-            return False
-        wd = Path(job.workdir).resolve()
-        if Path(job.filepath).resolve().is_relative_to(wd):
-            return False
-        self._schedule_tempdir_cleanup(job.workdir)
-        job.workdir = ""
-        return True
+        return self.storage.schedule_workdir_if_external(job)
 
     def flush_pending_cleanups(self) -> int:
-        """Borra los workdirs registrados en _pending_cleanups y devuelve
-        cuántos se removieron.
+        return self.storage.flush_pending_cleanups()
 
-        A diferencia del os.rmdir viejo (solo-vacíos), esto remueve el husk
-        aunque tenga residuo: el keeper ya se movió fuera ANTES de registrar
-        el workdir (download.py: move -> _schedule_tempdir_cleanup), así que
-        no hay riesgo de borrar el archivo final.
+    def list_storage(self) -> dict[str, Any]:
+        return self.storage.list_storage()
 
-        Retry-safe: un workdir solo sale del set si se confirmó que ya no
-        existe en disco. Si un handle sigue abierto (Windows), queda pendiente
-        para el próximo tick. Si ya no existe (borrado externo), se descarta
-        igual — self-healing de entradas stale."""
-        removed = 0
-        for dirpath in list(self._pending_cleanups):
-            try:
-                self._secure_delete_workdir(dirpath)
-            except OSError:
-                log.exception("flush_pending_cleanups: no se pudo borrar %s", dirpath)
-            if not os.path.exists(dirpath):
-                self._pending_cleanups.discard(dirpath)
-                removed += 1
-        if removed:
-            with self._usage_lock:
-                self._usage_cache_ts = 0.0
-        return removed
+    def cleanup_storage(self, max_age_hours: float = 24, dry_run: bool = False) -> dict[str, Any]:
+        return self.storage.cleanup_storage(max_age_hours, dry_run)
+
+    def cleanup_storage_all(self) -> dict[str, Any]:
+        return self.storage.cleanup_storage_all()
+
+    def evict_once(self, cutoff_age: float = 3600) -> int:
+        return self.storage.evict_once(cutoff_age)
+
+    async def evict_loop(self) -> None:
+        await self.storage.evict_loop()
 
     # ------------------------------------------------------------------ #
     # Secure file deletion (3-pass: 0x00, 0xFF, random — no external tool)
@@ -302,10 +242,6 @@ class AppState:
     # History management
     # ------------------------------------------------------------------ #
     def _secure_delete_files(self, filepath: str | None, workdir: str | None) -> None:
-        """Borra archivos en background. Nunca raisea — el DB delete ya ocurrio.
-
-        Si el workdir es compartido (batch), solo lo borra cuando ningún otro job
-        en la DB lo referencia."""
         try:
             if filepath:
                 self._secure_delete_file(str(filepath))
@@ -321,8 +257,6 @@ class AppState:
     def delete_history_entry(
         self, job_id: str,
     ) -> tuple[str | None, str | None] | None:
-        """Borra de DB + RAM. Retorna (filepath, workdir) para que el caller
-        haga el file delete (sync o async), o None si no existe."""
         job = self.db.get_job(job_id)
         if job is None:
             return None
@@ -357,138 +291,8 @@ class AppState:
                      if v.status not in ("done", "error", "interrupted")}
         self.job_events = {k: v for k, v in self.job_events.items()
                            if k in self.jobs}
-        with self._usage_lock:
-            self._usage_cache_ts = 0.0
+        self.storage.invalidate_cache()
         return count
-
-    # ------------------------------------------------------------------ #
-    # Storage info
-    # ------------------------------------------------------------------ #
-    def list_storage(self) -> dict[str, Any]:
-        active_workdirs: set[str] = set()
-        for j in self.jobs.values():
-            if j.status in ("queued", "starting", "downloading", "processing") and j.workdir:
-                active_workdirs.add(j.workdir)
-        workdirs: list[dict[str, Any]] = []
-        for d in self.out_dir.glob("opengrab_*"):
-            if not d.is_dir():
-                continue
-            size = sum(
-                f.stat().st_size for f in d.rglob("*") if f.is_file()
-            )
-            age_h = (time.time() - d.stat().st_mtime) / 3600
-            workdirs.append({
-                "name": d.name,
-                "size_bytes": size,
-                "age_hours": round(age_h, 1),
-                "active": str(d) in active_workdirs,
-            })
-        workdirs.sort(key=lambda w: w["age_hours"])
-        loose: list[dict[str, Any]] = []
-        for f in self.out_dir.iterdir():
-            if f.is_file() and f.name != "opengrab.db":
-                loose.append({
-                    "name": f.name,
-                    "size_bytes": f.stat().st_size,
-                    "age_hours": round((time.time() - f.stat().st_mtime) / 3600, 1),
-                })
-        return {
-            "total_usage_bytes": self.current_usage_bytes(),
-            "workdirs": workdirs,
-            "loose_files": loose,
-            "db_size_bytes": Path(self.db.path).stat().st_size if Path(self.db.path).exists() else 0,
-        }
-
-    def cleanup_storage(self, max_age_hours: float = 24, dry_run: bool = False) -> dict[str, Any]:
-        cutoff = time.time() - max_age_hours * 3600
-        cleaned = 0
-        freed = 0
-        to_clean: list[Path] = []
-        for d in self.out_dir.glob("opengrab_*"):
-            if d.is_dir() and d.stat().st_mtime < cutoff:
-                to_clean.append(d)
-        if dry_run:
-            for d in to_clean:
-                freed += sum(
-                    f.stat().st_size for f in d.rglob("*") if f.is_file()
-                )
-            return {"cleaned": 0, "freed_bytes": freed, "dry_run": True,
-                    "would_clean": len(to_clean)}
-        for d in to_clean:
-            try:
-                freed_before = sum(
-                    f.stat().st_size for f in d.rglob("*") if f.is_file()
-                )
-                self._secure_delete_workdir(str(d))
-                freed += freed_before
-                cleaned += 1
-            except OSError:
-                pass
-        with self._usage_lock:
-            self._usage_cache_ts = 0.0
-        return {"cleaned": cleaned, "freed_bytes": freed}
-
-    def cleanup_storage_all(self) -> dict[str, Any]:
-        cleaned = 0
-        freed = 0
-        for d in self.out_dir.glob("opengrab_*"):
-            if not d.is_dir():
-                continue
-            try:
-                freed_before = sum(
-                    f.stat().st_size for f in d.rglob("*") if f.is_file()
-                )
-                self._secure_delete_workdir(str(d))
-                freed += freed_before
-                cleaned += 1
-            except OSError:
-                pass
-        with self._usage_lock:
-            self._usage_cache_ts = 0.0
-        return {"cleaned": cleaned, "freed_bytes": freed}
-
-    # ------------------------------------------------------------------ #
-    # Background eviction
-    # ------------------------------------------------------------------ #
-    def evict_once(self, cutoff_age: float = 3600) -> int:
-        cutoff = time.time() - cutoff_age
-        to_delete = [
-            jid
-            for jid, j in self.jobs.items()
-            if j.status in ("done", "error") and j.created < cutoff
-        ]
-        for jid in to_delete:
-            job = self.jobs[jid]
-            if job.workdir:
-                # Don't rmtree a shared workdir while other jobs still reference it
-                other = [
-                    j for jid2, j in self.jobs.items()
-                    if jid2 != jid and j.workdir == job.workdir
-                ]
-                if not other:
-                    wd = Path(job.workdir)
-                    if wd.exists():
-                        try:
-                            shutil.rmtree(wd, ignore_errors=True)
-                        except OSError:
-                            pass
-            del self.jobs[jid]
-            self.job_events.pop(jid, None)
-        if to_delete:
-            log.info("evacuados %d jobs viejos de memoria", len(to_delete))
-        self.db.prune_history(keep=self.resolve("history_max", 500, int)[0])
-
-        # Drain pending tempdir cleanups. Red de seguridad: el camino normal
-        # los borra desde dispatch_loop al quedar 0 jobs activos. Acá los
-        # agarramos por si ese flush falló (handle abierto en su momento).
-        self.flush_pending_cleanups()
-
-        return len(to_delete)
-
-    async def evict_loop(self) -> None:
-        while True:
-            await asyncio.sleep(300)
-            self.evict_once()
 
     # ------------------------------------------------------------------ #
     # Watch mode scheduler
@@ -552,7 +356,7 @@ class AppState:
             # workdirs husk ya registrados. Corre en el event loop (no en el
             # worker thread), sin race sobre self.jobs y dándole a Windows un
             # margen para soltar handles antes del rmtree.
-            if self._pending_cleanups and self.count_active_jobs() == 0:
+            if self.storage._pending_cleanups and self.count_active_jobs() == 0:
                 self.flush_pending_cleanups()
             max_jobs = self.resolve("max_jobs", 2, int)[0]
             # MAX_JOBS es un techo de CONCURRENCIA, no de despachos-por-tick. Si ya

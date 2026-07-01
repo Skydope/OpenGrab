@@ -35,7 +35,7 @@ def test_flush_borra_husk_con_residuo(st):
 
     assert removed == 1
     assert not wd.exists()
-    assert str(wd) not in st._pending_cleanups
+    assert str(wd) not in st.storage._pending_cleanups
 
 
 def test_flush_borra_husk_vacio(st):
@@ -50,17 +50,17 @@ def test_flush_self_heal_entrada_stale(st):
     """Si el dir ya no existe (borrado externo), la entrada se descarta igual."""
     st._schedule_tempdir_cleanup(str(st.out_dir / "opengrab_ghost"))
     st.flush_pending_cleanups()
-    assert st._pending_cleanups == set()
+    assert st.storage._pending_cleanups == set()
 
 
 def test_flush_invalida_cache_usage(st):
     wd = _make_husk(st.out_dir, "opengrab_cache", with_residue=True)
     st._schedule_tempdir_cleanup(str(wd))
-    with st._usage_lock:
-        st._usage_cache = 999
-        st._usage_cache_ts = 1e18  # cache "fresca"
+    with st.storage._usage_lock:
+        st.storage._usage_cache = 999
+        st.storage._usage_cache_ts = 1e18  # cache "fresca"
     st.flush_pending_cleanups()
-    assert st._usage_cache_ts == 0.0  # invalidada
+    assert st.storage._usage_cache_ts == 0.0  # invalidada
 
 
 @pytest.mark.asyncio
