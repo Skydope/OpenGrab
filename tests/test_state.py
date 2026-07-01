@@ -41,7 +41,7 @@ class TestEvictOnce:
         loop_state.jobs["old-done"] = old
         loop_state.job_events["old-done"] = asyncio.Event()
 
-        evicted = loop_state.evict_once(cutoff_age=3600)
+        evicted = loop_state.storage.evict_once(cutoff_age=3600)
         assert evicted == 1
         assert "old-done" not in loop_state.jobs
         assert "old-done" not in loop_state.job_events
@@ -52,7 +52,7 @@ class TestEvictOnce:
         old.status = "error"
         loop_state.jobs["old-error"] = old
 
-        evicted = loop_state.evict_once(cutoff_age=3600)
+        evicted = loop_state.storage.evict_once(cutoff_age=3600)
         assert evicted == 1
         assert "old-error" not in loop_state.jobs
 
@@ -62,7 +62,7 @@ class TestEvictOnce:
         recent.status = "done"
         loop_state.jobs["recent"] = recent
 
-        evicted = loop_state.evict_once(cutoff_age=3600)
+        evicted = loop_state.storage.evict_once(cutoff_age=3600)
         assert evicted == 0
         assert "recent" in loop_state.jobs
 
@@ -74,7 +74,7 @@ class TestEvictOnce:
             j.status = status
             loop_state.jobs[f"act-{status}"] = j
 
-        evicted = loop_state.evict_once(cutoff_age=3600)
+        evicted = loop_state.storage.evict_once(cutoff_age=3600)
         assert evicted == 0
         for status in ("queued", "starting", "downloading", "processing"):
             assert f"act-{status}" in loop_state.jobs
@@ -90,7 +90,7 @@ class TestEvictOnce:
         old.workdir = str(wd)
         loop_state.jobs["old-done"] = old
 
-        evicted = loop_state.evict_once(cutoff_age=3600)
+        evicted = loop_state.storage.evict_once(cutoff_age=3600)
         assert evicted == 1
         assert not wd.exists()
 
@@ -101,7 +101,7 @@ class TestEvictOnce:
         old.workdir = "/tmp/nonexistent_opengrab_wd"
         loop_state.jobs["old-done"] = old
 
-        evicted = loop_state.evict_once(cutoff_age=3600)
+        evicted = loop_state.storage.evict_once(cutoff_age=3600)
         assert evicted == 1
 
     def test_calls_prune_history_even_when_no_evictions(self, loop_state, monkeypatch):
@@ -110,22 +110,24 @@ class TestEvictOnce:
         monkeypatch.setattr(loop_state.db, "prune_history",
                             lambda keep: calls.append(keep) or 0)
 
-        loop_state.evict_once(cutoff_age=3600)
+        loop_state.storage.evict_once(cutoff_age=3600)
         assert len(calls) == 1
         assert calls[0] == loop_state.resolve("history_max", 500, int)[0]
 
     def test_eviction_count_matches_removed(self, loop_state):
-        """El valor de retorno refleja exactamente cuantos jobs se borraron."""
+        """El valor de retorno refleja exactamente有多少 jobs se borraron."""
         for i in range(3):
             j = Job(id=f"old-{i}", created=time.time() - 7200)
             j.status = "done"
             loop_state.jobs[f"old-{i}"] = j
 
-        evicted = loop_state.evict_once(cutoff_age=3600)
+        evicted = loop_state.storage.evict_once(cutoff_age=3600)
         assert evicted == 3
         assert len(loop_state.jobs) == 0
 
 
+# --------------------------------------------------------------------------- #
+# evict_loop — wrapper asyncio que llama a evict_once cada 300s
 # --------------------------------------------------------------------------- #
 # evict_loop — wrapper asyncio que llama a evict_once cada 300s
 # --------------------------------------------------------------------------- #
@@ -150,7 +152,7 @@ class TestEvictLoop:
 
         with patch("asyncio.sleep", side_effect=fake_sleep):
             try:
-                await loop_state.evict_loop()
+                await loop_state.storage.evict_loop()
             except asyncio.CancelledError:
                 pass
 
@@ -417,17 +419,17 @@ class TestSpawnDownload:
     class TestUsageCache:
         def test_cold_cache_scans(self, loop_state):
             (loop_state.out_dir / "a.bin").write_bytes(b"x" * 100)
-            assert loop_state.current_usage_bytes() == 100
+            assert loop_state.storage.current_usage_bytes() == 100
 
         def test_cached_within_ttl(self, loop_state, monkeypatch):
             calls = []
             monkeypatch.setattr(loop_state.storage, "_scan_usage_bytes",
                                 lambda: calls.append(1) or 42)
 
-            assert loop_state.current_usage_bytes() == 42
+            assert loop_state.storage.current_usage_bytes() == 42
             assert len(calls) == 1
 
-            assert loop_state.current_usage_bytes() == 42
+            assert loop_state.storage.current_usage_bytes() == 42
             assert len(calls) == 1  # cached, no second scan
 
         def test_rescans_after_ttl_expiry(self, loop_state, monkeypatch):
@@ -437,11 +439,11 @@ class TestSpawnDownload:
             t0 = 0.0
             monkeypatch.setattr("time.monotonic", lambda: t0)
 
-            assert loop_state.current_usage_bytes(max_age=1.0) == 42
+            assert loop_state.storage.current_usage_bytes(max_age=1.0) == 42
             assert len(calls) == 1
 
             t0 = 2.0  # TTL expired
-            assert loop_state.current_usage_bytes(max_age=1.0) == 42
+            assert loop_state.storage.current_usage_bytes(max_age=1.0) == 42
             assert len(calls) == 2  # re-scanned
 
         def test_scan_usage_bytes_counts_recursive(self, loop_state):
@@ -449,21 +451,21 @@ class TestSpawnDownload:
             sub = loop_state.out_dir / "sub"
             sub.mkdir()
             (sub / "b.bin").write_bytes(b"x" * 200)
-            assert loop_state._scan_usage_bytes() >= 300
+            assert loop_state.storage._scan_usage_bytes() >= 300
 
         def test_invalidated_after_clear_history(self, loop_state, monkeypatch):
             calls = []
             monkeypatch.setattr(loop_state.storage, "_scan_usage_bytes",
                                 lambda: calls.append(1) or 42)
 
-            assert loop_state.current_usage_bytes() == 42
+            assert loop_state.storage.current_usage_bytes() == 42
             assert len(calls) == 1
 
             # Simular clear_all_history — el metodo invalida el cache
             with loop_state.storage._usage_lock:
                 loop_state.storage._usage_cache_ts = 0.0
 
-            assert loop_state.current_usage_bytes() == 42
+            assert loop_state.storage.current_usage_bytes() == 42
             assert len(calls) == 2  # re-scanned tras invalidar timestamp
 
     def test_rescans_after_ttl_expiry(self, loop_state, monkeypatch):
@@ -473,11 +475,11 @@ class TestSpawnDownload:
         t0 = 0.0
         monkeypatch.setattr("time.monotonic", lambda: t0)
 
-        assert loop_state.current_usage_bytes(max_age=1.0) == 42
+        assert loop_state.storage.current_usage_bytes(max_age=1.0) == 42
         assert len(calls) == 1
 
         t0 = 2.0  # TTL expired
-        assert loop_state.current_usage_bytes(max_age=1.0) == 42
+        assert loop_state.storage.current_usage_bytes(max_age=1.0) == 42
         assert len(calls) == 2  # re-scanned
 
     def test_scan_usage_bytes_counts_recursive(self, loop_state):
@@ -485,4 +487,4 @@ class TestSpawnDownload:
         sub = loop_state.out_dir / "sub"
         sub.mkdir()
         (sub / "b.bin").write_bytes(b"x" * 200)
-        assert loop_state._scan_usage_bytes() >= 300
+        assert loop_state.storage._scan_usage_bytes() >= 300

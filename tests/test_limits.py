@@ -41,7 +41,7 @@ def test_current_usage_bytes_counts_files(app_state):
     sub = app_state.out_dir / "sub"
     sub.mkdir()
     (sub / "b.bin").write_bytes(b"x" * 2000)
-    assert app_state.current_usage_bytes() >= 3000
+    assert app_state.storage.current_usage_bytes() >= 3000
 
 
 def test_max_total_mb_refuses_new_job(client, app_state, monkeypatch):

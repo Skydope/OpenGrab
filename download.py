@@ -363,7 +363,7 @@ def _finalize_download(
     if not IS_DESKTOP and final.parent == workdir:
         dest_dir = state.out_dir / ctx.playlist_subdir if ctx.playlist_subdir else state.out_dir
         dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = state._deduplicate(dest_dir / final.name)
+        dest = state.library._deduplicate(dest_dir / final.name)
         shutil.move(str(final), str(dest))
         final = dest
         state.storage._schedule_tempdir_cleanup(str(workdir))

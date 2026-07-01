@@ -43,7 +43,7 @@ class TestMoveJobFile:
         src = _done_job(state, "j1")
         dest = tmp_path / "destino"
 
-        target = state.move_job_file("j1", dest)
+        target = state.library.move_job_file("j1", dest)
 
         assert target == dest / "video.mp4"
         assert target.exists()
@@ -55,7 +55,7 @@ class TestMoveJobFile:
         dest = tmp_path / "a" / "b" / "c"
         assert not dest.exists()
 
-        target = state.move_job_file("j1", dest)
+        target = state.library.move_job_file("j1", dest)
 
         assert target.parent == dest
         assert dest.is_dir()
@@ -66,7 +66,7 @@ class TestMoveJobFile:
         dest.mkdir()
         (dest / "video.mp4").write_bytes(b"ya existe")
 
-        target = state.move_job_file("j1", dest)
+        target = state.library.move_job_file("j1", dest)
 
         assert target == dest / "video (1).mp4"
         assert target.exists()
@@ -77,7 +77,7 @@ class TestMoveJobFile:
         src = _done_job(state, "j1")
         dest = state.out_dir  # mismo directorio donde ya vive
 
-        target = state.move_job_file("j1", dest)
+        target = state.library.move_job_file("j1", dest)
 
         assert target == src
         assert src.exists()
@@ -89,7 +89,7 @@ class TestMoveJobFile:
         state.db.update_job("j1", filepath=str(src), filename="video.mp4")
         dest = tmp_path / "destino"
 
-        target = state.move_job_file("j1", dest)
+        target = state.library.move_job_file("j1", dest)
 
         row = state.db.get_job("j1")
         assert row is not None
@@ -100,19 +100,19 @@ class TestMoveJobFile:
         state.jobs["j1"].status = "downloading"
 
         with pytest.raises(ValueError):
-            state.move_job_file("j1", tmp_path / "destino")
+            state.library.move_job_file("j1", tmp_path / "destino")
         assert src.exists()  # no se tocó
 
     def test_rechaza_job_inexistente(self, state: AppState, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
-            state.move_job_file("nope", tmp_path / "destino")
+            state.library.move_job_file("nope", tmp_path / "destino")
 
     def test_rechaza_archivo_ausente_en_disco(self, state: AppState, tmp_path: Path) -> None:
         src = _done_job(state, "j1")
         src.unlink()
 
         with pytest.raises(FileNotFoundError):
-            state.move_job_file("j1", tmp_path / "destino")
+            state.library.move_job_file("j1", tmp_path / "destino")
 
     def test_rechaza_destino_que_es_archivo(self, state: AppState, tmp_path: Path) -> None:
         _done_job(state, "j1")
@@ -120,7 +120,7 @@ class TestMoveJobFile:
         dest.write_bytes(b"x")
 
         with pytest.raises(NotADirectoryError):
-            state.move_job_file("j1", dest)
+            state.library.move_job_file("j1", dest)
 
 
 # --------------------------------------------------------------------------- #

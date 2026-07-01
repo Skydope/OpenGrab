@@ -26,6 +26,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
 
+from secure_delete import wipe_workdir
+
 # Fix DeprecationWarning de slowapi en Python 3.14+:
 # asyncio.iscoroutinefunction está deprecado; inspect.iscoroutinefunction es el reemplazo.
 try:
@@ -66,7 +68,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     db = Database(DB_PATH)
     state = AppState(db, OUT_DIR)
-    state.cleanup_old_workdirs()
+    state.storage.cleanup_old_workdirs()
 
     recon = db.reconcile_startup()
     for j in recon["interrupted"]:
@@ -83,7 +85,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         wd = j.get("workdir")
         if wd:
             try:
-                state._secure_delete_workdir(wd, force=True)
+                wipe_workdir(wd, force=True)
             except OSError:
                 pass
     if recon["requeued"] or recon["interrupted"] or recon.get("incognito_dropped"):
@@ -102,7 +104,7 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     _app.state.opengrab = state
 
-    task = asyncio.create_task(state.evict_loop())
+    task = asyncio.create_task(state.storage.evict_loop())
     watch_task = asyncio.create_task(state.watch_loop())
     dispatch_task = asyncio.create_task(state.dispatch_loop())
     yield

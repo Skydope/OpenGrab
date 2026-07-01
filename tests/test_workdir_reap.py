@@ -30,7 +30,7 @@ def test_keeper_externo_programa_y_limpia_workdir(st, tmp_path):
     job.workdir = str(wd)
     job.filepath = str(keeper)
 
-    assert st.schedule_workdir_if_external(job) is True
+    assert st.storage.schedule_workdir_if_external(job) is True
     assert job.workdir == ""
     assert str(wd) in st.storage._pending_cleanups
 
@@ -47,7 +47,7 @@ def test_keeper_dentro_del_workdir_es_noop(st, tmp_path):
     job.workdir = str(wd)
     job.filepath = str(keeper)
 
-    assert st.schedule_workdir_if_external(job) is False
+    assert st.storage.schedule_workdir_if_external(job) is False
     assert job.workdir == str(wd)            # preservado
     assert st.storage._pending_cleanups == set()
 
@@ -57,7 +57,7 @@ def test_sin_workdir_es_noop(st, tmp_path):
     job = Job(id="j3", created=0.0)
     job.workdir = ""
     job.filepath = str(tmp_path / "out" / "video.mp4")
-    assert st.schedule_workdir_if_external(job) is False
+    assert st.storage.schedule_workdir_if_external(job) is False
     assert st.storage._pending_cleanups == set()
 
 
@@ -68,7 +68,7 @@ def test_sin_filepath_es_noop(st, tmp_path):
     job = Job(id="j4", created=0.0)
     job.workdir = str(wd)
     job.filepath = ""
-    assert st.schedule_workdir_if_external(job) is False
+    assert st.storage.schedule_workdir_if_external(job) is False
     assert job.workdir == str(wd)
     assert st.storage._pending_cleanups == set()
 
@@ -82,5 +82,5 @@ def test_keeper_en_subcarpeta_del_workdir_es_noop(st, tmp_path):
     job = Job(id="j5", created=0.0)
     job.workdir = str(wd)
     job.filepath = str(keeper)
-    assert st.schedule_workdir_if_external(job) is False
+    assert st.storage.schedule_workdir_if_external(job) is False
     assert job.workdir == str(wd)

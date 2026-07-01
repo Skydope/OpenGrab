@@ -137,18 +137,20 @@ def test_reconcile_drops_incognito_rows(tmp_path):
 # --------------------------------------------------------------------- #
 def test_secure_delete_force_overwrites_when_global_flag_off(tmp_path, monkeypatch):
     import config
+    from secure_delete import wipe_file
 
     monkeypatch.setattr(config, "SECURE_DELETE", False)
     f = tmp_path / "secret.bin"
     f.write_bytes(b"datos sensibles" * 100)
 
     # force=True debe borrar incluso con el flag global apagado.
-    AppState._secure_delete_file(str(f), force=True)
+    wipe_file(str(f), force=True)
     assert not f.exists()
 
 
 def test_secure_delete_workdir_force_removes_tree(tmp_path, monkeypatch):
     import config
+    from secure_delete import wipe_workdir
 
     monkeypatch.setattr(config, "SECURE_DELETE", False)
     wd = tmp_path / "wd"
@@ -156,7 +158,7 @@ def test_secure_delete_workdir_force_removes_tree(tmp_path, monkeypatch):
     (wd / "a.part").write_bytes(b"x" * 50)
     (wd / "b.mp4").write_bytes(b"y" * 50)
 
-    AppState._secure_delete_workdir(str(wd), force=True)
+    wipe_workdir(str(wd), force=True)
     assert not wd.exists()
 
 

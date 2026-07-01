@@ -68,7 +68,7 @@ def test_run_download_video_success(dl_state, monkeypatch):
     assert job.filename == "Test.mp4"
     assert job.mime == "video/mp4"
     assert job.filepath == str(video)
-    assert len(dl_state.get_history()) == 1
+    assert len(dl_state.history.get_history()) == 1
 
 
 # ------------------------------------------------------------------ T1b ---
@@ -534,36 +534,36 @@ def test_run_download_persists_error_status_to_db(dl_state, monkeypatch):
 
 # --------------------- secure delete ----------------------------------- #
 def test_secure_delete_file_three_pass(tmp_path, monkeypatch):
-    from state import AppState
+    from secure_delete import wipe_file
 
     monkeypatch.setattr("config.SECURE_DELETE", True)
     f = tmp_path / "secret.bin"
     f.write_bytes(b"A" * 5000)
     assert f.exists()
-    AppState._secure_delete_file(str(f))
+    wipe_file(str(f))
     assert not f.exists()
 
 
 def test_secure_delete_file_fast_path(tmp_path, monkeypatch):
     """Sin OPENGRAB_SECURE_DELETE, usa unlink directo (sin overwrite)."""
-    from state import AppState
+    from secure_delete import wipe_file
 
     monkeypatch.setattr("config.SECURE_DELETE", False)
     f = tmp_path / "plain.bin"
     f.write_bytes(b"B" * 5000)
     assert f.exists()
-    AppState._secure_delete_file(str(f))
+    wipe_file(str(f))
     assert not f.exists()
 
 
 def test_secure_delete_file_noop_on_missing(tmp_path):
-    from state import AppState
+    from secure_delete import wipe_file
 
-    AppState._secure_delete_file(str(tmp_path / "ghost.bin"))
+    wipe_file(str(tmp_path / "ghost.bin"))
 
 
 def test_secure_delete_workdir_recursive(tmp_path, monkeypatch):
-    from state import AppState
+    from secure_delete import wipe_workdir
 
     monkeypatch.setattr("config.SECURE_DELETE", True)
     wd = tmp_path / "opengrab_test"
@@ -573,20 +573,20 @@ def test_secure_delete_workdir_recursive(tmp_path, monkeypatch):
     sub = wd / "sub"
     sub.mkdir()
     (sub / "c.bin").write_bytes(b"z" * 300)
-    AppState._secure_delete_workdir(str(wd))
+    wipe_workdir(str(wd))
     assert not wd.exists()
 
 
 def test_secure_delete_workdir_fast_path(tmp_path, monkeypatch):
     """Sin OPENGRAB_SECURE_DELETE, workdir se borra con unlink directo."""
-    from state import AppState
+    from secure_delete import wipe_workdir
 
     monkeypatch.setattr("config.SECURE_DELETE", False)
     wd = tmp_path / "opengrab_fast"
     wd.mkdir()
     (wd / "a.bin").write_bytes(b"x" * 100)
     (wd / "b.bin").write_bytes(b"y" * 200)
-    AppState._secure_delete_workdir(str(wd))
+    wipe_workdir(str(wd))
     assert not wd.exists()
 
 
@@ -600,7 +600,7 @@ def test_delete_history_entry_removes_from_db_and_ram(dl_state, tmp_path):
     wd = tmp_path / "opengrab_wd"
     wd.mkdir()
 
-    result = dl_state.delete_history_entry("h1")
+    result = dl_state.history.delete_history_entry("h1")
     assert result is not None
     filepath, workdir = result
     assert filepath == str(tmp_path / "video.mp4")
@@ -609,7 +609,7 @@ def test_delete_history_entry_removes_from_db_and_ram(dl_state, tmp_path):
 
 
 def test_delete_history_entry_nonexistent(dl_state):
-    assert dl_state.delete_history_entry("phantom") is None
+    assert dl_state.history.delete_history_entry("phantom") is None
 
 
 def test_clear_all_history(dl_state):
@@ -618,14 +618,14 @@ def test_clear_all_history(dl_state):
     dl_state.db.insert_job("c", "u", "best", status="interrupted")
     dl_state.db.insert_job("d", "u", "best", status="downloading")
 
-    count = dl_state.clear_all_history()
+    count = dl_state.history.clear_all_history()
     assert count == 3
     assert dl_state.db.get_job("d") is not None
 
 
 # --------------------- storage ----------------------------------------- #
 def test_list_storage(dl_state):
-    info = dl_state.list_storage()
+    info = dl_state.storage.list_storage()
     assert "total_usage_bytes" in info
     assert "workdirs" in info
     assert "loose_files" in info
@@ -641,7 +641,7 @@ def test_cleanup_storage_dry_run(dl_state):
     old = time.time() - 50 * 3600
     os.utime(str(wd), (old, old))
 
-    result = dl_state.cleanup_storage(max_age_hours=24, dry_run=True)
+    result = dl_state.storage.cleanup_storage(max_age_hours=24, dry_run=True)
     assert result["dry_run"] is True
     assert result["would_clean"] >= 1
     assert result["freed_bytes"] >= 1000
@@ -656,7 +656,7 @@ def test_cleanup_storage_deletes_old_workdirs(dl_state):
     old = time.time() - 50 * 3600
     os.utime(str(wd), (old, old))
 
-    result = dl_state.cleanup_storage(max_age_hours=24)
+    result = dl_state.storage.cleanup_storage(max_age_hours=24)
     assert result["cleaned"] >= 1
     assert result["freed_bytes"] >= 500
     assert not wd.exists()
@@ -667,7 +667,7 @@ def test_cleanup_storage_keeps_recent_workdirs(dl_state):
     wd.mkdir()
     (wd / "f.bin").write_bytes(b"x" * 100)
 
-    dl_state.cleanup_storage(max_age_hours=24)
+    dl_state.storage.cleanup_storage(max_age_hours=24)
     assert wd.exists()
 
 
@@ -688,7 +688,7 @@ def test_resolve_template_all_7_tokens(tmp_path):
         "resolution": "1920x1080",
         "formats": [{"vcodec": "avc1", "filesize": 1000, "resolution": "1920x1080"}],
     }
-    result = state._resolve_template("{title}/{channel}/{upload_year}/{resolution}", info, "mp4")
+    result = state.library._resolve_template("{title}/{channel}/{upload_year}/{resolution}", info, "mp4")
     parts = result.parts
     assert "Mi Video" in parts
     assert "Canal Prueba" in parts
@@ -704,7 +704,7 @@ def test_resolve_template_title_empty_fallback_to_video(tmp_path):
     db = Database(":memory:")
     state = AppState(db, tmp_path)
     info = {"title": "", "uploader": "Ch", "upload_date": "", "formats": []}
-    result = state._resolve_template("{title}", info, "mp4")
+    result = state.library._resolve_template("{title}", info, "mp4")
     assert result.stem == "video"
 
 
@@ -721,7 +721,7 @@ def test_resolve_template_sanitizes_illegal_chars(tmp_path):
         "upload_date": "",
         "formats": [],
     }
-    result = state._resolve_template("{title}/{channel}", info, "mp4")
+    result = state.library._resolve_template("{title}/{channel}", info, "mp4")
     name = result.name
     # No debe contener chars ilegales
     assert "\x00" not in name
@@ -740,7 +740,7 @@ def test_resolve_template_truncates_segments_at_120(tmp_path):
     state = AppState(db, tmp_path)
     long_title = "A" * 200
     info = {"title": long_title, "uploader": "Ch", "upload_date": "", "formats": []}
-    result = state._resolve_template("{title}", info, "mp4")
+    result = state.library._resolve_template("{title}", info, "mp4")
     assert len(result.stem) <= 120
 
 
@@ -757,7 +757,7 @@ def test_resolve_template_date_format(tmp_path):
         "uploader": "Ch",
         "formats": [],
     }
-    result = state._resolve_template("{upload_date}", info, "mp4")
+    result = state.library._resolve_template("{upload_date}", info, "mp4")
     assert result.stem == "2025-06-23"
 
 
@@ -770,7 +770,7 @@ def test_deduplicate_no_collision_returns_same(tmp_path):
     db = Database(":memory:")
     state = AppState(db, tmp_path)
     target = tmp_path / "video.mp4"
-    result = state._deduplicate(target)
+    result = state.library._deduplicate(target)
     assert result == target
 
 
@@ -782,7 +782,7 @@ def test_deduplicate_one_collision_adds_1(tmp_path):
     db = Database(":memory:")
     state = AppState(db, tmp_path)
     (tmp_path / "video.mp4").write_bytes(b"existing")
-    result = state._deduplicate(tmp_path / "video.mp4")
+    result = state.library._deduplicate(tmp_path / "video.mp4")
     assert result.name == "video (1).mp4"
 
 
@@ -796,5 +796,5 @@ def test_deduplicate_multiple_collisions_sequential(tmp_path):
     base = tmp_path / "video.mp4"
     base.write_bytes(b"0")
     (tmp_path / "video (1).mp4").write_bytes(b"1")
-    result = state._deduplicate(base)
+    result = state.library._deduplicate(base)
     assert result.name == "video (2).mp4"

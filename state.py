@@ -10,9 +10,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from secure_delete import wipe_file, wipe_workdir
-
-
 from db import Database
 from history_store import HistoryStore
 from library_path_resolver import LibraryPathResolver
@@ -99,12 +96,6 @@ class AppState:
             self.db.update_job(job_id, **fields)
         except sqlite3.Error:
             log.exception("job %s: error al persistir en DB", job_id)
-
-    # ------------------------------------------------------------------ #
-    # History
-    # ------------------------------------------------------------------ #
-    def get_history(self, limit: int = 20) -> list[dict[str, Any]]:
-        return self.history.get_history(limit)
 
     # ------------------------------------------------------------------ #
     # Job helpers
@@ -194,71 +185,6 @@ class AppState:
         self._track_task(task)
 
     # ------------------------------------------------------------------ #
-    # Storage (delega en StorageManager) — wrappers temporales (→ commit 5)
-    # ------------------------------------------------------------------ #
-    def _scan_usage_bytes(self) -> int:
-        return self.storage._scan_usage_bytes()
-
-    def current_usage_bytes(self, max_age: float = 5.0) -> int:
-        return self.storage.current_usage_bytes(max_age)
-
-    def cleanup_old_workdirs(self) -> None:
-        return self.storage.cleanup_old_workdirs()
-
-    def _schedule_tempdir_cleanup(self, workdir: str) -> None:
-        self.storage._schedule_tempdir_cleanup(workdir)
-
-    def schedule_workdir_if_external(self, job: Job) -> bool:
-        return self.storage.schedule_workdir_if_external(job)
-
-    def flush_pending_cleanups(self) -> int:
-        return self.storage.flush_pending_cleanups()
-
-    def list_storage(self) -> dict[str, Any]:
-        return self.storage.list_storage()
-
-    def cleanup_storage(self, max_age_hours: float = 24, dry_run: bool = False) -> dict[str, Any]:
-        return self.storage.cleanup_storage(max_age_hours, dry_run)
-
-    def cleanup_storage_all(self) -> dict[str, Any]:
-        return self.storage.cleanup_storage_all()
-
-    def evict_once(self, cutoff_age: float = 3600) -> int:
-        return self.storage.evict_once(cutoff_age)
-
-    async def evict_loop(self) -> None:
-        await self.storage.evict_loop()
-
-    # ------------------------------------------------------------------ #
-    # Secure file deletion (3-pass: 0x00, 0xFF, random — no external tool)
-    # ------------------------------------------------------------------ #
-    @staticmethod
-    def _secure_delete_file(filepath: str, force: bool = False) -> None:
-        """Wrapper temporal (→ commit 5): delega en secure_delete.wipe_file."""
-        wipe_file(filepath, force)
-
-    @classmethod
-    def _secure_delete_workdir(cls, workdir: str, force: bool = False) -> None:
-        """Wrapper temporal (→ commit 5): delega en secure_delete.wipe_workdir."""
-        wipe_workdir(workdir, force)
-
-    # ------------------------------------------------------------------ #
-    # History management (delega en HistoryStore) — wrappers temporales (→ commit 5)
-    # ------------------------------------------------------------------ #
-    def _secure_delete_files(self, filepath: str | None, workdir: str | None) -> None:
-        self.history._secure_delete_files(filepath, workdir)
-
-    def delete_history_entry(
-        self, job_id: str,
-    ) -> tuple[str | None, str | None] | None:
-        return self.history.delete_history_entry(job_id)
-
-    def clear_all_history(self) -> int:
-        count = self.history.clear_all_history()
-        self.storage.invalidate_cache()
-        return count
-
-    # ------------------------------------------------------------------ #
     # Watch mode scheduler
     # ------------------------------------------------------------------ #
     async def watch_loop(self) -> None:
@@ -343,29 +269,3 @@ class AppState:
                     job_id, job_dict["url"], job_dict["quality"],
                     playlist_subdir=job_dict.get("playlist_subdir"),
                 )
-
-    # ------------------------------------------------------------------ #
-    # Library path resolution (delega en LibraryPathResolver) — wrappers
-    # temporales (→ commit 5)
-    # ------------------------------------------------------------------ #
-    def _resolve_template(self, template: str, info: dict[str, Any], ext: str) -> Path:
-        return self.library._resolve_template(template, info, ext)
-
-    def _deduplicate(self, path: Path) -> Path:
-        return self.library._deduplicate(path)
-
-    def _finalize_desktop(
-        self, job_id: str, workdir: Path, final: Path,
-        info: dict[str, Any], quality: str,
-        playlist_subdir: str | None = None,
-    ) -> None:
-        self.library._finalize_desktop(job_id, workdir, final, info, quality, playlist_subdir)
-
-    def _move_file_locked(self, src: Path, dest_dir: Path) -> Path:
-        return self.library._move_file_locked(src, dest_dir)
-
-    def move_job_file(self, job_id: str, dest_dir: Path) -> Path:
-        return self.library.move_job_file(job_id, dest_dir)
-
-    def _move_incognito(self, src: Path, dest_dir: Path) -> Path:
-        return self.library._move_incognito(src, dest_dir)

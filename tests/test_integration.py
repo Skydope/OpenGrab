@@ -70,7 +70,7 @@ def test_finalize_desktop_moves_file(client, app_state, monkeypatch):
     }
 
     # Llamar finalize_desktop
-    app_state._finalize_desktop("finalize-test", workdir, video_file, info, "best")
+    app_state.library._finalize_desktop("finalize-test", workdir, video_file, info, "best")
 
     # El archivo debe haber sido movido
     expected = library_dir / "Test Video.mp4"
@@ -106,7 +106,7 @@ def test_finalize_desktop_empty_library_dir_falls_back_to_out_dir(
     app_state.jobs["finalize-fallback"] = job
 
     info = {"title": "Test Video", "ext": "mp4"}
-    app_state._finalize_desktop("finalize-fallback", workdir, video_file, info, "best")
+    app_state.library._finalize_desktop("finalize-fallback", workdir, video_file, info, "best")
 
     expected = app_state.out_dir.resolve() / "Test Video.mp4"
     assert expected.exists(), (
@@ -139,7 +139,7 @@ def test_finalize_desktop_playlist_subdir(client, app_state, monkeypatch):
     app_state.jobs["finalize-playlist"] = job
 
     info = {"title": "Track 01", "id": "abc"}
-    app_state._finalize_desktop(
+    app_state.library._finalize_desktop(
         "finalize-playlist", workdir, video_file, info, "audio",
         playlist_subdir="TOOL Discography",
     )
@@ -174,7 +174,7 @@ def test_finalize_desktop_nested_name_template_creates_parents(client, app_state
     app_state.jobs["finalize-nested"] = job
 
     info = {"title": "Test Video", "uploader": "Test Channel"}
-    app_state._finalize_desktop("finalize-nested", workdir, video_file, info, "best")
+    app_state.library._finalize_desktop("finalize-nested", workdir, video_file, info, "best")
 
     expected = library_dir / "Test Channel" / "Test Video.mp4"
     assert expected.exists()
