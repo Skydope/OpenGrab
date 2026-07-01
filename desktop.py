@@ -14,6 +14,7 @@ están factorizadas para testearse sin levantar uvicorn ni abrir navegadores rea
 
 from __future__ import annotations
 
+import configparser
 import logging
 import os
 import socket
@@ -121,7 +122,6 @@ def _setup_env(port: int) -> None:
     # a nivel de módulo — si no seteamos la variable a tiempo, usa el
     # fallback "./downloads" (relativo al CWD) en vez del directorio desktop.
     if "OPENGRAB_DIR" not in os.environ:
-        import configparser
 
         # Misma ruta de INI que config._load_ini().
         if sys.platform == "win32":
@@ -142,7 +142,8 @@ def _setup_env(port: int) -> None:
             cp.read(ini_path, encoding="utf-8")
             if "opengrab" in cp:
                 default_dir = cp["opengrab"].get("download_dir", "")
-        except Exception:
+        except (OSError, configparser.Error, ValueError):
+            # fallback silencioso: config.ini faltante o corrupto → default
             pass
 
         if not default_dir:
@@ -211,7 +212,7 @@ def _open_in_browser(url: str) -> None:
         os.environ.pop(lp_key, None)
     try:
         webbrowser.open(url)
-    except Exception:
+    except Exception:  # webbrowser → os.startfile/xdg-open/open; excepciones varían por plataforma
         _log.exception("_open_in_browser: webbrowser.open falló")
     finally:
         if patched is not None:
@@ -229,7 +230,8 @@ def _wait_healthy(port: int, timeout: float = _HEALTH_TIMEOUT) -> bool:
             with urllib.request.urlopen(url, timeout=1) as r:
                 if r.status == 200:
                     return True
-        except Exception:
+        except (OSError, ValueError):
+            # urlopen: conexión rechazada, timeout, DNS, malformed URL — transient, reintentar
             time.sleep(0.2)
     return False
 
@@ -247,7 +249,7 @@ def _serve(port: int) -> None:
             port=port,
             log_config=None,
         )
-    except Exception as exc:
+    except Exception as exc:  # app import + uvicorn: superficie de falla no acotada (DB, config, network)
         _server_error = exc
 
 
@@ -339,7 +341,7 @@ class _JsApi:
             if not windows:
                 return None
             result = windows[0].create_file_dialog(webview.FOLDER_DIALOG)
-        except Exception:
+        except Exception:  # create_file_dialog → WinForms/GTK/Cocoa via ctypes; excepciones indocumentadas
             _log.exception("pick_folder: falló el diálogo nativo")
             return None
         if not result:
@@ -364,7 +366,7 @@ def _open_ui_window(port: int) -> None:
                 "OpenGrab", url, width=980, height=720, js_api=_JsApi(),
             )
             webview.start()
-        except Exception:
+        except Exception:  # webview.start() → Edge/WebKit/Cocoa native event loop; puede fallar post-chequeo
             _log.exception("webview falló, abriendo en navegador")
             _open_in_browser(url)
     else:
@@ -420,7 +422,8 @@ def _format_tray_status(jobs: list[dict[str, Any]]) -> tuple[bool, str, str]:
         from state import _latest_watch_ts
         if time.time() - _latest_watch_ts < 30:
             return False, "OpenGrab - nuevos videos detectados", "Nuevos videos"
-    except Exception:
+    except (ImportError, AttributeError, TypeError):
+        # _latest_watch_ts puede no existir si watch_loop nunca corrió
         pass
     return False, "OpenGrab - inactivo", "Inactivo"
 
@@ -440,7 +443,7 @@ def _poll_tray_status(port: int) -> None:
             with urllib.request.urlopen(url, timeout=2) as r:
                 payload = json.loads(r.read().decode("utf-8"))
             jobs = payload if isinstance(payload, list) else []
-        except Exception:
+        except (OSError, ValueError):  # urlopen (network) + json.loads (parse); falla → sin jobs
             jobs = []
         active, tooltip, estado = _format_tray_status(jobs)
         _tray_state.update(active=active, tooltip=tooltip, estado=estado)
@@ -457,7 +460,7 @@ def _poll_tray_status(port: int) -> None:
                 icon.icon = _get_tray_image(active)
                 last_active = active
             icon.update_menu()
-        except Exception:
+        except Exception:  # pystray → Xlib/Win32 Shell/NSStatusBar via ctypes; excepciones indocumentadas
             _log.debug("poll_tray_status: no se pudo actualizar el icono", exc_info=True)
 
 
@@ -517,7 +520,7 @@ def _system_tray(port: int) -> None:
         )
         _tray_icon.run(setup=_setup)
         _log.info("tray: icon.run() retornó")
-    except Exception:
+    except Exception:  # icon.run() → X11/Win32/NSRunLoop native event loop; superficie de falla no acotada
         _log.exception("tray: error inesperado")
 
 
@@ -548,7 +551,7 @@ def main() -> int:
         import engine_update
 
         engine_update.check_and_update()
-    except Exception as exc:
+    except ImportError as exc:  # check_and_update() maneja sus propios errores; solo ImportError puede llegar acá
         _msgbox(f"No se pudo actualizar yt-dlp:\n{exc}", "OpenGrab", "warn")
 
     threading.Thread(target=_serve, args=(port,), daemon=True).start()
