@@ -156,7 +156,8 @@ class AppState:
     def _spawn_download(self, job_id: str, url: str, quality: str,
                         subs: bool = False, thumb: bool = False,
                         infojson: bool = False, incognito: bool = False,
-                        incognito_dir: str | None = None) -> None:
+                        incognito_dir: str | None = None,
+                        playlist_subdir: str | None = None) -> None:
         """Crea Job en memoria + Event y lanza _run_download en thread.
 
         Precondicion: la fila en DB ya existe en el estado correcto.
@@ -169,7 +170,7 @@ class AppState:
         task = asyncio.create_task(
             asyncio.to_thread(
                 _run_download, self, job_id, url, quality, loop,
-                subs, thumb, infojson, incognito, incognito_dir,
+                subs, thumb, infojson, incognito, incognito_dir, playlist_subdir,
             )
         )
         self._track_task(task)
@@ -624,7 +625,10 @@ class AppState:
                     self.db.update_job(job_id, status="error", error=t("error.storage_full_short"))
                     continue
                 self.db.update_job(job_id, status="starting")
-                self._spawn_download(job_id, job_dict["url"], job_dict["quality"])
+                self._spawn_download(
+                    job_id, job_dict["url"], job_dict["quality"],
+                    playlist_subdir=job_dict.get("playlist_subdir"),
+                )
 
     # ------------------------------------------------------------------ #
     # Name template resolution (Phase 3)
@@ -728,6 +732,7 @@ class AppState:
         final: Path,
         info: dict[str, Any],
         quality: str,
+        playlist_subdir: str | None = None,
     ) -> None:
         """Mueve el archivo de workdir a library_dir con name_template.
 
@@ -735,11 +740,17 @@ class AppState:
         para serializar movimientos concurrentes. Solo mueve si el archivo
         no está ya en library_dir (evita duplicado si desktop_finalize se llama
         dos veces).
+
+        Si ``playlist_subdir`` viene seteado (descarga de playlist con la
+        opción "guardar en subcarpeta" activada), se intercala como
+        ``library_dir/playlist_subdir/<name_template>``.
         """
         if not config.IS_DESKTOP:
             return
         with self._finalize_lock:
             library_dir = self.resolve_library_dir()
+            if playlist_subdir:
+                library_dir = library_dir / playlist_subdir
             template, _ = self.resolve("name_template", "{title}", str)
 
             ext = final.suffix.lstrip(".") or ("mp3" if quality == "audio" else "mp4")
@@ -752,7 +763,9 @@ class AppState:
                 return
 
             try:
-                library_dir.mkdir(parents=True, exist_ok=True)
+                # target.parent (no solo library_dir): name_template y/o
+                # playlist_subdir pueden producir subcarpetas anidadas.
+                target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(final), str(target))
                 log.info("desktop_finalize: %s -> %s", final.name, target)
                 # Update job.filepath so the API serves from the right place

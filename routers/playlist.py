@@ -10,7 +10,7 @@ import asyncio
 import uuid
 from typing import Any
 
-from download import _fetch_playlist, _is_safe_url
+from download import _fetch_playlist, _is_safe_url, _safe_name
 from models import BatchReq
 from state import AppState
 
@@ -60,11 +60,19 @@ async def api_batch_download(
         for url in valid_urls[100:]:
             skipped.append({"url": url, "reason": "limite de batch (100)"})
         valid_urls = valid_urls[:100]
+    # Si el usuario pidió guardar en subcarpeta, sanitizamos el título de la
+    # playlist UNA sola vez (mismo nombre de carpeta para todos los jobs del
+    # batch). _safe_name ya defiende contra path traversal / chars ilegales.
+    playlist_subdir = (
+        _safe_name(req.playlist_title or "playlist")
+        if req.save_subfolder
+        else None
+    )
     # Insert into DB (queued only, NOT state.jobs)
     job_ids = []
     for url in valid_urls:
         job_id = uuid.uuid4().hex[:12]
-        state.db.insert_job(job_id, url, req.quality)
+        state.db.insert_job(job_id, url, req.quality, playlist_subdir=playlist_subdir)
         job_ids.append(job_id)
     return {"job_ids": job_ids, "queued": len(job_ids), "skipped": skipped}
 

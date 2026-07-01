@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Estados que cuentan como "en curso" (concurrencia, dedup, conteos).
 ACTIVE_STATUSES = ("queued", "starting", "downloading", "processing")
@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     workdir     TEXT,
     created     REAL NOT NULL,
     completed   INTEGER,
-    incognito   INTEGER NOT NULL DEFAULT 0
+    incognito   INTEGER NOT NULL DEFAULT 0,
+    playlist_subdir TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created);
@@ -136,6 +137,11 @@ class Database:
             self._conn.execute(
                 "ALTER TABLE jobs ADD COLUMN incognito INTEGER NOT NULL DEFAULT 0"
             )
+        # v4: subcarpeta de destino para descargas de playlist agrupadas.
+        if from_version < 4 and "playlist_subdir" not in cols:
+            self._conn.execute(
+                "ALTER TABLE jobs ADD COLUMN playlist_subdir TEXT"
+            )
 
     def schema_version(self) -> int:
         with self._lock:
@@ -152,13 +158,14 @@ class Database:
         self, job_id: str, url: str, quality: str,
         status: str = "queued", created: float | None = None,
         workdir: str | None = None, incognito: bool = False,
+        playlist_subdir: str | None = None,
     ) -> None:
         created = time.time() if created is None else created
         with self._lock:
             self._conn.execute(
-                "INSERT INTO jobs (id, url, quality, status, created, workdir, incognito) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (job_id, url, quality, status, created, workdir, int(incognito)),
+                "INSERT INTO jobs (id, url, quality, status, created, workdir, incognito, playlist_subdir) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (job_id, url, quality, status, created, workdir, int(incognito), playlist_subdir),
             )
             self._conn.commit()
 

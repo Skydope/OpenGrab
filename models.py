@@ -48,6 +48,8 @@ class Job(BaseModel):
 class BatchReq(BaseModel):
     urls: list[str]
     quality: str = "best"
+    playlist_title: str = ""
+    save_subfolder: bool = False
 
 
 class SettingDef(BaseModel):

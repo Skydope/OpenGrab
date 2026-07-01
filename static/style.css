@@ -330,6 +330,7 @@ button.btn-secondary:hover:not(:disabled){background:var(--chip-active-bg); bord
 
 /* ---- Playlist ----------------------------------------------------------- */
 .pl-header{display:flex; gap:8px; align-items:center; margin-bottom:11px; flex-wrap:wrap}
+.pl-subfolder-toggle{margin-bottom:11px}
 .pl-count{
   font-family:var(--mono); font-size:13px; font-weight:600;
   color:var(--amber); background:var(--chip-active-bg);

@@ -44,6 +44,109 @@ def test_insert_and_get_roundtrip(db):
     assert j["created"] == 1000.0
 
 
+def test_insert_job_default_playlist_subdir_is_none(db):
+    """Un job manual o de batch normal (sin la opción de subcarpeta) no tiene
+    playlist_subdir."""
+    db.insert_job("j1", "https://x/1", "best")
+    assert db.get_job("j1")["playlist_subdir"] is None
+
+
+def test_insert_job_playlist_subdir_roundtrip(db):
+    db.insert_job("j1", "https://x/1", "best", playlist_subdir="Mi Playlist")
+    assert db.get_job("j1")["playlist_subdir"] == "Mi Playlist"
+
+
+def test_playlist_subdir_survives_reopen(tmp_path):
+    """Persiste en disco, no solo en RAM (reabrir la conexión debe verlo)."""
+    p = tmp_path / "o.db"
+    d1 = Database(p)
+    d1.insert_job("j1", "https://x/1", "best", playlist_subdir="TOOL Discography")
+    d1.close()
+    d2 = Database(p)
+    assert d2.get_job("j1")["playlist_subdir"] == "TOOL Discography"
+    d2.close()
+
+
+def test_playlist_subdir_migrates_preexisting_v3_db(tmp_path):
+    """DB creada en schema v3 (con incognito, sin playlist_subdir) debe migrar
+    sola al reabrir con la version nueva, vía ALTER TABLE en _migrate — CREATE
+    TABLE IF NOT EXISTS por si solo no le agrega la columna a una tabla `jobs`
+    ya existente."""
+    import sqlite3
+
+    p = tmp_path / "legacy_v3.db"
+    conn = sqlite3.connect(p)
+    conn.executescript(
+        """
+        CREATE TABLE jobs (
+            id TEXT PRIMARY KEY, url TEXT NOT NULL, quality TEXT NOT NULL,
+            status TEXT NOT NULL, title TEXT, filename TEXT, filepath TEXT,
+            mime TEXT, size INTEGER, thumbnail TEXT, error TEXT,
+            video_id TEXT, extractor TEXT, workdir TEXT,
+            created REAL NOT NULL, completed INTEGER,
+            incognito INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE channels (id INTEGER PRIMARY KEY);
+        CREATE TABLE downloaded_urls (extractor TEXT, video_id TEXT);
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated INTEGER);
+        """
+    )
+    conn.execute(
+        "INSERT INTO jobs (id, url, quality, status, created, incognito) "
+        "VALUES ('old', 'u', 'best', 'done', 1.0, 0)"
+    )
+    conn.execute("PRAGMA user_version=3")
+    conn.commit()
+    conn.close()
+
+    d = Database(p)
+    assert d.schema_version() == SCHEMA_VERSION
+    # Fila preexistente intacta, con playlist_subdir NULL por default.
+    old = d.get_job("old")
+    assert old is not None
+    assert old["playlist_subdir"] is None
+    # La columna nueva acepta valores sin romper insert_job.
+    d.insert_job("j1", "https://x/1", "best", playlist_subdir="Legacy Playlist")
+    assert d.get_job("j1")["playlist_subdir"] == "Legacy Playlist"
+    d.close()
+
+
+def test_migrates_v2_straight_to_v4_both_columns(tmp_path):
+    """DB muy vieja (v2, ni incognito ni playlist_subdir) migrando de una: los
+    dos ALTER TABLE de _migrate deben correr en secuencia sin pisarse."""
+    import sqlite3
+
+    p = tmp_path / "legacy_v2.db"
+    conn = sqlite3.connect(p)
+    conn.executescript(
+        """
+        CREATE TABLE jobs (
+            id TEXT PRIMARY KEY, url TEXT NOT NULL, quality TEXT NOT NULL,
+            status TEXT NOT NULL, title TEXT, filename TEXT, filepath TEXT,
+            mime TEXT, size INTEGER, thumbnail TEXT, error TEXT,
+            video_id TEXT, extractor TEXT, workdir TEXT,
+            created REAL NOT NULL, completed INTEGER
+        );
+        CREATE TABLE channels (id INTEGER PRIMARY KEY);
+        CREATE TABLE downloaded_urls (extractor TEXT, video_id TEXT);
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated INTEGER);
+        """
+    )
+    conn.execute("PRAGMA user_version=2")
+    conn.commit()
+    conn.close()
+
+    d = Database(p)
+    assert d.schema_version() == SCHEMA_VERSION
+    cols = {row[1] for row in d._conn.execute("PRAGMA table_info(jobs)")}
+    assert {"incognito", "playlist_subdir"} <= cols
+    d.insert_job("j1", "https://x/1", "best", incognito=True, playlist_subdir="P")
+    row = d.get_job("j1")
+    assert row["incognito"] == 1
+    assert row["playlist_subdir"] == "P"
+    d.close()
+
+
 def test_update_job_transition(db):
     db.insert_job("j1", "https://x/1", "best")
     db.update_job("j1", status="downloading", video_id="abc", extractor="youtube")

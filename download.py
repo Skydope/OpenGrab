@@ -290,7 +290,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
                   loop: asyncio.AbstractEventLoop,
                   subs: bool = False, thumb: bool = False,
                   infojson: bool = False, incognito: bool = False,
-                  incognito_dir: str | None = None) -> None:
+                  incognito_dir: str | None = None,
+                  playlist_subdir: str | None = None) -> None:
     job = state.jobs[job_id]
     workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
     max_size_mb, _ = state.resolve("max_size_mb", 0, int)
@@ -491,14 +492,16 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
             return
 
         # Desktop finalize: mueve a library_dir si corresponde
-        state._finalize_desktop(job_id, workdir, final, info, quality)
+        state._finalize_desktop(job_id, workdir, final, info, quality, playlist_subdir)
 
-        # Server mode: move file out of temp workdir to OUT_DIR and clean up.
-        # Each job gets its own tempdir; we clean it as soon as this download
-        # finishes so no orphaned folders accumulate.
+        # Server mode: move file out of temp workdir to OUT_DIR (o a una
+        # subcarpeta OUT_DIR/playlist_subdir si la playlist pidió guardarse
+        # agrupada) and clean up. Each job gets its own tempdir; we clean it
+        # as soon as this download finishes so no orphaned folders accumulate.
         if not IS_DESKTOP and final.parent == workdir:
-            dest = state.out_dir / final.name
-            dest = state._deduplicate(dest)
+            dest_dir = state.out_dir / playlist_subdir if playlist_subdir else state.out_dir
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = state._deduplicate(dest_dir / final.name)
             shutil.move(str(final), str(dest))
             final = dest
             state._schedule_tempdir_cleanup(str(workdir))

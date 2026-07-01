@@ -71,6 +71,38 @@ def test_run_download_video_success(dl_state, monkeypatch):
     assert len(dl_state.get_history()) == 1
 
 
+# ------------------------------------------------------------------ T1b ---
+def test_run_download_playlist_subdir_server_mode(dl_state, monkeypatch):
+    """Server mode (IS_DESKTOP=False, incognito=False): con playlist_subdir,
+    el archivo final debe quedar en out_dir/<playlist_subdir>/, no directo
+    en out_dir."""
+    from download import _run_download
+
+    assert download.IS_DESKTOP is False  # precondición del test
+
+    loop = asyncio.new_event_loop()
+
+    jid = _make_job(dl_state, "t1b")
+    wd = Path(tempfile.mkdtemp(prefix="opengrab_", dir=dl_state.out_dir))
+    video = wd / "Track 01.mp3"
+    video.write_bytes(b"fake mp3")
+    info = {"title": "Track 01"}  # sin requested_downloads -> cae al fallback glob(workdir)
+
+    with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)), \
+         patch("download.tempfile.mkdtemp", return_value=str(wd)):
+        _run_download(
+            dl_state, jid, "https://youtu.be/abc", "audio", loop,
+            playlist_subdir="TOOL Discography",
+        )
+    loop.close()
+
+    job = dl_state.jobs[jid]
+    expected = dl_state.out_dir / "TOOL Discography" / "Track 01.mp3"
+    assert job.status == "done"
+    assert job.filepath == str(expected)
+    assert expected.exists()
+
+
 # ------------------------------------------------------------------ T2 ----
 def test_run_download_audio_success(dl_state, monkeypatch):
     from download import _run_download

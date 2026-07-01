@@ -551,6 +551,56 @@ def test_batch_download_creates_queued_jobs(client, app_state):
         assert job_id not in app_state.jobs
 
 
+def test_batch_download_save_subfolder_stores_sanitized_playlist_subdir(client, app_state):
+    """save_subfolder=true persiste un playlist_subdir sanitizado, igual para
+    todos los jobs del batch (mismo nombre de carpeta)."""
+    urls = ["https://youtube.com/watch?v=abc1", "https://youtube.com/watch?v=abc2"]
+    r = client.post(
+        "/api/playlist/download",
+        json={
+            "urls": urls, "quality": "best",
+            "playlist_title": "TOOL: Discography / Live?",
+            "save_subfolder": True,
+        },
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["queued"] == 2
+    subdirs = {app_state.db.get_job(jid)["playlist_subdir"] for jid in data["job_ids"]}
+    assert len(subdirs) == 1
+    subdir = subdirs.pop()
+    assert subdir is not None
+    # Chars ilegales para nombre de archivo/carpeta fueron removidos.
+    assert "/" not in subdir and ":" not in subdir and "?" not in subdir
+
+
+def test_batch_download_without_save_subfolder_leaves_playlist_subdir_null(client, app_state):
+    """save_subfolder=false (default): playlist_subdir queda NULL -> archivos
+    sueltos en la carpeta de descargas, comportamiento actual sin cambios."""
+    urls = ["https://youtube.com/watch?v=abc1"]
+    r = client.post(
+        "/api/playlist/download",
+        json={"urls": urls, "quality": "best", "playlist_title": "Some Playlist"},
+    )
+    assert r.status_code == 200
+    job_id = r.json()["job_ids"][0]
+    assert app_state.db.get_job(job_id)["playlist_subdir"] is None
+
+
+def test_batch_download_save_subfolder_empty_title_falls_back(client, app_state):
+    """save_subfolder=true sin playlist_title -> cae a un nombre genérico,
+    nunca crashea ni deja la carpeta sin nombre."""
+    urls = ["https://youtube.com/watch?v=abc1"]
+    r = client.post(
+        "/api/playlist/download",
+        json={"urls": urls, "quality": "best", "save_subfolder": True},
+    )
+    assert r.status_code == 200
+    job_id = r.json()["job_ids"][0]
+    subdir = app_state.db.get_job(job_id)["playlist_subdir"]
+    assert subdir  # no vacío / no None
+
+
 def test_batch_download_caps_at_100_urls(client, app_state):
     """POST with 150 URLs returns 100 queued, 50 skipped with reason 'limite de batch (100)'."""
     # Create 150 URLs

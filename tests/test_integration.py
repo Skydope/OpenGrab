@@ -117,3 +117,64 @@ def test_finalize_desktop_empty_library_dir_falls_back_to_out_dir(
     # No debe existir un directorio literal "{title}" en ningún lado
     assert not (app_state.out_dir.resolve() / "{title}").exists()
     assert "{title}" not in job.filepath
+
+
+def test_finalize_desktop_playlist_subdir(client, app_state, monkeypatch):
+    """Con playlist_subdir seteado, el archivo cae en library_dir/<subdir>/<template>."""
+    import config
+    import tempfile
+    from models import Job
+
+    library_dir = Path(tempfile.mkdtemp(prefix="opengrab_lib_"))
+    workdir = Path(tempfile.mkdtemp(prefix="opengrab_work_"))
+    video_file = workdir / "song.mp3"
+    video_file.write_bytes(b"fake audio content")
+
+    monkeypatch.setattr(config, "IS_DESKTOP", True)
+    app_state.db.set_setting("library_dir", str(library_dir))
+    app_state.db.set_setting("name_template", "{title}")
+
+    job = Job(id="finalize-playlist", created=time.time())
+    job.filepath = str(video_file)
+    app_state.jobs["finalize-playlist"] = job
+
+    info = {"title": "Track 01", "id": "abc"}
+    app_state._finalize_desktop(
+        "finalize-playlist", workdir, video_file, info, "audio",
+        playlist_subdir="TOOL Discography",
+    )
+
+    expected = library_dir / "TOOL Discography" / "Track 01.mp3"
+    assert expected.exists(), (
+        f"Esperaba {expected}; library_dir contiene: {list(library_dir.rglob('*'))}"
+    )
+    assert not video_file.exists()
+    assert job.filepath == str(expected)
+
+
+def test_finalize_desktop_nested_name_template_creates_parents(client, app_state, monkeypatch):
+    """Regresión: antes solo se creaba library_dir, no target.parent — un
+    name_template con subcarpetas (p.ej. '{channel}/{title}') rompía el
+    shutil.move con FileNotFoundError."""
+    import config
+    import tempfile
+    from models import Job
+
+    library_dir = Path(tempfile.mkdtemp(prefix="opengrab_lib_"))
+    workdir = Path(tempfile.mkdtemp(prefix="opengrab_work_"))
+    video_file = workdir / "video.mp4"
+    video_file.write_bytes(b"fake video content")
+
+    monkeypatch.setattr(config, "IS_DESKTOP", True)
+    app_state.db.set_setting("library_dir", str(library_dir))
+    app_state.db.set_setting("name_template", "{channel}/{title}")
+
+    job = Job(id="finalize-nested", created=time.time())
+    job.filepath = str(video_file)
+    app_state.jobs["finalize-nested"] = job
+
+    info = {"title": "Test Video", "uploader": "Test Channel"}
+    app_state._finalize_desktop("finalize-nested", workdir, video_file, info, "best")
+
+    expected = library_dir / "Test Channel" / "Test Video.mp4"
+    assert expected.exists()

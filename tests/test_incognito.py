@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from db import Database
+from db import SCHEMA_VERSION, Database
 from models import Job
 from state import AppState
 
@@ -71,7 +71,7 @@ def test_migration_v2_to_v3_adds_incognito_column(tmp_path):
 
     db = Database(db_path)
     try:
-        assert db.schema_version() == 3
+        assert db.schema_version() == SCHEMA_VERSION
         cols = {
             r["name"]
             for r in db._conn.execute("PRAGMA table_info(jobs)").fetchall()
@@ -89,7 +89,7 @@ def test_migration_is_idempotent_on_fresh_db(tmp_path):
     """Una DB nueva (creada por el DDL v3) no debe fallar al correr _migrate."""
     db = Database(tmp_path / "fresh.db")
     try:
-        assert db.schema_version() == 3
+        assert db.schema_version() == SCHEMA_VERSION
         db.insert_job("j", "u", "best", incognito=True)
         assert db.get_job("j")["incognito"] == 1
     finally:

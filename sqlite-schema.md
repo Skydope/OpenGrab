@@ -1,6 +1,6 @@
 # SQLite Schema — OpenGrab
 
-Diseño de la capa de persistencia para jobs, historial, watch mode y settings. Versión 3 del schema.
+Diseño de la capa de persistencia para jobs, historial, watch mode y settings. Versión 4 del schema.
 
 ## Principios
 
@@ -34,12 +34,23 @@ CREATE TABLE IF NOT EXISTS jobs (
     workdir     TEXT,                   -- tempdir opengrab_* para limpieza post-crash
     created     REAL NOT NULL,          -- timestamp UNIX de creación
     completed   INTEGER,                -- timestamp UNIX de finalización
-    incognito   INTEGER NOT NULL DEFAULT 0  -- 1 = descarga incógnito (v3); la fila se borra al terminar
+    incognito   INTEGER NOT NULL DEFAULT 0,  -- 1 = descarga incógnito (v3); la fila se borra al terminar
+    playlist_subdir TEXT                -- v4: nombre de subcarpeta (sanitizado) si el job
+                                         -- vino de una descarga de playlist con "guardar en
+                                         -- subcarpeta" activado; NULL = comportamiento normal
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created);
 ```
+
+> **Migración de columnas (v4):** `CREATE TABLE IF NOT EXISTS` no le agrega
+> columnas a una tabla `jobs` que ya existía en disco de una versión previa.
+> `_migrate(from_version)` corre `ALTER TABLE jobs ADD COLUMN` guardado por
+> `PRAGMA table_info(jobs)` (idempotente) para cada columna agregada
+> post-lanzamiento — `incognito` en v3, `playlist_subdir` en v4. Cualquier
+> columna nueva futura debe seguir el mismo patrón: un bloque
+> `if from_version < N and "col" not in cols: ALTER TABLE ...` en `_migrate`.
 
 **Sobre `incognito` (v3):** una descarga en modo incógnito inserta su fila
 normalmente (para ocupar slot y sobrevivir dentro del proceso), pero al llegar a
@@ -48,6 +59,15 @@ vez de persistirse — nunca aparece en historial ni en `downloaded_urls`. No se
 persiste la carpeta destino (`incognito_dir`) porque sería un rastro. Por eso un
 job incógnito **no se auto-reanuda** tras un reinicio: `get_queued` lo excluye y
 `reconcile_startup` borra su fila y devuelve el `workdir` para secure-wipe.
+
+**Sobre `playlist_subdir` (v4):** lo setea `/api/playlist/download` cuando el
+usuario tilda "guardar en subcarpeta" — mismo valor sanitizado (`_safe_name`)
+para todos los jobs de ese batch. `_run_download` lo antepone al destino final
+(`out_dir/<subdir>/` en server mode, `library_dir/<subdir>/<name_template>` en
+desktop). Hoy no interactúa con `incognito`: `BatchReq` (endpoint de playlist)
+no tiene campo `incognito`, y `JobReq` (endpoint de job individual, el único
+que puede setear `incognito=True`) no tiene `playlist_subdir` — son caminos
+disjuntos. Si en el futuro se unifican, falta definir precedencia.
 
 **Estados y transiciones:**
 

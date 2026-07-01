@@ -103,6 +103,7 @@
   "ui.all": "All",
   "ui.none": "None",
   "ui.download_playlist": "Download playlist",
+  "ui.save_in_subfolder": "Save in a subfolder named after the playlist",
   "ui.select_at_least_one": "Select at least one video.",
   "ui.site_detected": "Site detected:",
   "ui.formats_count": "formats ({count})",

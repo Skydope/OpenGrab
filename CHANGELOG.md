@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Guardar playlist en subcarpeta.** Nuevo checkbox en el panel de playlist
+  ("Guardar en subcarpeta con el nombre de la playlist"): si se activa, todos
+  los jobs de ese batch comparten un `playlist_subdir` (sanitizado con
+  `_safe_name`, mismo nombre para todo el batch) que se antepone al destino
+  final — `out_dir/<subdir>/` en server mode, `library_dir/<subdir>/<name_template>`
+  en desktop. Si no se activa, comportamiento sin cambios (archivos sueltos).
+  Nueva columna `jobs.playlist_subdir` (schema v4, sobre el v3 de modo
+  incógnito), migrada vía `_migrate()` con `ALTER TABLE` para DBs preexistentes
+  (`CREATE TABLE IF NOT EXISTS` no altera tablas ya creadas). No interactúa con
+  `incognito`: son caminos disjuntos (`BatchReq` no tiene `incognito`, `JobReq`
+  no tiene `playlist_subdir`). De paso: fix en `_finalize_desktop`, que solo
+  creaba `library_dir` y no `target.parent` — un `name_template` con
+  subcarpetas (p.ej. `{channel}/{title}`) rompía el `shutil.move` con
+  `FileNotFoundError`.
+
 ## [1.12.0] — 2026-06-30
 
 ### Added

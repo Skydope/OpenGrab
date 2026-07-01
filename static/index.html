@@ -180,6 +180,10 @@
         <button class="btn-sm" @click="toggleAllPlaylist(false)" x-text="t('ui.none')"></button>
         <button class="btn-sm" @click="downloadPlaylist" :disabled="selectedCount() === 0" x-text="t('ui.download_playlist')"></button>
       </div>
+      <label class="extra-toggle pl-subfolder-toggle">
+        <input type="checkbox" x-model="saveInSubfolder">
+        <span x-text="t('ui.save_in_subfolder')"></span>
+      </label>
       <div class="pl-list">
         <template x-for="(v, i) in playlistVideos" :key="v.url || v.video_id || i">
           <div class="pl-video">
@@ -801,8 +805,10 @@ document.addEventListener('alpine:init', () => {
     isPlaylist: false,
     playlistAvailable: false,
     playlistCount: 0,
+    playlistTitle: "",
     playlistVideos: [],
     playlistLoading: false,
+    saveInSubfolder: false,
 
     // ── Download ──────────────────────────────
     downloading: false,
@@ -1158,6 +1164,8 @@ document.addEventListener('alpine:init', () => {
           selected: false,
         }));
         this.playlistCount = data.count || 0;
+        this.playlistTitle = data.title || "";
+        this.saveInSubfolder = false;
       } catch (err) {
         this.playlistVideos = [];
         this.errorMsg = err.message;
@@ -1201,7 +1209,12 @@ document.addEventListener('alpine:init', () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ urls: urls, quality: this.quality }),
+          body: JSON.stringify({
+            urls: urls,
+            quality: this.quality,
+            playlist_title: this.playlistTitle,
+            save_subfolder: this.saveInSubfolder,
+          }),
         });
 
         if (r.status === 429) {
