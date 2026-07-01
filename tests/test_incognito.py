@@ -231,6 +231,57 @@ def test_run_download_incognito_delivers_and_leaves_no_trace(dl_state, tmp_path)
     assert dl_state.db.is_downloaded("Youtube", "vid123") is False
 
 
+def test_run_download_incognito_move_failure_preserves_file(dl_state, tmp_path):
+    """Si _move_incognito falla tras completar la descarga, NO se pierde el
+    archivo: el workdir no se wipea, el estado queda 'error' con la ruta, y la
+    fila se borra igual (para que reconcile no wipee el residuo)."""
+    from download import _run_download
+
+    loop = asyncio.new_event_loop()
+    jid = "ig3"
+    dl_state.jobs[jid] = Job(id=jid, created=time.time(), incognito=True)
+    dl_state.job_events[jid] = asyncio.Event()
+    dl_state.db.insert_job(jid, "https://x/3", "best", incognito=True)
+
+    src_dir = tmp_path / "scratch"
+    src_dir.mkdir()
+    video = src_dir / "Clip.mp4"
+    video.write_bytes(b"contenido")
+    info = {"title": "Clip", "requested_downloads": [{"filepath": str(video)}]}
+
+    incognito_dir = tmp_path / "destino"
+
+    # _move_incognito falla con OSError (simula disco lleno / permisos).
+    with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)), \
+         patch.object(type(dl_state), "_move_incognito",
+                      side_effect=OSError("no space left")):
+        _run_download(
+            dl_state, jid, "https://youtu.be/abc", "best", loop,
+            incognito=True, incognito_dir=str(incognito_dir),
+        )
+    loop.close()
+
+    job = dl_state.jobs[jid]
+    assert job.status == "error"
+    # El archivo NO se perdió: sigue en su lugar.
+    assert video.exists()
+    assert job.filepath == str(video)
+    # El error expone la ruta para recuperación manual.
+    assert str(video) in job.error
+    # La fila se borró (reconcile no debe wipear el residuo al reiniciar).
+    assert dl_state.db.get_job(jid) is None
+
+
+def test_incognito_and_savefile_share_move_core(dl_state):
+    """_move_incognito y move_job_file delegan en el mismo core _move_file_locked."""
+    import inspect
+
+    src = inspect.getsource(dl_state._move_incognito.__func__)
+    assert "_move_file_locked" in src
+    src2 = inspect.getsource(dl_state.move_job_file.__func__)
+    assert "_move_file_locked" in src2
+
+
 def test_run_download_incognito_forces_off_sidecars(dl_state, tmp_path):
     """subs/thumb/infojson se ignoran en incógnito (un único archivo limpio)."""
     from download import _run_download
