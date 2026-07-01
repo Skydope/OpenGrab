@@ -348,6 +348,50 @@ def _handle_incognito_completion(
     loop.call_soon_threadsafe(evt.set)
 
 
+def _finalize_download(
+    state: AppState, ctx: DownloadContext,
+    loop: asyncio.AbstractEventLoop, evt: asyncio.Event,
+    job: Any, workdir: Path, final: Path, info: dict[str, Any],
+    title: str, ext: str, mime: str,
+) -> None:
+    """Post-descarga normal: desktop finalize + server move + DB persist."""
+    state._finalize_desktop(ctx.job_id, workdir, final, info, ctx.quality, ctx.playlist_subdir)
+
+    if not IS_DESKTOP and final.parent == workdir:
+        dest_dir = state.out_dir / ctx.playlist_subdir if ctx.playlist_subdir else state.out_dir
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = state._deduplicate(dest_dir / final.name)
+        shutil.move(str(final), str(dest))
+        final = dest
+        state._schedule_tempdir_cleanup(str(workdir))
+        job.workdir = ""
+
+    job.status = "done"
+    job.finished = time.time()
+    job.percent = 100.0
+    job.filepath = job.filepath or str(final)
+    job.filename = (job.filepath and Path(job.filepath).name) or f"{title}.{ext}"
+    state.schedule_workdir_if_external(job)
+    job.mime = mime
+    job.title = title
+    log.info("job %s: completado → %s", ctx.job_id, job.filepath)
+    state.complete_job(
+        ctx.job_id,
+        title=title,
+        filename=job.filename or f"{title}.{ext}",
+        filepath=job.filepath,
+        mime=job.mime,
+        size=Path(job.filepath).stat().st_size if job.filepath else 0,
+        thumbnail=info.get("thumbnail"),
+    )
+    extractor_key = info.get("extractor_key") or info.get("extractor")
+    vid = info.get("id")
+    if extractor_key and vid:
+        state.db.update_job(ctx.job_id, extractor=extractor_key, video_id=str(vid))
+        state.db.record_download(extractor_key, str(vid), ctx.job_id)
+    loop.call_soon_threadsafe(evt.set)
+
+
 def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
                     max_size_mb: int, hook: Any) -> dict[str, Any]:
     is_audio = ctx.quality == "audio"
@@ -506,51 +550,8 @@ def _run_download(state: AppState, ctx: DownloadContext,
             _handle_incognito_completion(state, ctx, loop, evt, job, workdir, final, title, mime)
             return
 
-        # Desktop finalize: mueve a library_dir si corresponde
-        state._finalize_desktop(ctx.job_id, workdir, final, info, ctx.quality, ctx.playlist_subdir)
-
-        # Server mode: move file out of temp workdir to OUT_DIR (o a una
-        # subcarpeta OUT_DIR/playlist_subdir si la playlist pidió guardarse
-        # agrupada) and clean up. Each job gets its own tempdir; we clean it
-        # as soon as this download finishes so no orphaned folders accumulate.
-        if not IS_DESKTOP and final.parent == workdir:
-            dest_dir = state.out_dir / ctx.playlist_subdir if ctx.playlist_subdir else state.out_dir
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest = state._deduplicate(dest_dir / final.name)
-            shutil.move(str(final), str(dest))
-            final = dest
-            state._schedule_tempdir_cleanup(str(workdir))
-            job.workdir = ""  # already cleaned
-
-        # Usar filepath actualizado por _finalize_desktop (puede haber cambiado)
-        job.status = "done"
-        job.finished = time.time()
-        job.percent = 100.0
-        job.filepath = job.filepath or str(final)
-        job.filename = (job.filepath and Path(job.filepath).name) or f"{title}.{ext}"
-        # Desktop: si el finalize movió el archivo a library_dir, el husk del
-        # workdir es descartable. Mode-agnostic y seguro ante finalize fallido
-        # (si el keeper sigue dentro del workdir, esto es no-op). En server mode
-        # ya se limpió arriba (job.workdir == ""), así que también es no-op.
-        state.schedule_workdir_if_external(job)
-        job.mime = mime
-        job.title = title
-        log.info("job %s: completado → %s", ctx.job_id, job.filepath)
-        state.complete_job(
-            ctx.job_id,
-            title=title,
-            filename=job.filename or f"{title}.{ext}",
-            filepath=job.filepath,
-            mime=job.mime,
-            size=Path(job.filepath).stat().st_size if job.filepath else 0,
-            thumbnail=info.get("thumbnail"),
-        )
-        extractor_key = info.get("extractor_key") or info.get("extractor")
-        vid = info.get("id")
-        if extractor_key and vid:
-            state.db.update_job(ctx.job_id, extractor=extractor_key, video_id=str(vid))
-            state.db.record_download(extractor_key, str(vid), ctx.job_id)
-        loop.call_soon_threadsafe(evt.set)
+        # Desktop finalize + server move + DB persist
+        _finalize_download(state, ctx, loop, evt, job, workdir, final, info, title, ext, mime)
     except DownloadCancelled:
         job.status = "cancelled"
         job.finished = time.time()
