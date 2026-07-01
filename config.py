@@ -52,7 +52,7 @@ def _load_ini() -> dict[str, str]:
         cp = configparser.ConfigParser()
         cp.read(ini_path, encoding="utf-8")
         return dict(cp["opengrab"]) if "opengrab" in cp else {}
-    except Exception:
+    except Exception:  # INI faltante o corrupto es normal (primer arranque, FS roto); fallback silencioso
         return {}
 
 
