@@ -765,16 +765,38 @@ class AppState:
                 # No propagar — la descarga ya está completa en workdir
         return
 
+    def _move_file_locked(self, src: Path, dest_dir: Path) -> Path:
+        """Core de movimiento server-side, serializado por ``_finalize_lock``.
+
+        Base común de ``move_job_file`` y ``_move_incognito``: adquiere el lock,
+        valida ``dest_dir``, deduplica el nombre y mueve. NO toca DB ni el modelo
+        ``Job`` — eso queda en cada caller. Conserva el nombre de ``src`` (no
+        aplica ``name_template``). Idempotente si ``src`` ya está en ``dest_dir``.
+
+        Lanza:
+            NotADirectoryError: ``dest_dir`` existe pero no es un directorio.
+            OSError: falló la creación del directorio o el movimiento.
+        """
+        with self._finalize_lock:
+            dest_dir = dest_dir.expanduser()
+            if dest_dir.exists() and not dest_dir.is_dir():
+                raise NotADirectoryError(t("error.dest_not_dir"))
+            # Si ya está en la carpeta pedida, no hacemos nada (idempotente).
+            if src.resolve().parent == dest_dir.resolve():
+                return src
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            target = self._deduplicate(dest_dir / src.name)
+            shutil.move(str(src), str(target))
+            return target
+
     def move_job_file(self, job_id: str, dest_dir: Path) -> Path:
         """Mueve el archivo final de un job ``done`` a ``dest_dir`` (server-side).
 
         Pensado para el botón "Guardar en…": el archivo ya está descargado en
         el FS del servidor (out_dir/library_dir) y el usuario elige otra
-        carpeta destino. Reusa ``_finalize_lock`` para serializar con los
-        movimientos de ``_finalize_desktop`` y ``_deduplicate`` para no pisar
-        un archivo existente. Conserva el nombre actual (no aplica
-        ``name_template``). Actualiza ``job.filepath`` en RAM y en la fila de
-        historial (DB) para que la API siga sirviendo desde la ruta nueva.
+        carpeta destino. Delega el movimiento en ``_move_file_locked`` y luego
+        actualiza ``job.filepath`` en RAM y en la fila de historial (DB) para
+        que la API siga sirviendo desde la ruta nueva.
 
         Devuelve la ruta destino final.
 
@@ -793,52 +815,32 @@ class AppState:
         if not src.exists():
             raise FileNotFoundError(t("error.file_not_on_disk"))
 
-        with self._finalize_lock:
-            dest_dir = dest_dir.expanduser()
-            if dest_dir.exists() and not dest_dir.is_dir():
-                raise NotADirectoryError(t("error.dest_not_dir"))
-
-            # Si ya está en la carpeta pedida, no hacemos nada (idempotente).
-            if src.resolve().parent == dest_dir.resolve():
-                return src
-
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            target = self._deduplicate(dest_dir / src.name)
-            shutil.move(str(src), str(target))
-            log.info("move_job_file: %s -> %s", src.name, target)
-
-            job.filepath = str(target)
-            # El workdir pudo quedar registrado para limpieza apuntando al
-            # padre anterior; lo dejamos como está — schedule_workdir_if_external
-            # ya corrió en el finalize original. Solo persistimos la ruta nueva.
-            try:
-                self.db.update_job(job_id, filepath=str(target))
-            except Exception:
-                log.warning("move_job_file: no se pudo persistir filepath en DB",
-                            exc_info=True)
+        target = self._move_file_locked(src, dest_dir)
+        if target == src:
+            return target
+        log.info("move_job_file: %s -> %s", src.name, target)
+        job.filepath = str(target)
+        # El workdir pudo quedar registrado para limpieza apuntando al
+        # padre anterior; lo dejamos como está — schedule_workdir_if_external
+        # ya corrió en el finalize original. Solo persistimos la ruta nueva.
+        try:
+            self.db.update_job(job_id, filepath=str(target))
+        except Exception:
+            log.warning("move_job_file: no se pudo persistir filepath en DB",
+                        exc_info=True)
         return target
 
     def _move_incognito(self, src: Path, dest_dir: Path) -> Path:
         """Mueve ``src`` a ``dest_dir`` para un job incógnito (sin tocar DB).
 
-        Variante de ``move_job_file`` pensada para correr DENTRO de
-        ``_run_download``: el job todavía no está marcado ``done`` y su fila se
-        va a borrar de la DB de inmediato, así que NO persiste ``filepath`` ni
-        valida ``job.status``. Reusa ``_finalize_lock`` + ``_deduplicate`` para
-        serializar con otros movimientos y no pisar archivos. ``dest_dir`` se
-        crea si no existe.
+        Variante de ``move_job_file`` para correr DENTRO de ``_run_download``:
+        el job todavía no está marcado ``done`` y su fila se va a borrar de la
+        DB de inmediato, así que NO persiste ``filepath`` ni valida
+        ``job.status``. Comparte el core ``_move_file_locked`` para no divergir.
 
         Lanza ``NotADirectoryError`` si ``dest_dir`` existe pero no es carpeta,
         u ``OSError`` si falla el mkdir/move.
         """
-        with self._finalize_lock:
-            dest_dir = dest_dir.expanduser()
-            if dest_dir.exists() and not dest_dir.is_dir():
-                raise NotADirectoryError(t("error.dest_not_dir"))
-            if src.resolve().parent == dest_dir.resolve():
-                return src
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            target = self._deduplicate(dest_dir / src.name)
-            shutil.move(str(src), str(target))
-            log.info("incognito move: archivo entregado a carpeta destino")
-            return target
+        target = self._move_file_locked(src, dest_dir)
+        log.info("incognito move: archivo entregado a carpeta destino")
+        return target

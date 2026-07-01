@@ -33,6 +33,17 @@ log = logging.getLogger("opengrab")
 
 _BLOCKED_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
+# User-Agent genérico de navegador para modo incógnito. El default de yt-dlp es
+# reconocible como herramienta; este lo enmascara como Chrome. NOTA DE
+# MANTENIMIENTO: la versión (Chrome/xxx) envejece — si sitios empiezan a rechazar
+# UAs viejos, actualizar acá. Idealmente sincronizar con el bump de yt-dlp
+# (mismo cadence que la CI de frescura del engine).
+_INCOGNITO_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
+
 
 def _is_ip_unsafe(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """True si la IP es un destino que NO debe alcanzarse (anti-SSRF).
@@ -368,13 +379,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
     # navegador en lugar del default de yt-dlp (que delata la herramienta).
     if incognito:
         opts["cachedir"] = False
-        opts["http_headers"] = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0.0.0 Safari/537.36"
-            ),
-        }
+        opts["http_headers"] = {"User-Agent": _INCOGNITO_USER_AGENT}
 
     # En el binario de escritorio, ffmpeg viaja bundleado y no está en el PATH.
     # Guard: solo seteamos ffmpeg_location si el binario existe junto al recurso;
@@ -437,7 +442,32 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
             # wipea con sobreescritura forzada. incognito_dir está validado en la
             # ruta (no es None/vacío acá).
             assert incognito_dir, "incognito_dir requerido en modo incógnito"
-            delivered = state._move_incognito(final, Path(incognito_dir))
+            try:
+                delivered = state._move_incognito(final, Path(incognito_dir))
+            except OSError as move_exc:
+                # Fail-safe anti-pérdida: la descarga ya se completó pero el move
+                # a incognito_dir falló (disco lleno, permisos, FS). NO wipeamos
+                # el workdir — eso destruiría el archivo recién bajado sin
+                # recuperación. Lo dejamos en su lugar y exponemos la ruta.
+                # Borramos la fila igual para que reconcile_startup no wipee el
+                # workdir en el próximo arranque; el archivo sobrevive hasta el
+                # barrido por antigüedad (>24h) de cleanup_old_workdirs.
+                from i18n import t
+                job.status = "error"
+                job.finished = time.time()
+                job.error = t("error.incognito_move_failed", path=str(final))
+                job.filepath = str(final)
+                try:
+                    state.db.delete_job(job_id)
+                except Exception:
+                    log.exception("job %s: no se pudo borrar fila incógnito de DB", job_id)
+                log.error(
+                    "job %s: descarga incógnito completa pero falló el move; "
+                    "archivo preservado para recuperación manual en %s (%s)",
+                    job_id, final, move_exc,
+                )
+                loop.call_soon_threadsafe(evt.set)
+                return
             job.status = "done"
             job.finished = time.time()
             job.percent = 100.0

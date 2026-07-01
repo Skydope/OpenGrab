@@ -290,5 +290,6 @@
   "ui.incognito_hint": "No history. Delivered to a folder you choose; the temp residue is wiped by overwrite. Note: on SSD/snapshots the wipe isn't forensic.",
   "ui.incognito_pick_dir": "Destination folder (incognito)",
   "ui.incognito_badge": "Incognito",
-  "ui.incognito_delivered": "Delivered to the chosen folder (no history)."
+  "ui.incognito_delivered": "Delivered to the chosen folder (no history).",
+  "error.incognito_move_failed": "Download finished but moving the file to the chosen folder failed. It was kept at: {path}"
 }

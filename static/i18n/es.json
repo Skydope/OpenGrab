@@ -290,5 +290,6 @@
   "ui.incognito_hint": "Sin historial. Se entrega a una carpeta que elijas y el residuo temporal se borra con sobreescritura. Nota: en SSD/snapshots el borrado no es forense.",
   "ui.incognito_pick_dir": "Carpeta de destino (incógnito)",
   "ui.incognito_badge": "Incógnito",
-  "ui.incognito_delivered": "Entregado a la carpeta elegida (sin historial)."
+  "ui.incognito_delivered": "Entregado a la carpeta elegida (sin historial).",
+  "error.incognito_move_failed": "La descarga se completó pero falló mover el archivo a la carpeta elegida. Quedó guardado en: {path}"
 }
