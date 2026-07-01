@@ -14,6 +14,7 @@ from secure_delete import wipe_file, wipe_workdir
 
 
 from db import Database
+from history_store import HistoryStore
 from library_path_resolver import LibraryPathResolver
 from models import Job
 from storage_manager import StorageManager
@@ -53,6 +54,9 @@ class AppState:
             db=db, jobs=self.jobs,
             resolve=self.resolve, resolve_library_dir=self.resolve_library_dir,
         )
+
+        # HistoryStore: historial CRUD
+        self.history = HistoryStore(db=db, jobs=self.jobs, job_events=self.job_events)
         atexit.register(self.db.close)
 
     # ------------------------------------------------------------------ #
@@ -100,10 +104,7 @@ class AppState:
     # History
     # ------------------------------------------------------------------ #
     def get_history(self, limit: int = 20) -> list[dict[str, Any]]:
-        rows = self.db.get_history(limit=limit)
-        for r in rows:
-            r["job_id"] = r.pop("id", r.get("job_id"))
-        return rows
+        return self.history.get_history(limit)
 
     # ------------------------------------------------------------------ #
     # Job helpers
@@ -242,58 +243,18 @@ class AppState:
         wipe_workdir(workdir, force)
 
     # ------------------------------------------------------------------ #
-    # History management
+    # History management (delega en HistoryStore) — wrappers temporales (→ commit 5)
     # ------------------------------------------------------------------ #
     def _secure_delete_files(self, filepath: str | None, workdir: str | None) -> None:
-        try:
-            if filepath:
-                self._secure_delete_file(str(filepath))
-        except OSError:
-            pass
-        try:
-            if workdir:
-                if self.db.count_jobs_by_workdir(workdir) == 0:
-                    self._secure_delete_workdir(str(workdir))
-        except OSError:
-            pass
+        self.history._secure_delete_files(filepath, workdir)
 
     def delete_history_entry(
         self, job_id: str,
     ) -> tuple[str | None, str | None] | None:
-        job = self.db.get_job(job_id)
-        if job is None:
-            return None
-        ok = self.db.delete_job(job_id)
-        self.jobs.pop(job_id, None)
-        self.job_events.pop(job_id, None)
-        if not ok:
-            log.warning("delete_history_entry: delete_job no afecto filas para %s", job_id)
-            return None
-        log.info("delete_history_entry: borrado job %s de la DB", job_id)
-        return job.get("filepath"), job.get("workdir")
+        return self.history.delete_history_entry(job_id)
 
     def clear_all_history(self) -> int:
-        rows = self.db.get_deletable_jobs()
-        for r in rows:
-            if r.get("filepath"):
-                try:
-                    self._secure_delete_file(str(r["filepath"]))
-                except OSError:
-                    pass
-        workdirs_seen: set[str] = set()
-        for r in rows:
-            wd = r.get("workdir")
-            if wd and wd not in workdirs_seen:
-                workdirs_seen.add(str(wd))
-                try:
-                    self._secure_delete_workdir(str(wd))
-                except OSError:
-                    pass
-        count = self.db.clear_history()
-        self.jobs = {k: v for k, v in self.jobs.items()
-                     if v.status not in ("done", "error", "interrupted")}
-        self.job_events = {k: v for k, v in self.job_events.items()
-                           if k in self.jobs}
+        count = self.history.clear_all_history()
         self.storage.invalidate_cache()
         return count
 
