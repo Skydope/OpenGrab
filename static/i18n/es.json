@@ -284,5 +284,11 @@
   "ui.press_esc": "Presioná Esc",
   "settings.subs_default": "Descargar subtítulos (.srt/.vtt) por defecto",
   "settings.thumb_default": "Descargar miniatura (.jpg) por defecto",
-  "settings.infojson_default": "Descargar info JSON por defecto"
+  "settings.infojson_default": "Descargar info JSON por defecto",
+  "error.incognito_dir_required": "Elegí una carpeta de destino para la descarga incógnita.",
+  "ui.incognito_toggle": "Modo incógnito",
+  "ui.incognito_hint": "Sin historial. Se entrega a una carpeta que elijas y el residuo temporal se borra con sobreescritura. Nota: en SSD/snapshots el borrado no es forense.",
+  "ui.incognito_pick_dir": "Carpeta de destino (incógnito)",
+  "ui.incognito_badge": "Incógnito",
+  "ui.incognito_delivered": "Entregado a la carpeta elegida (sin historial)."
 }

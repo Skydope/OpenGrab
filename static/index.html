@@ -137,6 +137,15 @@
       </label>
     </div>
 
+    <!-- Modo incógnito: sin historial, entrega a carpeta elegida, wipe del temp -->
+    <div class="incognito-row" x-show="!isPlaylist && !downloading">
+      <label class="extra-toggle incognito-toggle">
+        <input type="checkbox" x-model="incognitoEnabled">
+        <span>🕶️ <span x-text="t('ui.incognito_toggle')"></span></span>
+      </label>
+      <p class="incognito-hint" x-show="incognitoEnabled" x-text="t('ui.incognito_hint')"></p>
+    </div>
+
     <!-- Format preview -->
     <div x-show="formats.length" class="mt-14 fmt-wrap">
       <div class="toggle-label"
@@ -277,8 +286,10 @@
           <span class="batch-eta" x-text="j.eta || ''" x-show="j.eta && j.status === 'downloading'"></span>
           <span class="batch-error" x-show="j.status === 'error'" x-text="j.error || t('ui.error')"></span>
           <span class="batch-error" x-show="j.status === 'cancelled'">cancelado</span>
+          <span class="incognito-badge" x-show="j.incognito" :title="t('ui.incognito_delivered')"
+                x-text="'🕶️ ' + t('ui.incognito_badge')"></span>
           <span class="job-actions">
-            <a class="job-act" x-show="j.status === 'done'" :href="'/api/jobs/' + j.id + '/file'"
+            <a class="job-act" x-show="j.status === 'done' && !j.incognito" :href="'/api/jobs/' + j.id + '/file'"
                :download="j.filename || ''" @click.stop :title="t('ui.save_file')">⬇</a>
             <button class="job-act job-cancel"
                     x-show="['queued','starting','downloading','processing'].includes(j.status)"
@@ -761,6 +772,7 @@ document.addEventListener('alpine:init', () => {
     subsEnabled: false,
     thumbEnabled: false,
     infojsonEnabled: false,
+    incognitoEnabled: false,
     qualities: [
       { id: "best",  label: "best mp4" },
       { id: "1080p", label: "1080p" },
@@ -1358,6 +1370,7 @@ document.addEventListener('alpine:init', () => {
           title: j.title || "", filename: j.filename || "",
           filepath: j.filepath || "", error: j.error || "",
           created: j.created || 0, finished: j.finished || 0,
+          incognito: !!j.incognito,
         });
         if (ACT.includes(j.status)) this.attachStream(j.id, false);
       }
@@ -1507,9 +1520,17 @@ document.addEventListener('alpine:init', () => {
       this.progressDone = j.status === "done";
       if (j.status === "done") {
         this.progress = 100;
-        this.downloadUrl = "/api/jobs/" + jobId + "/file";
-        this.downloadFilename = j.filename || "";
-        this.successPath = j.filepath || j.filename || "";
+        if (j.incognito) {
+          // Incógnito: el archivo se entregó a la carpeta elegida y no se
+          // sirve por HTTP (vive fuera de los allowed roots). Sin link.
+          this.downloadUrl = "";
+          this.downloadFilename = "";
+          this.successPath = this.t('ui.incognito_delivered');
+        } else {
+          this.downloadUrl = "/api/jobs/" + jobId + "/file";
+          this.downloadFilename = j.filename || "";
+          this.successPath = j.filepath || j.filename || "";
+        }
         this.lastJobId = jobId;
         this.errorMsg = ""; this.canRetry = false;
       } else if (j.status === "error") {
@@ -1555,13 +1576,36 @@ document.addEventListener('alpine:init', () => {
       // Reset solo de la vista enfocada (no toca otras tarjetas en curso).
       this.resetFocusView();
 
+      // Modo incógnito: el archivo NO va al historial ni a la carpeta default;
+      // se entrega a una carpeta elegida por el usuario. La pedimos ANTES de
+      // crear el job (mismo picker que "Guardar en…").
+      let incognitoDir = null;
+      if (this.incognitoEnabled) {
+        if (window.pywebview?.api?.pick_folder) {
+          try { incognitoDir = await window.pywebview.api.pick_folder(); }
+          catch (e) { incognitoDir = null; }
+          if (!incognitoDir) return;  // usuario canceló
+        } else {
+          incognitoDir = window.prompt(this.t('ui.incognito_pick_dir'),
+                                       this.libraryDirDefault());
+          if (!incognitoDir || !incognitoDir.trim()) return;
+          incognitoDir = incognitoDir.trim();
+        }
+      }
+
       let jobId, title = this.title !== "—" ? this.title : this.url.trim();
       try {
         const r = await fetch("/api/jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ url: this.url.trim(), quality: this.quality, subs: this.subsEnabled, thumb: this.thumbEnabled, infojson: this.infojsonEnabled }),
+          body: JSON.stringify({
+            url: this.url.trim(), quality: this.quality,
+            subs: this.subsEnabled, thumb: this.thumbEnabled,
+            infojson: this.infojsonEnabled,
+            incognito: this.incognitoEnabled,
+            incognito_dir: incognitoDir,
+          }),
         });
         if (!r.ok) throw new Error(((await r.json()).detail || this.t('ui.error_create_job')) + " (HTTP " + r.status + ")");
         ({ job_id: jobId } = await r.json());
@@ -1578,6 +1622,7 @@ document.addEventListener('alpine:init', () => {
         id: jobId, status: "queued", percent: 0, speed: "", eta: "",
         note: "", title, filename: "", filepath: "", error: "",
         created: Date.now() / 1000, finished: 0,
+        incognito: this.incognitoEnabled,
       });
       this.focusJob(jobId);
       this.jobLine(jobId, "$", "yt-dlp -f " + this.quality + " " + this.url.trim());

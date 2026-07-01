@@ -284,5 +284,11 @@
   "ui.press_esc": "Press Esc",
   "settings.subs_default": "Download subtitles (.srt/.vtt) by default",
   "settings.thumb_default": "Download thumbnail (.jpg) by default",
-  "settings.infojson_default": "Download info JSON by default"
+  "settings.infojson_default": "Download info JSON by default",
+  "error.incognito_dir_required": "Choose a destination folder for the incognito download.",
+  "ui.incognito_toggle": "Incognito mode",
+  "ui.incognito_hint": "No history. Delivered to a folder you choose; the temp residue is wiped by overwrite. Note: on SSD/snapshots the wipe isn't forensic.",
+  "ui.incognito_pick_dir": "Destination folder (incognito)",
+  "ui.incognito_badge": "Incognito",
+  "ui.incognito_delivered": "Delivered to the chosen folder (no history)."
 }
