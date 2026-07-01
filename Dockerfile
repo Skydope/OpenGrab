@@ -8,13 +8,10 @@ RUN useradd --create-home --no-log-init opengrab \
     && mkdir -p /downloads && chown opengrab:opengrab /downloads
 
 WORKDIR /app
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-# *.py NO matchea routers/ (es un directorio). Tras el refactor de routers
-# hay que copiar el paquete explícitamente, igual que i18n.py y demás módulos.
-COPY *.py ./
+COPY pyproject.toml *.py ./
 COPY routers/ routers/
 COPY static/ static/
+RUN pip install --no-cache-dir .
 
 # Entrypoint. yt-dlp se pinea exacto en pyproject.toml (imagen reproducible).
 # El auto-update en runtime esta DESACTIVADO por default (OPENGRAB_AUTOUPDATE=0)
