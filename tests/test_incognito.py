@@ -184,7 +184,7 @@ def _mock_ydl(info):
 
 
 def test_run_download_incognito_delivers_and_leaves_no_trace(dl_state, tmp_path):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
     jid = "ig1"
@@ -210,8 +210,10 @@ def test_run_download_incognito_delivers_and_leaves_no_trace(dl_state, tmp_path)
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
         _run_download(
-            dl_state, jid, "https://youtu.be/abc", "best", loop,
-            incognito=True, incognito_dir=str(incognito_dir),
+            dl_state,
+            DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best",
+                            incognito=True, incognito_dir=str(incognito_dir)),
+            loop,
         )
     loop.close()
 
@@ -235,7 +237,7 @@ def test_run_download_incognito_move_failure_preserves_file(dl_state, tmp_path):
     """Si _move_incognito falla tras completar la descarga, NO se pierde el
     archivo: el workdir no se wipea, el estado queda 'error' con la ruta, y la
     fila se borra igual (para que reconcile no wipee el residuo)."""
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
     jid = "ig3"
@@ -256,8 +258,10 @@ def test_run_download_incognito_move_failure_preserves_file(dl_state, tmp_path):
          patch.object(type(dl_state), "_move_incognito",
                       side_effect=OSError("no space left")):
         _run_download(
-            dl_state, jid, "https://youtu.be/abc", "best", loop,
-            incognito=True, incognito_dir=str(incognito_dir),
+            dl_state,
+            DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best",
+                            incognito=True, incognito_dir=str(incognito_dir)),
+            loop,
         )
     loop.close()
 
@@ -284,7 +288,7 @@ def test_incognito_and_savefile_share_move_core(dl_state):
 
 def test_run_download_incognito_forces_off_sidecars(dl_state, tmp_path):
     """subs/thumb/infojson se ignoran en incógnito (un único archivo limpio)."""
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
     jid = "ig2"
@@ -306,9 +310,11 @@ def test_run_download_incognito_forces_off_sidecars(dl_state, tmp_path):
     incognito_dir = tmp_path / "out"
     with patch("download.yt_dlp.YoutubeDL", side_effect=_capture):
         _run_download(
-            dl_state, jid, "https://youtu.be/abc", "best", loop,
-            subs=True, thumb=True, infojson=True,
-            incognito=True, incognito_dir=str(incognito_dir),
+            dl_state,
+            DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best",
+                            subs=True, thumb=True, infojson=True,
+                            incognito=True, incognito_dir=str(incognito_dir)),
+            loop,
         )
     loop.close()
 

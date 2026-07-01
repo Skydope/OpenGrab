@@ -169,12 +169,10 @@ class TestDispatchLoopBasic:
         # the job is already marked 'starting' in DB
         db_status_at_download_time = {}
 
-        def fake_run_download(state, job_id, url, quality, loop, subs=False, thumb=False,
-                              infojson=False, incognito=False, incognito_dir=None,
-                              playlist_subdir=None):
+        def fake_run_download(state, ctx, loop):
             # Check DB status at the moment _run_download starts (corre en un thread).
-            job = state.db.get_job(job_id)
-            db_status_at_download_time[job_id] = job["status"]
+            job = state.db.get_job(ctx.job_id)
+            db_status_at_download_time[ctx.job_id] = job["status"]
 
         monkeypatch.setattr("download._run_download", fake_run_download)
 

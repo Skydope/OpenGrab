@@ -60,7 +60,7 @@ def _make_job(st, jid):
 
 def test_run_download_cancel_via_hook(st):
     """El usuario cancela mientras descarga: el hook ve la bandera y aborta."""
-    from download import _run_download
+    from download import DownloadContext, _run_download
     jid = _make_job(st, "h")
     loop = asyncio.new_event_loop()
 
@@ -77,7 +77,7 @@ def test_run_download_cancel_via_hook(st):
             raise AssertionError("el hook debió abortar antes de llegar acá")
 
     with patch("download.yt_dlp.YoutubeDL", side_effect=lambda opts: FakeYDL(opts)):
-        _run_download(st, jid, "https://x/1", "best", loop)
+        _run_download(st, DownloadContext(job_id=jid, url="https://x/1", quality="best"), loop)
     loop.close()
 
     job = st.jobs[jid]
@@ -92,13 +92,13 @@ def test_run_download_cancel_via_hook(st):
 
 def test_run_download_cancel_temprano_no_arranca_ydl(st):
     """Cancelado antes de iniciar: aborta sin construir YoutubeDL."""
-    from download import _run_download
+    from download import DownloadContext, _run_download
     jid = _make_job(st, "e")
     st.cancel_requests.add(jid)
     loop = asyncio.new_event_loop()
 
     with patch("download.yt_dlp.YoutubeDL") as ydl_cls:
-        _run_download(st, jid, "https://x/1", "best", loop)
+        _run_download(st, DownloadContext(job_id=jid, url="https://x/1", quality="best"), loop)
     loop.close()
 
     assert ydl_cls.call_count == 0                 # nunca se construyó yt-dlp

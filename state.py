@@ -162,16 +162,24 @@ class AppState:
 
         Precondicion: la fila en DB ya existe en el estado correcto.
         """
-        from download import _run_download  # local: evita el ciclo state<->download
+        from download import _run_download, DownloadContext  # local: evita el ciclo state<->download
 
         self.jobs[job_id] = Job(id=job_id, created=time.time(), incognito=incognito)
         self.job_events[job_id] = asyncio.Event()
         loop = asyncio.get_running_loop()
+        ctx = DownloadContext(
+            job_id=job_id,
+            url=url,
+            quality=quality,
+            subs=subs,
+            thumb=thumb,
+            infojson=infojson,
+            incognito=incognito,
+            incognito_dir=incognito_dir,
+            playlist_subdir=playlist_subdir,
+        )
         task = asyncio.create_task(
-            asyncio.to_thread(
-                _run_download, self, job_id, url, quality, loop,
-                subs, thumb, infojson, incognito, incognito_dir, playlist_subdir,
-            )
+            asyncio.to_thread(_run_download, self, ctx, loop)
         )
         self._track_task(task)
 

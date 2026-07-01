@@ -48,7 +48,7 @@ def _mock_ydl(info):
 
 # ------------------------------------------------------------------ T1 ----
 def test_run_download_video_success(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -59,7 +59,7 @@ def test_run_download_video_success(dl_state, monkeypatch):
     info = {"title": "Test", "requested_downloads": [{"filepath": str(video)}]}
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     job = dl_state.jobs[jid]
@@ -76,7 +76,7 @@ def test_run_download_playlist_subdir_server_mode(dl_state, monkeypatch):
     """Server mode (IS_DESKTOP=False, incognito=False): con playlist_subdir,
     el archivo final debe quedar en out_dir/<playlist_subdir>/, no directo
     en out_dir."""
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     assert download.IS_DESKTOP is False  # precondición del test
 
@@ -91,8 +91,10 @@ def test_run_download_playlist_subdir_server_mode(dl_state, monkeypatch):
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)), \
          patch("download.tempfile.mkdtemp", return_value=str(wd)):
         _run_download(
-            dl_state, jid, "https://youtu.be/abc", "audio", loop,
-            playlist_subdir="TOOL Discography",
+            dl_state,
+            DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="audio",
+                           playlist_subdir="TOOL Discography"),
+            loop,
         )
     loop.close()
 
@@ -105,7 +107,7 @@ def test_run_download_playlist_subdir_server_mode(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T2 ----
 def test_run_download_audio_success(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -116,7 +118,7 @@ def test_run_download_audio_success(dl_state, monkeypatch):
     info = {"title": "Song", "requested_downloads": [{"filepath": str(audio)}]}
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "audio", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="audio"), loop)
     loop.close()
 
     job = dl_state.jobs[jid]
@@ -126,7 +128,7 @@ def test_run_download_audio_success(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T3 ----
 def test_run_download_fallback_glob(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -138,7 +140,7 @@ def test_run_download_fallback_glob(dl_state, monkeypatch):
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)), \
          patch("download.tempfile.mkdtemp", return_value=str(wd)):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     job = dl_state.jobs[jid]
@@ -148,7 +150,7 @@ def test_run_download_fallback_glob(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T4 ----
 def test_run_download_extract_info_none(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -157,7 +159,7 @@ def test_run_download_extract_info_none(dl_state, monkeypatch):
     ydl.extract_info.return_value = None
 
     with patch("download.yt_dlp.YoutubeDL", return_value=ydl):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     job = dl_state.jobs[jid]
@@ -167,7 +169,7 @@ def test_run_download_extract_info_none(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T5 ----
 def test_run_download_no_files(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -175,7 +177,7 @@ def test_run_download_no_files(dl_state, monkeypatch):
     info = {"title": "Ghost"}
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     job = dl_state.jobs[jid]
@@ -185,7 +187,7 @@ def test_run_download_no_files(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T6 ----
 def test_run_download_file_not_found(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -195,7 +197,7 @@ def test_run_download_file_not_found(dl_state, monkeypatch):
     info = {"title": "Missing", "requested_downloads": [{"filepath": str(ghost)}]}
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     job = dl_state.jobs[jid]
@@ -205,7 +207,7 @@ def test_run_download_file_not_found(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T7 ----
 def test_run_download_size_enforcement(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     # _run_download ahora usa state.resolve("max_size_mb") en vez de config.MAX_SIZE_MB
     monkeypatch.setattr(type(dl_state), "resolve", _resolve_max_size(1))
@@ -218,7 +220,7 @@ def test_run_download_size_enforcement(dl_state, monkeypatch):
     info = {"title": "Big", "requested_downloads": [{"filepath": str(big)}]}
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     job = dl_state.jobs[jid]
@@ -229,7 +231,7 @@ def test_run_download_size_enforcement(dl_state, monkeypatch):
 
 # ------------------------------------------------------------------ T8 ----
 def test_run_download_hook_percent(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -263,7 +265,7 @@ def test_run_download_hook_percent(dl_state, monkeypatch):
             }
 
     with patch("download.yt_dlp.YoutubeDL", HookYDL):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     job = dl_state.jobs[jid]
@@ -460,7 +462,7 @@ def test_check_channel_watch_handles_fetch_error(dl_state, monkeypatch):
 
 # ---------------- _run_download: dedup en camino de éxito ----------------- #
 def test_run_download_records_dedup(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -476,7 +478,7 @@ def test_run_download_records_dedup(dl_state, monkeypatch):
     }
 
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     assert dl_state.jobs[jid].status == "done"
@@ -487,7 +489,7 @@ def test_run_download_records_dedup(dl_state, monkeypatch):
 
 
 def test_run_download_does_not_record_on_error(dl_state, monkeypatch):
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -496,7 +498,7 @@ def test_run_download_does_not_record_on_error(dl_state, monkeypatch):
     ydl.extract_info.return_value = None
 
     with patch("download.yt_dlp.YoutubeDL", return_value=ydl):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     assert dl_state.jobs[jid].status == "error"
@@ -509,7 +511,7 @@ def test_run_download_persists_error_status_to_db(dl_state, monkeypatch):
     Si quedara 'queued', el dispatch_loop lo re-despacharia tras evict_once
     (regresion: descarga fantasma ~1h despues de un fallo manual).
     """
-    from download import _run_download
+    from download import DownloadContext, _run_download
 
     loop = asyncio.new_event_loop()
 
@@ -520,7 +522,7 @@ def test_run_download_persists_error_status_to_db(dl_state, monkeypatch):
         raise RuntimeError("403 Forbidden")
 
     with patch("download.yt_dlp.YoutubeDL", side_effect=boom):
-        _run_download(dl_state, jid, "https://youtu.be/abc", "best", loop)
+        _run_download(dl_state, DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best"), loop)
     loop.close()
 
     j = dl_state.db.get_job(jid)

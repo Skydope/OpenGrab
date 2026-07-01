@@ -9,6 +9,7 @@ import socket
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -286,21 +287,35 @@ def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> list[dict[
 # --------------------------------------------------------------------------- #
 # Download job (runs in thread pool)
 # --------------------------------------------------------------------------- #
-def _run_download(state: AppState, job_id: str, url: str, quality: str,
-                  loop: asyncio.AbstractEventLoop,
-                  subs: bool = False, thumb: bool = False,
-                  infojson: bool = False, incognito: bool = False,
-                  incognito_dir: str | None = None,
-                  playlist_subdir: str | None = None) -> None:
-    job = state.jobs[job_id]
+
+@dataclass(frozen=True)
+class DownloadContext:
+    """Parámetros de negocio inmutables para un job de descarga."""
+    job_id: str
+    url: str
+    quality: str
+    subs: bool = False
+    thumb: bool = False
+    infojson: bool = False
+    incognito: bool = False
+    incognito_dir: str | None = None
+    playlist_subdir: str | None = None
+
+
+def _run_download(state: AppState, ctx: DownloadContext,
+                  loop: asyncio.AbstractEventLoop) -> None:
+    job = state.jobs[ctx.job_id]
     workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
     max_size_mb, _ = state.resolve("max_size_mb", 0, int)
     job.workdir = str(workdir)
-    # En incógnito los sidecar (subs/thumb/info.json) se fuerzan off: un único
-    # archivo limpio en la carpeta destino, sin metadatos extra que dejen rastro.
-    if incognito:
+    # Extraer sidecars a variables locales: si el download es incógnito se
+    # fuerzan off sin mutar el ctx (que es frozen).
+    subs = ctx.subs
+    thumb = ctx.thumb
+    infojson = ctx.infojson
+    if ctx.incognito:
         subs = thumb = infojson = False
-    evt = state.job_events.get(job_id)
+    evt = state.job_events.get(ctx.job_id)
     if evt is None:
         from i18n import t
         raise RuntimeError(t("error.job_not_found_short"))
@@ -308,7 +323,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
     def hook(d: dict[str, Any]) -> None:
         if evt is None:
             return
-        if job_id in state.cancel_requests:
+        if ctx.job_id in state.cancel_requests:
             # Abortar yt-dlp desde el hook: la excepción propaga fuera de
             # extract_info y la captura el except DownloadCancelled de abajo.
             from i18n import t
@@ -331,14 +346,14 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
             from i18n import t as _t
             job.note = (
                 _t("download.extracting_audio")
-                if quality == "audio"
+                if ctx.quality == "audio"
                 else _t("download.muxing")
             )
             loop.call_soon_threadsafe(evt.set)
 
-    is_audio = quality == "audio"
+    is_audio = ctx.quality == "audio"
     outtmpl = str(workdir / "%(title)s.%(ext)s")
-    fmt = FORMATS.get(quality, FORMATS["best"])
+    fmt = FORMATS.get(ctx.quality, FORMATS["best"])
     if max_size_mb and not is_audio:
         fmt += f"[filesize_approx<{max_size_mb}M]"
     opts: dict[str, Any] = {
@@ -378,7 +393,7 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
     # Hardening de privacidad para modo incógnito: sin caché en disco (evita
     # ~/.cache/yt-dlp con rastros de qué se consultó) y User-Agent genérico de
     # navegador en lugar del default de yt-dlp (que delata la herramienta).
-    if incognito:
+    if ctx.incognito:
         opts["cachedir"] = False
         opts["http_headers"] = {"User-Agent": _INCOGNITO_USER_AGENT}
 
@@ -392,18 +407,18 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
     try:
         job.status = "starting"
         job.percent = 0.0
-        if job_id in state.cancel_requests:
+        if ctx.job_id in state.cancel_requests:
             from i18n import t
             raise DownloadCancelled(t("error.cancelled_before_start"))
-        if incognito:
-            log.info("job %s: iniciando descarga incógnito (%s)", job_id, quality)
+        if ctx.incognito:
+            log.info("job %s: iniciando descarga incógnito (%s)", ctx.job_id, ctx.quality)
         else:
             log.info(
                 "job %s: iniciando descarga (%s, %s)",
-                job_id, quality, _sanitize_url(url),
+                ctx.job_id, ctx.quality, _sanitize_url(ctx.url),
             )
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(ctx.url, download=True)
 
         if info is None:
             from i18n import t
@@ -436,15 +451,15 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
         ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
         mime = "audio/mpeg" if is_audio else "video/mp4"
 
-        if incognito:
+        if ctx.incognito:
             # Modo incógnito: NO library_dir, NO out_dir, NO historial. El archivo
             # se entrega a la carpeta elegida por el usuario y la fila de la DB se
             # borra (nunca llega a 'done' persistido). El workdir residual se
             # wipea con sobreescritura forzada. incognito_dir está validado en la
             # ruta (no es None/vacío acá).
-            assert incognito_dir, "incognito_dir requerido en modo incógnito"
+            assert ctx.incognito_dir, "incognito_dir requerido en modo incógnito"
             try:
-                delivered = state._move_incognito(final, Path(incognito_dir))
+                delivered = state._move_incognito(final, Path(ctx.incognito_dir))
             except OSError as move_exc:
                 # Fail-safe anti-pérdida: la descarga ya se completó pero el move
                 # a incognito_dir falló (disco lleno, permisos, FS). NO wipeamos
@@ -459,13 +474,13 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
                 job.error = t("error.incognito_move_failed", path=str(final))
                 job.filepath = str(final)
                 try:
-                    state.db.delete_job(job_id)
+                    state.db.delete_job(ctx.job_id)
                 except Exception:
-                    log.exception("job %s: no se pudo borrar fila incógnito de DB", job_id)
+                    log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
                 log.error(
                     "job %s: descarga incógnito completa pero falló el move; "
                     "archivo preservado para recuperación manual en %s (%s)",
-                    job_id, final, move_exc,
+                    ctx.job_id, final, move_exc,
                 )
                 loop.call_soon_threadsafe(evt.set)
                 return
@@ -480,26 +495,26 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
             try:
                 state._secure_delete_workdir(str(workdir), force=True)
             except OSError:
-                log.warning("job %s: no se pudo wipear workdir incógnito", job_id)
+                log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
             job.workdir = ""
             # Borrar la fila de la DB: sin rastro en historial ni en dedup.
             try:
-                state.db.delete_job(job_id)
+                state.db.delete_job(ctx.job_id)
             except Exception:
-                log.exception("job %s: no se pudo borrar fila incógnito de DB", job_id)
-            log.info("job %s: completado (incógnito, sin historial)", job_id)
+                log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
+            log.info("job %s: completado (incógnito, sin historial)", ctx.job_id)
             loop.call_soon_threadsafe(evt.set)
             return
 
         # Desktop finalize: mueve a library_dir si corresponde
-        state._finalize_desktop(job_id, workdir, final, info, quality, playlist_subdir)
+        state._finalize_desktop(ctx.job_id, workdir, final, info, ctx.quality, ctx.playlist_subdir)
 
         # Server mode: move file out of temp workdir to OUT_DIR (o a una
         # subcarpeta OUT_DIR/playlist_subdir si la playlist pidió guardarse
         # agrupada) and clean up. Each job gets its own tempdir; we clean it
         # as soon as this download finishes so no orphaned folders accumulate.
         if not IS_DESKTOP and final.parent == workdir:
-            dest_dir = state.out_dir / playlist_subdir if playlist_subdir else state.out_dir
+            dest_dir = state.out_dir / ctx.playlist_subdir if ctx.playlist_subdir else state.out_dir
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = state._deduplicate(dest_dir / final.name)
             shutil.move(str(final), str(dest))
@@ -520,9 +535,9 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
         state.schedule_workdir_if_external(job)
         job.mime = mime
         job.title = title
-        log.info("job %s: completado → %s", job_id, job.filepath)
+        log.info("job %s: completado → %s", ctx.job_id, job.filepath)
         state.complete_job(
-            job_id,
+            ctx.job_id,
             title=title,
             filename=job.filename or f"{title}.{ext}",
             filepath=job.filepath,
@@ -533,8 +548,8 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
         extractor_key = info.get("extractor_key") or info.get("extractor")
         vid = info.get("id")
         if extractor_key and vid:
-            state.db.update_job(job_id, extractor=extractor_key, video_id=str(vid))
-            state.db.record_download(extractor_key, str(vid), job_id)
+            state.db.update_job(ctx.job_id, extractor=extractor_key, video_id=str(vid))
+            state.db.record_download(extractor_key, str(vid), ctx.job_id)
         loop.call_soon_threadsafe(evt.set)
     except DownloadCancelled:
         job.status = "cancelled"
@@ -542,54 +557,54 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
         job.error = ""
         # El archivo final nunca se movió afuera: el workdir es un husk con
         # descargas parciales.
-        if incognito:
+        if ctx.incognito:
             try:
                 state._secure_delete_workdir(str(workdir), force=True)
             except OSError:
-                log.warning("job %s: no se pudo wipear workdir incógnito", job_id)
+                log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
             job.workdir = ""
             try:
-                state.db.delete_job(job_id)
+                state.db.delete_job(ctx.job_id)
             except Exception:
-                log.exception("job %s: no se pudo borrar fila incógnito de DB", job_id)
-            log.info("job %s: cancelado (incógnito)", job_id)
+                log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
+            log.info("job %s: cancelado (incógnito)", ctx.job_id)
         else:
             # Registrarlo para limpieza (sin keeper adentro).
             state._schedule_tempdir_cleanup(str(workdir))
             job.workdir = ""
             try:
-                state.db.update_job(job_id, status="cancelled")
+                state.db.update_job(ctx.job_id, status="cancelled")
             except Exception:
-                log.exception("job %s: no se pudo persistir estado 'cancelled'", job_id)
-            log.info("job %s: cancelado", job_id)
+                log.exception("job %s: no se pudo persistir estado 'cancelled'", ctx.job_id)
+            log.info("job %s: cancelado", ctx.job_id)
         loop.call_soon_threadsafe(evt.set)
     except Exception as exc:
         job.status = "error"
         job.finished = time.time()
         job.error = _friendly_error(exc)
-        if incognito:
+        if ctx.incognito:
             # Sin rastro tampoco en el camino de error: wipe forzado del residuo
             # y borrado de la fila (no dejamos 'error' persistido en historial).
             try:
                 state._secure_delete_workdir(str(workdir), force=True)
             except OSError:
-                log.warning("job %s: no se pudo wipear workdir incógnito", job_id)
+                log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
             job.workdir = ""
             try:
-                state.db.delete_job(job_id)
+                state.db.delete_job(ctx.job_id)
             except Exception:
-                log.exception("job %s: no se pudo borrar fila incógnito de DB", job_id)
-            log.error("job %s: falló (incógnito)", job_id, exc_info=True)
+                log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
+            log.error("job %s: falló (incógnito)", ctx.job_id, exc_info=True)
         else:
             # Persistir el error en la DB. Si no lo hacemos, un job manual que falla
             # queda 'queued' en SQLite (insert_job lo dejo asi y complete_job nunca corre),
             # y el dispatch_loop lo re-despacha cuando evict_once lo saca de memoria (~1h).
             try:
-                state.db.update_job(job_id, status="error", error=job.error)
+                state.db.update_job(ctx.job_id, status="error", error=job.error)
             except Exception:
-                log.exception("job %s: no se pudo persistir estado 'error' en DB", job_id)
-            log.error("job %s: falló", job_id, exc_info=True)
+                log.exception("job %s: no se pudo persistir estado 'error' en DB", ctx.job_id)
+            log.error("job %s: falló", ctx.job_id, exc_info=True)
         loop.call_soon_threadsafe(evt.set)
     finally:
-        state.cancel_requests.discard(job_id)
+        state.cancel_requests.discard(ctx.job_id)
         loop.call_soon_threadsafe(evt.set)
