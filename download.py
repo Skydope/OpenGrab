@@ -302,6 +302,52 @@ class DownloadContext:
     playlist_subdir: str | None = None
 
 
+def _handle_incognito_completion(
+    state: AppState, ctx: DownloadContext,
+    loop: asyncio.AbstractEventLoop, evt: asyncio.Event,
+    job: Any, workdir: Path, final: Path, title: str, mime: str,
+) -> None:
+    """Post-descarga incógnito: move + wipe + delete DB row."""
+    assert ctx.incognito_dir, "incognito_dir requerido en modo incógnito"
+    try:
+        delivered = state._move_incognito(final, Path(ctx.incognito_dir))
+    except OSError as move_exc:
+        from i18n import t
+        job.status = "error"
+        job.finished = time.time()
+        job.error = t("error.incognito_move_failed", path=str(final))
+        job.filepath = str(final)
+        try:
+            state.db.delete_job(ctx.job_id)
+        except Exception:
+            log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
+        log.error(
+            "job %s: descarga incógnito completa pero falló el move; "
+            "archivo preservado para recuperación manual en %s (%s)",
+            ctx.job_id, final, move_exc,
+        )
+        loop.call_soon_threadsafe(evt.set)
+        return
+    job.status = "done"
+    job.finished = time.time()
+    job.percent = 100.0
+    job.filepath = str(delivered)
+    job.filename = delivered.name
+    job.mime = mime
+    job.title = title
+    try:
+        state._secure_delete_workdir(str(workdir), force=True)
+    except OSError:
+        log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
+    job.workdir = ""
+    try:
+        state.db.delete_job(ctx.job_id)
+    except Exception:
+        log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
+    log.info("job %s: completado (incógnito, sin historial)", ctx.job_id)
+    loop.call_soon_threadsafe(evt.set)
+
+
 def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
                     max_size_mb: int, hook: Any) -> dict[str, Any]:
     is_audio = ctx.quality == "audio"
@@ -457,58 +503,7 @@ def _run_download(state: AppState, ctx: DownloadContext,
         mime = "audio/mpeg" if is_audio else "video/mp4"
 
         if ctx.incognito:
-            # Modo incógnito: NO library_dir, NO out_dir, NO historial. El archivo
-            # se entrega a la carpeta elegida por el usuario y la fila de la DB se
-            # borra (nunca llega a 'done' persistido). El workdir residual se
-            # wipea con sobreescritura forzada. incognito_dir está validado en la
-            # ruta (no es None/vacío acá).
-            assert ctx.incognito_dir, "incognito_dir requerido en modo incógnito"
-            try:
-                delivered = state._move_incognito(final, Path(ctx.incognito_dir))
-            except OSError as move_exc:
-                # Fail-safe anti-pérdida: la descarga ya se completó pero el move
-                # a incognito_dir falló (disco lleno, permisos, FS). NO wipeamos
-                # el workdir — eso destruiría el archivo recién bajado sin
-                # recuperación. Lo dejamos en su lugar y exponemos la ruta.
-                # Borramos la fila igual para que reconcile_startup no wipee el
-                # workdir en el próximo arranque; el archivo sobrevive hasta el
-                # barrido por antigüedad (>24h) de cleanup_old_workdirs.
-                from i18n import t
-                job.status = "error"
-                job.finished = time.time()
-                job.error = t("error.incognito_move_failed", path=str(final))
-                job.filepath = str(final)
-                try:
-                    state.db.delete_job(ctx.job_id)
-                except Exception:
-                    log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
-                log.error(
-                    "job %s: descarga incógnito completa pero falló el move; "
-                    "archivo preservado para recuperación manual en %s (%s)",
-                    ctx.job_id, final, move_exc,
-                )
-                loop.call_soon_threadsafe(evt.set)
-                return
-            job.status = "done"
-            job.finished = time.time()
-            job.percent = 100.0
-            job.filepath = str(delivered)
-            job.filename = delivered.name
-            job.mime = mime
-            job.title = title
-            # Wipe forzado del workdir (fragmentos .part, sidecars residuales).
-            try:
-                state._secure_delete_workdir(str(workdir), force=True)
-            except OSError:
-                log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
-            job.workdir = ""
-            # Borrar la fila de la DB: sin rastro en historial ni en dedup.
-            try:
-                state.db.delete_job(ctx.job_id)
-            except Exception:
-                log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
-            log.info("job %s: completado (incógnito, sin historial)", ctx.job_id)
-            loop.call_soon_threadsafe(evt.set)
+            _handle_incognito_completion(state, ctx, loop, evt, job, workdir, final, title, mime)
             return
 
         # Desktop finalize: mueve a library_dir si corresponde
