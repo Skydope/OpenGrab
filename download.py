@@ -392,6 +392,60 @@ def _finalize_download(
     loop.call_soon_threadsafe(evt.set)
 
 
+def _handle_termination(
+    state: AppState, ctx: DownloadContext,
+    loop: asyncio.AbstractEventLoop, evt: asyncio.Event,
+    job: Any, workdir: Path,
+    is_cancelled: bool, exc: Exception | None = None,
+) -> None:
+    """Cancelación y error: cleanup + DB, con bifurcación incógnito."""
+    if is_cancelled:
+        job.status = "cancelled"
+        job.finished = time.time()
+        job.error = ""
+        if ctx.incognito:
+            try:
+                state._secure_delete_workdir(str(workdir), force=True)
+            except OSError:
+                log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
+            job.workdir = ""
+            try:
+                state.db.delete_job(ctx.job_id)
+            except Exception:
+                log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
+            log.info("job %s: cancelado (incógnito)", ctx.job_id)
+        else:
+            state._schedule_tempdir_cleanup(str(workdir))
+            job.workdir = ""
+            try:
+                state.db.update_job(ctx.job_id, status="cancelled")
+            except Exception:
+                log.exception("job %s: no se pudo persistir estado 'cancelled'", ctx.job_id)
+            log.info("job %s: cancelado", ctx.job_id)
+    else:
+        job.status = "error"
+        job.finished = time.time()
+        job.error = _friendly_error(exc)  # type: ignore[arg-type]
+        if ctx.incognito:
+            try:
+                state._secure_delete_workdir(str(workdir), force=True)
+            except OSError:
+                log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
+            job.workdir = ""
+            try:
+                state.db.delete_job(ctx.job_id)
+            except Exception:
+                log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
+            log.error("job %s: falló (incógnito)", ctx.job_id, exc_info=True)
+        else:
+            try:
+                state.db.update_job(ctx.job_id, status="error", error=job.error)
+            except Exception:
+                log.exception("job %s: no se pudo persistir estado 'error' en DB", ctx.job_id)
+            log.error("job %s: falló", ctx.job_id, exc_info=True)
+    loop.call_soon_threadsafe(evt.set)
+
+
 def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
                     max_size_mb: int, hook: Any) -> dict[str, Any]:
     is_audio = ctx.quality == "audio"
@@ -553,59 +607,9 @@ def _run_download(state: AppState, ctx: DownloadContext,
         # Desktop finalize + server move + DB persist
         _finalize_download(state, ctx, loop, evt, job, workdir, final, info, title, ext, mime)
     except DownloadCancelled:
-        job.status = "cancelled"
-        job.finished = time.time()
-        job.error = ""
-        # El archivo final nunca se movió afuera: el workdir es un husk con
-        # descargas parciales.
-        if ctx.incognito:
-            try:
-                state._secure_delete_workdir(str(workdir), force=True)
-            except OSError:
-                log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
-            job.workdir = ""
-            try:
-                state.db.delete_job(ctx.job_id)
-            except Exception:
-                log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
-            log.info("job %s: cancelado (incógnito)", ctx.job_id)
-        else:
-            # Registrarlo para limpieza (sin keeper adentro).
-            state._schedule_tempdir_cleanup(str(workdir))
-            job.workdir = ""
-            try:
-                state.db.update_job(ctx.job_id, status="cancelled")
-            except Exception:
-                log.exception("job %s: no se pudo persistir estado 'cancelled'", ctx.job_id)
-            log.info("job %s: cancelado", ctx.job_id)
-        loop.call_soon_threadsafe(evt.set)
+        _handle_termination(state, ctx, loop, evt, job, workdir, is_cancelled=True)
     except Exception as exc:
-        job.status = "error"
-        job.finished = time.time()
-        job.error = _friendly_error(exc)
-        if ctx.incognito:
-            # Sin rastro tampoco en el camino de error: wipe forzado del residuo
-            # y borrado de la fila (no dejamos 'error' persistido en historial).
-            try:
-                state._secure_delete_workdir(str(workdir), force=True)
-            except OSError:
-                log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
-            job.workdir = ""
-            try:
-                state.db.delete_job(ctx.job_id)
-            except Exception:
-                log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
-            log.error("job %s: falló (incógnito)", ctx.job_id, exc_info=True)
-        else:
-            # Persistir el error en la DB. Si no lo hacemos, un job manual que falla
-            # queda 'queued' en SQLite (insert_job lo dejo asi y complete_job nunca corre),
-            # y el dispatch_loop lo re-despacha cuando evict_once lo saca de memoria (~1h).
-            try:
-                state.db.update_job(ctx.job_id, status="error", error=job.error)
-            except Exception:
-                log.exception("job %s: no se pudo persistir estado 'error' en DB", ctx.job_id)
-            log.error("job %s: falló", ctx.job_id, exc_info=True)
-        loop.call_soon_threadsafe(evt.set)
+        _handle_termination(state, ctx, loop, evt, job, workdir, is_cancelled=False, exc=exc)
     finally:
         state.cancel_requests.discard(ctx.job_id)
         loop.call_soon_threadsafe(evt.set)
