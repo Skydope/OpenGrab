@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Estados que cuentan como "en curso" (concurrencia, dedup, conteos).
 ACTIVE_STATUSES = ("queued", "starting", "downloading", "processing")
@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     extractor   TEXT,
     workdir     TEXT,
     created     REAL NOT NULL,
-    completed   INTEGER
+    completed   INTEGER,
+    incognito   INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created);
@@ -112,8 +113,29 @@ class Database:
             version = int(self._conn.execute("PRAGMA user_version").fetchone()[0])
             if version < SCHEMA_VERSION:
                 self._conn.executescript(_DDL)
+                self._migrate(version)
                 self._conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
                 self._conn.commit()
+
+    def _migrate(self, from_version: int) -> None:
+        """Migraciones incrementales sobre tablas YA existentes.
+
+        ``_DDL`` solo crea tablas/índices ausentes (``IF NOT EXISTS``); NO altera
+        una tabla ``jobs`` que ya existía de una versión anterior. Las columnas
+        nuevas se agregan acá con ``ALTER TABLE``, guardadas por ``PRAGMA
+        table_info`` para ser idempotentes (no fallar si la columna ya está, p.ej.
+        en una DB recién creada por ``_DDL``). Corre dentro del lock + la misma
+        transacción que el bump de ``user_version``.
+        """
+        cols = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()
+        }
+        # v3: descargas en modo incógnito (no persistir en historial).
+        if from_version < 3 and "incognito" not in cols:
+            self._conn.execute(
+                "ALTER TABLE jobs ADD COLUMN incognito INTEGER NOT NULL DEFAULT 0"
+            )
 
     def schema_version(self) -> int:
         with self._lock:
@@ -129,14 +151,14 @@ class Database:
     def insert_job(
         self, job_id: str, url: str, quality: str,
         status: str = "queued", created: float | None = None,
-        workdir: str | None = None,
+        workdir: str | None = None, incognito: bool = False,
     ) -> None:
         created = time.time() if created is None else created
         with self._lock:
             self._conn.execute(
-                "INSERT INTO jobs (id, url, quality, status, created, workdir) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (job_id, url, quality, status, created, workdir),
+                "INSERT INTO jobs (id, url, quality, status, created, workdir, incognito) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (job_id, url, quality, status, created, workdir, int(incognito)),
             )
             self._conn.commit()
 
@@ -207,10 +229,28 @@ class Database:
           thread/subproceso vivo que ya no existe → huérfanos. Se marcan
           ``interrupted`` y el caller limpia su workdir parcial.
 
-        Devuelve ``{"requeued": [ids], "interrupted": [{id, workdir}]}``.
+        Devuelve ``{"requeued": [ids], "interrupted": [{id, workdir}],
+        "incognito_dropped": [{id, workdir}]}``.
+
+        Los jobs ``incognito=1`` que sobrevivieron a un proceso anterior NO se
+        reanudan ni se conservan: no persistimos su carpeta destino (sería un
+        rastro), y re-despacharlos como descarga normal filtraría a historial.
+        Se borran de la DB y se devuelve su workdir para que el caller haga el
+        secure-wipe del residuo parcial.
         """
         orphan_ph = ", ".join("?" for _ in ORPHAN_STATUSES)
         with self._lock:
+            incognito_rows = self._conn.execute(
+                "SELECT id, workdir FROM jobs WHERE incognito=1"
+            ).fetchall()
+            incognito_dropped = [dict(r) for r in incognito_rows]
+            if incognito_dropped:
+                ids = [r["id"] for r in incognito_dropped]
+                ph = ", ".join("?" for _ in ids)
+                self._conn.execute(
+                    f"DELETE FROM downloaded_urls WHERE job_id IN ({ph})", ids
+                )
+                self._conn.execute(f"DELETE FROM jobs WHERE id IN ({ph})", ids)
             requeued = [
                 r["id"]
                 for r in self._conn.execute(
@@ -229,7 +269,11 @@ class Database:
                     ORPHAN_STATUSES,
                 )
             self._conn.commit()
-        return {"requeued": requeued, "interrupted": interrupted}
+        return {
+            "requeued": requeued,
+            "interrupted": interrupted,
+            "incognito_dropped": incognito_dropped,
+        }
 
     def prune_history(self, keep: int) -> int:
         """Conserva los `keep` jobs done más recientes; borra el resto. keep<=0 = no-op."""
@@ -278,9 +322,14 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_queued(self, limit: int) -> list[dict[str, Any]]:
+        # Excluye incógnito: un job incógnito NUNCA se auto-reanuda. Si sobrevive
+        # como 'queued' a un restart, reconcile_startup lo borra; este filtro es
+        # defensa en profundidad para que dispatch_loop jamás lo despache como
+        # descarga normal (perdería el flag y el incognito_dir → fuga a historial).
         with self._lock:
             rows = self._conn.execute(
-                "SELECT * FROM jobs WHERE status='queued' ORDER BY created LIMIT ?",
+                "SELECT * FROM jobs WHERE status='queued' AND incognito=0 "
+                "ORDER BY created LIMIT ?",
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]

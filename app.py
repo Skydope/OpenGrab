@@ -76,13 +76,25 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 shutil.rmtree(wd, ignore_errors=True)
             except OSError:
                 pass
-    if recon["requeued"] or recon["interrupted"]:
+    # Jobs incógnito huérfanos: la fila ya se borró en reconcile_startup. Acá
+    # eliminamos su residuo parcial en disco con secure-wipe forzado (el punto
+    # del modo incógnito es no dejar rastro, sin depender del flag global).
+    for j in recon.get("incognito_dropped", []):
+        wd = j.get("workdir")
+        if wd:
+            try:
+                state._secure_delete_workdir(wd, force=True)
+            except OSError:
+                pass
+    if recon["requeued"] or recon["interrupted"] or recon.get("incognito_dropped"):
         log.info(
-            "reconcile arranque: %d requeued, %d interrupted",
+            "reconcile arranque: %d requeued, %d interrupted, %d incógnito descartados",
             len(recon["requeued"]), len(recon["interrupted"]),
+            len(recon.get("incognito_dropped", [])),
             extra={
                 "requeued": len(recon["requeued"]),
                 "interrupted": len(recon["interrupted"]),
+                "incognito_dropped": len(recon.get("incognito_dropped", [])),
             },
         )
 
