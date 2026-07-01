@@ -10,7 +10,7 @@ def test_index_returns_html(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    assert "opengrab" in r.text
+    assert "OpenGrab" in r.text
 
 
 def test_index_injects_auth_flag(client):
