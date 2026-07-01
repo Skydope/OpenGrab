@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] — 2026-06-30
+
+### Added
+
+- **Modo incógnito de descarga.** Nuevo toggle 🕶️ (single downloads) que corre
+  la descarga sin dejar rastro persistente: no escribe en historial ni en la
+  tabla de dedup (`downloaded_urls`), entrega el archivo a una carpeta elegida
+  por el usuario (`incognito_dir`, obligatoria) en lugar de `out_dir`/`library_dir`,
+  y borra la fila de `jobs` en todo estado terminal (`done`/`cancelled`/`error`).
+  Hardening de yt-dlp en incógnito: caché en disco desactivada (`cachedir=False`),
+  User-Agent genérico de navegador, y sidecars (subs/thumb/info.json) forzados a
+  off para dejar un único archivo limpio. El workdir temporal se wipea con
+  sobreescritura 3-pass **forzada** (independiente de `OPENGRAB_SECURE_DELETE`).
+  El logging del job no incluye la URL. `JobReq` suma `incognito` e `incognito_dir`;
+  el modelo `Job` y `_serialize_job` propagan `incognito` para que la tarjeta
+  oculte el link de descarga HTTP (el archivo vive fuera de los allowed roots) y
+  muestre el badge tras un reload. Limitaciones documentadas honestamente en
+  `docs/SECURITY.md` (wipe no-forense en SSD/CoW, DNS leak del gate SSRF,
+  `incognito_dir` sin allowlist en modo servidor).
+
+### Changed
+
+- **Schema DB v2 → v3.** Nueva columna `jobs.incognito INTEGER NOT NULL DEFAULT 0`.
+  Primera migración incremental real del proyecto: `_migrate()` corre
+  `ALTER TABLE` guardado por `PRAGMA table_info` (idempotente) sobre DBs
+  preexistentes, que antes solo recibían `CREATE TABLE IF NOT EXISTS`.
+- **`reconcile_startup` no reanuda incógnito.** Los jobs `incognito=1` que
+  sobreviven a un reinicio se borran (no se requeue ni se marcan `interrupted`)
+  y se devuelve su `workdir` para secure-wipe en el arranque — no se persiste
+  `incognito_dir`, así que reanudarlos filtraría a historial. `get_queued` los
+  excluye como defensa en profundidad. El retorno suma la clave `incognito_dropped`.
+
 ## [1.11.0] — 2026-06-29
 
 ### Added

@@ -1,6 +1,6 @@
 # SQLite Schema — OpenGrab
 
-Diseño de la capa de persistencia para jobs, historial, watch mode y settings. Versión 2 del schema.
+Diseño de la capa de persistencia para jobs, historial, watch mode y settings. Versión 3 del schema.
 
 ## Principios
 
@@ -33,12 +33,21 @@ CREATE TABLE IF NOT EXISTS jobs (
     extractor   TEXT,                   -- youtube | vimeo | tiktok | ... (poblar en watch mode)
     workdir     TEXT,                   -- tempdir opengrab_* para limpieza post-crash
     created     REAL NOT NULL,          -- timestamp UNIX de creación
-    completed   INTEGER                 -- timestamp UNIX de finalización
+    completed   INTEGER,                -- timestamp UNIX de finalización
+    incognito   INTEGER NOT NULL DEFAULT 0  -- 1 = descarga incógnito (v3); la fila se borra al terminar
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created);
 ```
+
+**Sobre `incognito` (v3):** una descarga en modo incógnito inserta su fila
+normalmente (para ocupar slot y sobrevivir dentro del proceso), pero al llegar a
+cualquier estado terminal (`done`/`cancelled`/`error`) la fila se **borra** en
+vez de persistirse — nunca aparece en historial ni en `downloaded_urls`. No se
+persiste la carpeta destino (`incognito_dir`) porque sería un rastro. Por eso un
+job incógnito **no se auto-reanuda** tras un reinicio: `get_queued` lo excluye y
+`reconcile_startup` borra su fila y devuelve el `workdir` para secure-wipe.
 
 **Estados y transiciones:**
 

@@ -26,11 +26,26 @@ Authentication is required on all `/api/*` endpoints unless `OPENGRAB_NO_AUTH=1`
 ```json
 {
   "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-  "quality": "best"
+  "quality": "best",
+  "subs": false,
+  "thumb": false,
+  "infojson": false,
+  "incognito": false,
+  "incognito_dir": null
 }
 ```
 
 `quality` must be one of: `best`, `1080p`, `720p`, `480p`, `audio`.
+
+Optional flags: `subs`, `thumb`, `infojson` write the matching sidecar files.
+
+`incognito` (bool) runs the download without touching history or dedup: the file
+is delivered to `incognito_dir` (an absolute folder path, **required** when
+`incognito=true` → `400` otherwise), the temp workdir is force-wiped, yt-dlp
+caching is disabled, and the DB row is deleted on completion/cancel/error. In
+incognito the sidecar flags are ignored (single clean file). See
+[SECURITY.md](SECURITY.md#incognito-mode--threat-model--limitations) for the
+threat model and limitations (non-forensic wipe, DNS leak, server-mode path scope).
 
 **Response:**
 ```json
@@ -114,7 +129,7 @@ Todas las rutas `/api/*` requieren autenticación salvo que `OPENGRAB_NO_AUTH=1`
 
 ### Jobs
 
-- `POST /api/jobs` — Crear job de descarga. Body: `{"url":"...", "quality":"best"}`
+- `POST /api/jobs` — Crear job de descarga. Body: `{"url":"...", "quality":"best"}`. Flags opcionales: `subs`, `thumb`, `infojson`. Modo incógnito: `incognito:true` + `incognito_dir` (carpeta destino obligatoria) — sin historial, wipe del temp, fila de DB borrada al terminar. Ver [SECURITY.md](SECURITY.md#modo-incógnito--modelo-de-amenaza-y-límites).
 - `GET /api/jobs/{id}/events` — Stream SSE de progreso en tiempo real
 - `GET /api/jobs/{id}/file` — Descargar el archivo final
 

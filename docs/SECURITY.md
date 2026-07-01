@@ -42,6 +42,32 @@ sudo ./scripts/egress-lockdown.sh --remove     # deactivate
 
 All write/expensive endpoints are rate-limited via slowapi. Limits are documented in the [API Reference](API.md).
 
+## Incognito Mode — Threat Model & Limitations
+
+Incognito downloads skip history/dedup persistence, deliver the file to a
+user-chosen folder, force-wipe the temp workdir (3-pass overwrite regardless of
+the global `OPENGRAB_SECURE_DELETE` flag), harden yt-dlp (no on-disk cache,
+generic User-Agent), and drop the DB row on every terminal state. What it does
+**not** guarantee:
+
+- **The overwrite is not a forensic erase.** 3-pass in-place overwrite only
+  reliably destroys data on magnetic HDDs. On SSD/NVMe (wear-leveling), copy-on-write
+  filesystems (Btrfs, ZFS, APFS) or anything with snapshots, stale copies may
+  survive in unmapped blocks. For real guarantees use full-disk encryption or
+  device-level secure-erase/TRIM. Incognito reduces casual recovery, not forensic.
+- **DNS still leaks.** The SSRF gate (`_resolve_hostname`) runs
+  `getaddrinfo()` through the system resolver **before** yt-dlp touches the URL,
+  on every download, incognito or not. The destination host is visible to your
+  DNS provider. Incognito does not add DoH/proxy (explicitly out of MVP scope).
+- **`incognito_dir` is not allowlisted in server mode.** As with the existing
+  "Save to…" flow, an authenticated client picks an arbitrary server-side path to
+  write to. This is fine for desktop (server == client) but in a multi-user server
+  deployment it lets a client write outside the default output dir. Treat the auth
+  token as the trust boundary; do not expose incognito to untrusted clients.
+- **In-memory job cards remain for the session.** The DB row is gone, but the
+  live card (title, delivered path) stays in `AppState.jobs` until evicted or the
+  app restarts. It is not written to disk.
+
 ## Reporting a Vulnerability
 
 Please report security issues privately to **skydope [at] proton.me**. Do not open public issues until a fix is released.
@@ -64,6 +90,28 @@ OpenGrab actúa como proxy — yt-dlp hace requests HTTP desde tu servidor a URL
 - Comparación con `secrets.compare_digest` (resistente a timing attacks)
 - `OPENGRAB_NO_AUTH=1` desactiva auth (solo LAN confiable o escritorio)
 - Sanitización de URL en logs
+
+### Modo Incógnito — Modelo de Amenaza y Límites
+
+Las descargas incógnito no persisten en historial/dedup, entregan el archivo a
+una carpeta elegida, wipean el workdir temporal (sobreescritura 3-pass sin
+depender del flag global), endurecen yt-dlp (sin caché en disco, User-Agent
+genérico) y borran la fila de DB en todo estado terminal. Lo que **no** garantiza:
+
+- **La sobreescritura no es borrado forense.** Solo destruye datos de forma
+  confiable en HDD magnético. En SSD/NVMe, filesystems copy-on-write o con
+  snapshots pueden quedar copias en bloques no mapeados. Para garantías reales:
+  cifrado de disco o secure-erase/TRIM a nivel de dispositivo. Incógnito reduce
+  la recuperación casual, no la forense.
+- **El DNS igual se filtra.** El gate SSRF (`_resolve_hostname`) resuelve el host
+  con el resolver del sistema **antes** de que yt-dlp toque la URL, en toda
+  descarga. El host destino es visible para tu proveedor DNS. Incógnito no agrega
+  DoH/proxy (fuera del alcance del MVP).
+- **`incognito_dir` no tiene allowlist en modo servidor.** Igual que el flujo
+  "Guardar en…", un cliente autenticado elige una ruta arbitraria del servidor.
+  Está bien en escritorio (servidor == cliente); en un deploy multiusuario el
+  token de auth es el límite de confianza — no expongas incógnito a clientes no
+  confiables.
 
 ### Reportar Vulnerabilidades
 
