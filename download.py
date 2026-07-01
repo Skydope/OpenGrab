@@ -6,6 +6,7 @@ import logging
 import re
 import shutil
 import socket
+import sqlite3
 import sys
 import tempfile
 import time
@@ -15,7 +16,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import yt_dlp  # type: ignore[import-untyped]
-from yt_dlp.utils import DownloadCancelled  # type: ignore[import-untyped]
+from yt_dlp.utils import DownloadCancelled, DownloadError  # type: ignore[import-untyped]
 
 from config import FORMATS, IS_DESKTOP, resource_path
 from state import AppState
@@ -259,7 +260,7 @@ def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> list[dict[
     url = channel["url"]
     try:
         info = _fetch_playlist(url)
-    except Exception:
+    except (DownloadError, RuntimeError):
         log.exception("watch: error al leer playlist %s", _sanitize_url(url))
         return []
 
@@ -319,7 +320,7 @@ def _handle_incognito_completion(
         job.filepath = str(final)
         try:
             state.db.delete_job(ctx.job_id)
-        except Exception:
+        except sqlite3.DatabaseError:
             log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
         log.error(
             "job %s: descarga incógnito completa pero falló el move; "
@@ -342,7 +343,7 @@ def _handle_incognito_completion(
     job.workdir = ""
     try:
         state.db.delete_job(ctx.job_id)
-    except Exception:
+    except sqlite3.DatabaseError:
         log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
     log.info("job %s: completado (incógnito, sin historial)", ctx.job_id)
     loop.call_soon_threadsafe(evt.set)
@@ -411,7 +412,7 @@ def _handle_termination(
             job.workdir = ""
             try:
                 state.db.delete_job(ctx.job_id)
-            except Exception:
+            except sqlite3.DatabaseError:
                 log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
             log.info("job %s: cancelado (incógnito)", ctx.job_id)
         else:
@@ -419,7 +420,7 @@ def _handle_termination(
             job.workdir = ""
             try:
                 state.db.update_job(ctx.job_id, status="cancelled")
-            except Exception:
+            except (sqlite3.DatabaseError, ValueError):
                 log.exception("job %s: no se pudo persistir estado 'cancelled'", ctx.job_id)
             log.info("job %s: cancelado", ctx.job_id)
     else:
@@ -434,13 +435,13 @@ def _handle_termination(
             job.workdir = ""
             try:
                 state.db.delete_job(ctx.job_id)
-            except Exception:
+            except sqlite3.DatabaseError:
                 log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
             log.error("job %s: falló (incógnito)", ctx.job_id, exc_info=True)
         else:
             try:
                 state.db.update_job(ctx.job_id, status="error", error=job.error)
-            except Exception:
+            except (sqlite3.DatabaseError, ValueError):
                 log.exception("job %s: no se pudo persistir estado 'error' en DB", ctx.job_id)
             log.error("job %s: falló", ctx.job_id, exc_info=True)
     loop.call_soon_threadsafe(evt.set)
@@ -608,7 +609,7 @@ def _run_download(state: AppState, ctx: DownloadContext,
         _finalize_download(state, ctx, loop, evt, job, workdir, final, info, title, ext, mime)
     except DownloadCancelled:
         _handle_termination(state, ctx, loop, evt, job, workdir, is_cancelled=True)
-    except Exception as exc:
+    except (DownloadError, OSError, RuntimeError) as exc:  # thread boundary: fallas esperables de yt-dlp + filesystem
         _handle_termination(state, ctx, loop, evt, job, workdir, is_cancelled=False, exc=exc)
     finally:
         state.cancel_requests.discard(ctx.job_id)
