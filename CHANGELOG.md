@@ -24,9 +24,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   muestre el badge tras un reload. Limitaciones documentadas honestamente en
   `docs/SECURITY.md` (wipe no-forense en SSD/CoW, DNS leak del gate SSRF,
   `incognito_dir` sin allowlist en modo servidor).
+- **Fail-safe anti-pérdida en la entrega incógnito.** Si `_move_incognito` falla
+  después de que la descarga se completó (disco lleno, permisos, FS), el archivo
+  ya bajado NO se wipea: se preserva en el workdir, el job queda `error` con la
+  ruta exacta para recuperación manual, y la fila se borra igual para que
+  `reconcile_startup` no wipee el residuo en el próximo arranque (sobrevive al
+  barrido por antigüedad >24h). Antes, el `except` genérico wipeaba el workdir y
+  perdía la descarga sin feedback.
 
 ### Changed
 
+- **`_move_incognito` y `move_job_file` comparten core.** Se extrajo
+  `_move_file_locked` (lock + validación de destino + dedup + move) para eliminar
+  la duplicación estructural: un fix en la lógica de movimiento ya no puede
+  divergir entre el flujo "Guardar en…" y el incógnito.
+- **User-Agent de incógnito centralizado.** Movido a la constante de módulo
+  `_INCOGNITO_USER_AGENT` con nota de mantenimiento (la versión de Chrome
+  envejece; sincronizar con el bump de yt-dlp), en vez de hardcodeado en las opts.
 - **Schema DB v2 → v3.** Nueva columna `jobs.incognito INTEGER NOT NULL DEFAULT 0`.
   Primera migración incremental real del proyecto: `_migrate()` corre
   `ALTER TABLE` guardado por `PRAGMA table_info` (idempotente) sobre DBs
