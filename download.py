@@ -278,11 +278,16 @@ def _check_channel_watch(state: AppState, channel: dict[str, Any]) -> list[dict[
 def _run_download(state: AppState, job_id: str, url: str, quality: str,
                   loop: asyncio.AbstractEventLoop,
                   subs: bool = False, thumb: bool = False,
-                  infojson: bool = False) -> None:
+                  infojson: bool = False, incognito: bool = False,
+                  incognito_dir: str | None = None) -> None:
     job = state.jobs[job_id]
     workdir = Path(tempfile.mkdtemp(prefix="opengrab_", dir=state.out_dir))
     max_size_mb, _ = state.resolve("max_size_mb", 0, int)
     job.workdir = str(workdir)
+    # En incógnito los sidecar (subs/thumb/info.json) se fuerzan off: un único
+    # archivo limpio en la carpeta destino, sin metadatos extra que dejen rastro.
+    if incognito:
+        subs = thumb = infojson = False
     evt = state.job_events.get(job_id)
     if evt is None:
         from i18n import t
@@ -358,6 +363,19 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
     if infojson:
         opts["writeinfojson"] = True
 
+    # Hardening de privacidad para modo incógnito: sin caché en disco (evita
+    # ~/.cache/yt-dlp con rastros de qué se consultó) y User-Agent genérico de
+    # navegador en lugar del default de yt-dlp (que delata la herramienta).
+    if incognito:
+        opts["cachedir"] = False
+        opts["http_headers"] = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/126.0.0.0 Safari/537.36"
+            ),
+        }
+
     # En el binario de escritorio, ffmpeg viaja bundleado y no está en el PATH.
     # Guard: solo seteamos ffmpeg_location si el binario existe junto al recurso;
     # en Docker/dev no existe y yt-dlp usa el ffmpeg del PATH como siempre.
@@ -371,10 +389,13 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
         if job_id in state.cancel_requests:
             from i18n import t
             raise DownloadCancelled(t("error.cancelled_before_start"))
-        log.info(
-            "job %s: iniciando descarga (%s, %s)",
-            job_id, quality, _sanitize_url(url),
-        )
+        if incognito:
+            log.info("job %s: iniciando descarga incógnito (%s)", job_id, quality)
+        else:
+            log.info(
+                "job %s: iniciando descarga (%s, %s)",
+                job_id, quality, _sanitize_url(url),
+            )
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
@@ -405,6 +426,40 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
 
         _enforce_size(final, max_size_mb)
 
+        title = _safe_name(info.get("title", "video"))
+        ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
+        mime = "audio/mpeg" if is_audio else "video/mp4"
+
+        if incognito:
+            # Modo incógnito: NO library_dir, NO out_dir, NO historial. El archivo
+            # se entrega a la carpeta elegida por el usuario y la fila de la DB se
+            # borra (nunca llega a 'done' persistido). El workdir residual se
+            # wipea con sobreescritura forzada. incognito_dir está validado en la
+            # ruta (no es None/vacío acá).
+            assert incognito_dir, "incognito_dir requerido en modo incógnito"
+            delivered = state._move_incognito(final, Path(incognito_dir))
+            job.status = "done"
+            job.finished = time.time()
+            job.percent = 100.0
+            job.filepath = str(delivered)
+            job.filename = delivered.name
+            job.mime = mime
+            job.title = title
+            # Wipe forzado del workdir (fragmentos .part, sidecars residuales).
+            try:
+                state._secure_delete_workdir(str(workdir), force=True)
+            except OSError:
+                log.warning("job %s: no se pudo wipear workdir incógnito", job_id)
+            job.workdir = ""
+            # Borrar la fila de la DB: sin rastro en historial ni en dedup.
+            try:
+                state.db.delete_job(job_id)
+            except Exception:
+                log.exception("job %s: no se pudo borrar fila incógnito de DB", job_id)
+            log.info("job %s: completado (incógnito, sin historial)", job_id)
+            loop.call_soon_threadsafe(evt.set)
+            return
+
         # Desktop finalize: mueve a library_dir si corresponde
         state._finalize_desktop(job_id, workdir, final, info, quality)
 
@@ -420,9 +475,6 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
             job.workdir = ""  # already cleaned
 
         # Usar filepath actualizado por _finalize_desktop (puede haber cambiado)
-        title = _safe_name(info.get("title", "video"))
-        ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
-        mime = "audio/mpeg" if is_audio else "video/mp4"
         job.status = "done"
         job.finished = time.time()
         job.percent = 100.0
@@ -456,28 +508,55 @@ def _run_download(state: AppState, job_id: str, url: str, quality: str,
         job.finished = time.time()
         job.error = ""
         # El archivo final nunca se movió afuera: el workdir es un husk con
-        # descargas parciales. Registrarlo para limpieza (sin keeper adentro).
-        state._schedule_tempdir_cleanup(str(workdir))
-        job.workdir = ""
-        try:
-            state.db.update_job(job_id, status="cancelled")
-        except Exception:
-            log.exception("job %s: no se pudo persistir estado 'cancelled'", job_id)
+        # descargas parciales.
+        if incognito:
+            try:
+                state._secure_delete_workdir(str(workdir), force=True)
+            except OSError:
+                log.warning("job %s: no se pudo wipear workdir incógnito", job_id)
+            job.workdir = ""
+            try:
+                state.db.delete_job(job_id)
+            except Exception:
+                log.exception("job %s: no se pudo borrar fila incógnito de DB", job_id)
+            log.info("job %s: cancelado (incógnito)", job_id)
+        else:
+            # Registrarlo para limpieza (sin keeper adentro).
+            state._schedule_tempdir_cleanup(str(workdir))
+            job.workdir = ""
+            try:
+                state.db.update_job(job_id, status="cancelled")
+            except Exception:
+                log.exception("job %s: no se pudo persistir estado 'cancelled'", job_id)
+            log.info("job %s: cancelado", job_id)
         loop.call_soon_threadsafe(evt.set)
-        log.info("job %s: cancelado", job_id)
     except Exception as exc:
         job.status = "error"
         job.finished = time.time()
         job.error = _friendly_error(exc)
-        # Persistir el error en la DB. Si no lo hacemos, un job manual que falla
-        # queda 'queued' en SQLite (insert_job lo dejo asi y complete_job nunca corre),
-        # y el dispatch_loop lo re-despacha cuando evict_once lo saca de memoria (~1h).
-        try:
-            state.db.update_job(job_id, status="error", error=job.error)
-        except Exception:
-            log.exception("job %s: no se pudo persistir estado 'error' en DB", job_id)
+        if incognito:
+            # Sin rastro tampoco en el camino de error: wipe forzado del residuo
+            # y borrado de la fila (no dejamos 'error' persistido en historial).
+            try:
+                state._secure_delete_workdir(str(workdir), force=True)
+            except OSError:
+                log.warning("job %s: no se pudo wipear workdir incógnito", job_id)
+            job.workdir = ""
+            try:
+                state.db.delete_job(job_id)
+            except Exception:
+                log.exception("job %s: no se pudo borrar fila incógnito de DB", job_id)
+            log.error("job %s: falló (incógnito)", job_id, exc_info=True)
+        else:
+            # Persistir el error en la DB. Si no lo hacemos, un job manual que falla
+            # queda 'queued' en SQLite (insert_job lo dejo asi y complete_job nunca corre),
+            # y el dispatch_loop lo re-despacha cuando evict_once lo saca de memoria (~1h).
+            try:
+                state.db.update_job(job_id, status="error", error=job.error)
+            except Exception:
+                log.exception("job %s: no se pudo persistir estado 'error' en DB", job_id)
+            log.error("job %s: falló", job_id, exc_info=True)
         loop.call_soon_threadsafe(evt.set)
-        log.error("job %s: falló", job_id, exc_info=True)
     finally:
         state.cancel_requests.discard(job_id)
         loop.call_soon_threadsafe(evt.set)

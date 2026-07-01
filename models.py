@@ -15,6 +15,8 @@ class JobReq(BaseModel):
     subs: bool = False
     thumb: bool = False
     infojson: bool = False
+    incognito: bool = False
+    incognito_dir: str | None = None
 
 
 class ChannelReq(BaseModel):
@@ -40,6 +42,7 @@ class Job(BaseModel):
     downloaded: int = 0
     total: int = 0
     title: str = ""
+    incognito: bool = False
 
 
 class BatchReq(BaseModel):

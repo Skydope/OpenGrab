@@ -155,20 +155,21 @@ class AppState:
 
     def _spawn_download(self, job_id: str, url: str, quality: str,
                         subs: bool = False, thumb: bool = False,
-                        infojson: bool = False) -> None:
+                        infojson: bool = False, incognito: bool = False,
+                        incognito_dir: str | None = None) -> None:
         """Crea Job en memoria + Event y lanza _run_download en thread.
 
         Precondicion: la fila en DB ya existe en el estado correcto.
         """
         from download import _run_download  # local: evita el ciclo state<->download
 
-        self.jobs[job_id] = Job(id=job_id, created=time.time())
+        self.jobs[job_id] = Job(id=job_id, created=time.time(), incognito=incognito)
         self.job_events[job_id] = asyncio.Event()
         loop = asyncio.get_running_loop()
         task = asyncio.create_task(
             asyncio.to_thread(
                 _run_download, self, job_id, url, quality, loop,
-                subs, thumb, infojson,
+                subs, thumb, infojson, incognito, incognito_dir,
             )
         )
         self._track_task(task)
@@ -276,10 +277,11 @@ class AppState:
     # Secure file deletion (3-pass: 0x00, 0xFF, random — no external tool)
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _secure_delete_file(filepath: str) -> None:
+    def _secure_delete_file(filepath: str, force: bool = False) -> None:
         """Sobrescribe el archivo (0x00 / 0xFF / random) y lo borra.
 
-        Solo activo cuando ``OPENGRAB_SECURE_DELETE=1`` (opt-in).
+        Activo cuando ``OPENGRAB_SECURE_DELETE=1`` (opt-in global) **o** cuando
+        ``force=True`` (modo incógnito: el wipe del residuo no es opcional).
         Por defecto usa ``os.unlink()`` — la sobreescritura en SSD/CoW
         no da garantias forenses, y el fast path evita 3x escrituras
         innecesarias por cada delete/cleanup.
@@ -296,7 +298,7 @@ class AppState:
         path = Path(filepath)
         if not path.is_file():
             return
-        if not config.SECURE_DELETE:
+        if not (config.SECURE_DELETE or force):
             path.unlink()
             return
         size = path.stat().st_size
@@ -340,13 +342,13 @@ class AppState:
                 pass
 
     @classmethod
-    def _secure_delete_workdir(cls, workdir: str) -> None:
+    def _secure_delete_workdir(cls, workdir: str, force: bool = False) -> None:
         wd = Path(workdir)
         if not wd.is_dir():
             return
         for f in wd.rglob("*"):
             if f.is_file():
-                cls._secure_delete_file(str(f))
+                cls._secure_delete_file(str(f), force=force)
         shutil.rmtree(wd, ignore_errors=True)
 
     # ------------------------------------------------------------------ #
@@ -815,3 +817,28 @@ class AppState:
                 log.warning("move_job_file: no se pudo persistir filepath en DB",
                             exc_info=True)
         return target
+
+    def _move_incognito(self, src: Path, dest_dir: Path) -> Path:
+        """Mueve ``src`` a ``dest_dir`` para un job incógnito (sin tocar DB).
+
+        Variante de ``move_job_file`` pensada para correr DENTRO de
+        ``_run_download``: el job todavía no está marcado ``done`` y su fila se
+        va a borrar de la DB de inmediato, así que NO persiste ``filepath`` ni
+        valida ``job.status``. Reusa ``_finalize_lock`` + ``_deduplicate`` para
+        serializar con otros movimientos y no pisar archivos. ``dest_dir`` se
+        crea si no existe.
+
+        Lanza ``NotADirectoryError`` si ``dest_dir`` existe pero no es carpeta,
+        u ``OSError`` si falla el mkdir/move.
+        """
+        with self._finalize_lock:
+            dest_dir = dest_dir.expanduser()
+            if dest_dir.exists() and not dest_dir.is_dir():
+                raise NotADirectoryError(t("error.dest_not_dir"))
+            if src.resolve().parent == dest_dir.resolve():
+                return src
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            target = self._deduplicate(dest_dir / src.name)
+            shutil.move(str(src), str(target))
+            log.info("incognito move: archivo entregado a carpeta destino")
+            return target
