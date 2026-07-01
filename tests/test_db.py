@@ -111,7 +111,9 @@ def test_reconcile_startup_splits_queued_and_orphans(db):
 
 
 def test_reconcile_startup_empty(db):
-    assert db.reconcile_startup() == {"requeued": [], "interrupted": []}
+    assert db.reconcile_startup() == {
+        "requeued": [], "interrupted": [], "incognito_dropped": [],
+    }
 
 
 # ------------------------------ dedup ------------------------------------ #
