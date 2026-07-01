@@ -220,7 +220,7 @@ class TestDispatchLoopStorage:
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
         # Mock current_usage_bytes to return full
-        dispatch_state.current_usage_bytes = lambda: 2 * 1024 * 1024  # 2 MB > 1 MB limit
+        dispatch_state.storage.current_usage_bytes = lambda: 2 * 1024 * 1024  # 2 MB > 1 MB limit
 
         call_count = 0
 

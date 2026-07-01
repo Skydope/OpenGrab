@@ -21,7 +21,7 @@ async def api_history(
 ) -> JSONResponse:
     try:
         history_max = state.resolve("history_max", 500, int)[0]
-        entries = state.get_history(limit=max(1, min(limit, history_max)))
+        entries = state.history.get_history(limit=max(1, min(limit, history_max)))
         return JSONResponse(
             entries,
             headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
@@ -37,13 +37,13 @@ async def api_delete_history_entry(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    result = state.delete_history_entry(job_id)
+    result = state.history.delete_history_entry(job_id)
     if result is None:
         raise HTTPException(404, _t("error.history_entry_not_found"))
     filepath, workdir = result
     if filepath or workdir:
         task = asyncio.create_task(
-            asyncio.to_thread(state._secure_delete_files, filepath, workdir)
+            asyncio.to_thread(state.history._secure_delete_files, filepath, workdir)
         )
         state._track_task(task)
     return JSONResponse({"ok": True})
@@ -56,6 +56,6 @@ async def api_clear_history(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    count = await asyncio.to_thread(state.clear_all_history)
+    count = await asyncio.to_thread(state.history.clear_all_history)
     log.info("historial limpiado: %d entradas borradas", count)
     return JSONResponse({"ok": True, "deleted": count})

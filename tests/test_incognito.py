@@ -255,8 +255,8 @@ def test_run_download_incognito_move_failure_preserves_file(dl_state, tmp_path):
 
     # _move_incognito falla con OSError (simula disco lleno / permisos).
     with patch("download.yt_dlp.YoutubeDL", return_value=_mock_ydl(info)), \
-         patch.object(type(dl_state), "_move_incognito",
-                      side_effect=OSError("no space left")):
+          patch.object(dl_state.library, "_move_incognito",
+                       side_effect=OSError("no space left")):
         _run_download(
             dl_state,
             DownloadContext(job_id=jid, url="https://youtu.be/abc", quality="best",

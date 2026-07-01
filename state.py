@@ -321,7 +321,7 @@ class AppState:
             # worker thread), sin race sobre self.jobs y dándole a Windows un
             # margen para soltar handles antes del rmtree.
             if self.storage._pending_cleanups and self.count_active_jobs() == 0:
-                self.flush_pending_cleanups()
+                self.storage.flush_pending_cleanups()
             max_jobs = self.resolve("max_jobs", 2, int)[0]
             # MAX_JOBS es un techo de CONCURRENCIA, no de despachos-por-tick. Si ya
             # hay descargas activas (manuales o de un batch anterior), descontamos
@@ -335,7 +335,7 @@ class AppState:
                 if job_id in self.jobs:
                     continue
                 max_total_mb = self.resolve("max_total_mb", 0, int)[0]
-                if max_total_mb and self.current_usage_bytes() >= max_total_mb * 1024 * 1024:
+                if max_total_mb and self.storage.current_usage_bytes() >= max_total_mb * 1024 * 1024:
                     self.db.update_job(job_id, status="error", error=t("error.storage_full_short"))
                     continue
                 self.db.update_job(job_id, status="starting")

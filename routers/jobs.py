@@ -129,7 +129,7 @@ async def api_create_job(
             _t("error.max_jobs", max_jobs=max_jobs),
         )
     max_total_mb = state.resolve("max_total_mb", 0, int)[0]
-    if max_total_mb and state.current_usage_bytes() >= max_total_mb * 1024 * 1024:
+    if max_total_mb and state.storage.current_usage_bytes() >= max_total_mb * 1024 * 1024:
         raise HTTPException(
             507,
             _t("error.storage_full", max_total_mb=max_total_mb),
@@ -382,7 +382,7 @@ async def api_move_job_file(
     if not isinstance(dest, str) or not dest.strip():
         raise HTTPException(400, _t("error.missing_field", field="dest"))
     try:
-        target = state.move_job_file(job_id, Path(dest.strip()))
+        target = state.library.move_job_file(job_id, Path(dest.strip()))
     except ValueError:
         raise HTTPException(409, _t("error.file_not_ready"))
     except FileNotFoundError:

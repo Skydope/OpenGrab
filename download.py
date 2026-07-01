@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from secure_delete import wipe_workdir
+
 import yt_dlp  # type: ignore[import-untyped]
 from yt_dlp.utils import DownloadCancelled, DownloadError  # type: ignore[import-untyped]
 
@@ -311,7 +313,7 @@ def _handle_incognito_completion(
     """Post-descarga incógnito: move + wipe + delete DB row."""
     assert ctx.incognito_dir, "incognito_dir requerido en modo incógnito"
     try:
-        delivered = state._move_incognito(final, Path(ctx.incognito_dir))
+        delivered = state.library._move_incognito(final, Path(ctx.incognito_dir))
     except OSError as move_exc:
         from i18n import t
         job.status = "error"
@@ -337,7 +339,7 @@ def _handle_incognito_completion(
     job.mime = mime
     job.title = title
     try:
-        state._secure_delete_workdir(str(workdir), force=True)
+        wipe_workdir(str(workdir), force=True)
     except OSError:
         log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
     job.workdir = ""
@@ -356,7 +358,7 @@ def _finalize_download(
     title: str, ext: str, mime: str,
 ) -> None:
     """Post-descarga normal: desktop finalize + server move + DB persist."""
-    state._finalize_desktop(ctx.job_id, workdir, final, info, ctx.quality, ctx.playlist_subdir)
+    state.library._finalize_desktop(ctx.job_id, workdir, final, info, ctx.quality, ctx.playlist_subdir)
 
     if not IS_DESKTOP and final.parent == workdir:
         dest_dir = state.out_dir / ctx.playlist_subdir if ctx.playlist_subdir else state.out_dir
@@ -364,7 +366,7 @@ def _finalize_download(
         dest = state._deduplicate(dest_dir / final.name)
         shutil.move(str(final), str(dest))
         final = dest
-        state._schedule_tempdir_cleanup(str(workdir))
+        state.storage._schedule_tempdir_cleanup(str(workdir))
         job.workdir = ""
 
     job.status = "done"
@@ -372,7 +374,7 @@ def _finalize_download(
     job.percent = 100.0
     job.filepath = job.filepath or str(final)
     job.filename = (job.filepath and Path(job.filepath).name) or f"{title}.{ext}"
-    state.schedule_workdir_if_external(job)
+    state.storage.schedule_workdir_if_external(job)
     job.mime = mime
     job.title = title
     log.info("job %s: completado → %s", ctx.job_id, job.filepath)
@@ -406,7 +408,7 @@ def _handle_termination(
         job.error = ""
         if ctx.incognito:
             try:
-                state._secure_delete_workdir(str(workdir), force=True)
+                wipe_workdir(str(workdir), force=True)
             except OSError:
                 log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
             job.workdir = ""
@@ -416,7 +418,7 @@ def _handle_termination(
                 log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
             log.info("job %s: cancelado (incógnito)", ctx.job_id)
         else:
-            state._schedule_tempdir_cleanup(str(workdir))
+            state.storage._schedule_tempdir_cleanup(str(workdir))
             job.workdir = ""
             try:
                 state.db.update_job(ctx.job_id, status="cancelled")
@@ -429,7 +431,7 @@ def _handle_termination(
         job.error = _friendly_error(exc)  # type: ignore[arg-type]
         if ctx.incognito:
             try:
-                state._secure_delete_workdir(str(workdir), force=True)
+                wipe_workdir(str(workdir), force=True)
             except OSError:
                 log.warning("job %s: no se pudo wipear workdir incógnito", ctx.job_id)
             job.workdir = ""

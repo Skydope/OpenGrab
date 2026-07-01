@@ -18,7 +18,7 @@ async def api_storage(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    info = await asyncio.to_thread(state.list_storage)
+    info = await asyncio.to_thread(state.storage.list_storage)
     return JSONResponse(info)
 
 
@@ -35,7 +35,7 @@ async def api_storage_cleanup(
     except json.JSONDecodeError:
         pass
     max_age = max(1, int(body.get("max_age_hours", 24)))
-    result = await asyncio.to_thread(state.cleanup_storage, max_age)
+    result = await asyncio.to_thread(state.storage.cleanup_storage, max_age)
     log.info("storage cleanup: %d workdirs, %d bytes liberados",
              result["cleaned"], result["freed_bytes"])
     return JSONResponse(result)
@@ -48,7 +48,7 @@ async def api_storage_cleanup_all(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    result = await asyncio.to_thread(state.cleanup_storage_all)
+    result = await asyncio.to_thread(state.storage.cleanup_storage_all)
     log.info("storage cleanup-all: %d workdirs, %d bytes liberados",
              result["cleaned"], result["freed_bytes"])
     return JSONResponse(result)

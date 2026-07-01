@@ -125,7 +125,7 @@ async def api_metrics(
         "jobs_error": counts.get("error", 0),
         "jobs_interrupted": counts.get("interrupted", 0),
         "jobs_total": sum(counts.values()),
-        "usage_bytes": state.current_usage_bytes(),
+        "usage_bytes": state.storage.current_usage_bytes(),
         "channels_watched": len(state.db.list_channels()),
     })
 
