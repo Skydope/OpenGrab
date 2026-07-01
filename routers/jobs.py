@@ -49,6 +49,7 @@ def _serialize_job(job: Job) -> dict[str, Any]:
         "finished": job.finished,
         "downloaded": job.downloaded,
         "total": job.total,
+        "incognito": job.incognito,
     }
 
 
@@ -113,6 +114,14 @@ async def api_create_job(
         raise HTTPException(400, _t(reason))
     if req.quality not in FORMATS:
         raise HTTPException(400, _t("error.quality_invalid"))
+    incognito_dir: str | None = None
+    if req.incognito:
+        # En incógnito el archivo NO va a out_dir/library_dir ni al historial:
+        # se entrega a una carpeta elegida por el usuario, así que es obligatoria.
+        raw = (req.incognito_dir or "").strip()
+        if not raw:
+            raise HTTPException(400, _t("error.incognito_dir_required"))
+        incognito_dir = raw
     max_jobs = state.resolve("max_jobs", 2, int)[0]
     if state.count_active_jobs() >= max_jobs:
         raise HTTPException(
@@ -127,11 +136,15 @@ async def api_create_job(
         )
 
     job_id = uuid.uuid4().hex[:12]
-    state.db.insert_job(job_id, url, req.quality)
-    log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
+    state.db.insert_job(job_id, url, req.quality, incognito=req.incognito)
+    if req.incognito:
+        log.info("job %s: creado (incógnito, %s)", job_id, req.quality)
+    else:
+        log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
     state._spawn_download(job_id, url, req.quality,
                           subs=req.subs, thumb=req.thumb,
-                          infojson=req.infojson)
+                          infojson=req.infojson, incognito=req.incognito,
+                          incognito_dir=incognito_dir)
     return {"job_id": job_id}
 
 
