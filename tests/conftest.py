@@ -27,7 +27,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # config.IS_DESKTOP/routers.system.IS_DESKTOP de forma explicita.
 os.environ.setdefault("OPENGRAB_DESKTOP", "")
 
-_OPENGRAB_MODULES = ("app", "config", "models", "download", "routes", "routers", "state", "db")
+_OPENGRAB_MODULES = ("app", "config", "db", "download", "library_path_resolver",
+                     "models", "routes", "routers", "secure_delete", "state",
+                     "storage_manager")
 
 
 @pytest.fixture(autouse=True)

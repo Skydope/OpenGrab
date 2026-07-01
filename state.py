@@ -4,10 +4,7 @@ import asyncio
 import atexit
 import logging
 import os
-import re
-import shutil
 import sqlite3
-import threading
 import time
 import uuid
 from pathlib import Path
@@ -17,6 +14,7 @@ from secure_delete import wipe_file, wipe_workdir
 
 
 from db import Database
+from library_path_resolver import LibraryPathResolver
 from models import Job
 from storage_manager import StorageManager
 
@@ -41,7 +39,6 @@ class AppState:
         self.job_events: dict[str, asyncio.Event] = {}
         self.cancel_requests: set[str] = set()  # job_ids cuya cancelación se pidió
         self.running_tasks: set[asyncio.Task[None]] = set()
-        self._finalize_lock = threading.Lock()
         self._start_time = time.monotonic()
         self._last_watch_dispatch: float = 0.0  # timestamp del último dispatch de watch mode
 
@@ -49,6 +46,12 @@ class AppState:
         self.storage = StorageManager(
             out_dir=out_dir, db=db,
             jobs=self.jobs, job_events=self.job_events, resolve=self.resolve,
+        )
+
+        # LibraryPathResolver: templates, dedup, file movement
+        self.library = LibraryPathResolver(
+            db=db, jobs=self.jobs,
+            resolve=self.resolve, resolve_library_dir=self.resolve_library_dir,
         )
         atexit.register(self.db.close)
 
@@ -381,229 +384,27 @@ class AppState:
                 )
 
     # ------------------------------------------------------------------ #
-    # Name template resolution (Phase 3)
+    # Library path resolution (delega en LibraryPathResolver) — wrappers
+    # temporales (→ commit 5)
     # ------------------------------------------------------------------ #
-    _ILLEGAL_CHARS = re.compile(r'[\x00-\x1f\x7f\\/:*?"<>|]')
-
-    def _resolve_template(
-        self, template: str, info: dict[str, Any], ext: str
-    ) -> Path:
-        """Resuelve name_template expandiendo los 7 tokens.
-
-        Tokens: {title} {channel} {upload_year} {upload_date} {extractor}
-                {video_id} {resolution}
-
-        Cada segmento del path se sanitiza: illegal chars -> removidos,
-        espacios colapsados, max 120 chars. Si {title} queda vacío o es
-        puro whitespace, se reemplaza por "video". Si luego de sanitizar
-        el segmento queda vacío, se remueve (los demás tokens compilan).
-        """
-        # Fecha de upload
-        upload_date = ""
-        upload_year = ""
-        if "upload_date" in info:
-            raw = str(info["upload_date"])[:8]
-            if len(raw) == 8 and raw.isdigit():
-                upload_date = f"{raw[0:4]}-{raw[4:6]}-{raw[6:8]}"
-                upload_year = raw[0:4]
-
-        # Resolución del mejor formato
-        resolution = ""
-        formats: list[dict[str, Any]] = info.get("formats") or []
-        for f in formats:
-            if f.get("vcodec") != "none" and f.get("filesize"):
-                resolution = f.get("resolution") or ""
-                break
-
-        replacements: dict[str, str] = {
-            "{title}":      str(info.get("title") or "").strip(),
-            "{channel}":    str(info.get("uploader") or info.get("channel") or "").strip(),
-            "{upload_year}": upload_year,
-            "{upload_date}": upload_date,
-            "{extractor}":  str(info.get("extractor_key") or info.get("extractor") or "").strip(),
-            "{video_id}":   str(info.get("id") or "").strip(),
-            "{resolution}": resolution,
-        }
-
-        def _sanitize_segment(segment: str) -> str:
-            # Quitar chars ilegales del nombre de archivo
-            seg = self._ILLEGAL_CHARS.sub("", segment)
-            # Colapsar whitespace
-            seg = re.sub(r"\s+", " ", seg).strip()
-            # Truncar a 120
-            if len(seg) > 120:
-                seg = seg[:120].rstrip()
-            return seg
-
-        # Armar el path relativo
-        parts = []
-        for part in template.replace("\\", "/").split("/"):
-            part = part.strip()
-            if not part:
-                continue
-            # Expandir tokens en este segmento
-            expanded = part
-            for token, value in replacements.items():
-                if token in expanded:
-                    expanded = expanded.replace(token, value)
-            # Si {title} quedó vacío → "video"
-            if "{title}" in template and expanded.strip() == "":
-                expanded = "video"
-            sanitized = _sanitize_segment(expanded)
-            if sanitized:
-                parts.append(sanitized)
-
-        if not parts:
-            parts = ["video"]
-
-        # Agregar extensión al último segmento
-        last = parts[-1] if parts else "video"
-        parts[-1] = f"{last}.{ext.lstrip('.')}"
-        return Path(*parts)
+    def _resolve_template(self, template: str, info: dict[str, Any], ext: str) -> Path:
+        return self.library._resolve_template(template, info, ext)
 
     def _deduplicate(self, path: Path) -> Path:
-        """Si path existe, appende " (1)", " (2)", ... hasta nombre libre."""
-        if not path.exists():
-            return path
-        stem = path.stem
-        suffix = path.suffix
-        parent = path.parent
-        counter = 1
-        while True:
-            candidate = parent / f"{stem} ({counter}){suffix}"
-            if not candidate.exists():
-                return candidate
-            counter += 1
+        return self.library._deduplicate(path)
 
     def _finalize_desktop(
-        self,
-        job_id: str,
-        workdir: Path,
-        final: Path,
-        info: dict[str, Any],
-        quality: str,
+        self, job_id: str, workdir: Path, final: Path,
+        info: dict[str, Any], quality: str,
         playlist_subdir: str | None = None,
     ) -> None:
-        """Mueve el archivo de workdir a library_dir con name_template.
-
-        Solo para modo desktop (IS_DESKTOP=True). Adquiere _finalize_lock
-        para serializar movimientos concurrentes. Solo mueve si el archivo
-        no está ya en library_dir (evita duplicado si desktop_finalize se llama
-        dos veces).
-
-        Si ``playlist_subdir`` viene seteado (descarga de playlist con la
-        opción "guardar en subcarpeta" activada), se intercala como
-        ``library_dir/playlist_subdir/<name_template>``.
-        """
-        if not config.IS_DESKTOP:
-            return
-        with self._finalize_lock:
-            library_dir = self.resolve_library_dir()
-            if playlist_subdir:
-                library_dir = library_dir / playlist_subdir
-            template, _ = self.resolve("name_template", "{title}", str)
-
-            ext = final.suffix.lstrip(".") or ("mp3" if quality == "audio" else "mp4")
-            relative = self._resolve_template(template, info, ext)
-            target = library_dir / relative
-            target = self._deduplicate(target)
-
-            if target.exists() and target.samefile(final):
-                # Ya está en su lugar
-                return
-
-            try:
-                # target.parent (no solo library_dir): name_template y/o
-                # playlist_subdir pueden producir subcarpetas anidadas.
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(final), str(target))
-                log.info("desktop_finalize: %s -> %s", final.name, target)
-                # Update job.filepath so the API serves from the right place
-                job = self.jobs.get(job_id)
-                if job:
-                    job.filepath = str(target)
-            except OSError as exc:
-                log.warning("desktop_finalize: falló movimiento %s -> %s: %s",
-                            final, target, exc)
-                # No propagar — la descarga ya está completa en workdir
-        return
+        self.library._finalize_desktop(job_id, workdir, final, info, quality, playlist_subdir)
 
     def _move_file_locked(self, src: Path, dest_dir: Path) -> Path:
-        """Core de movimiento server-side, serializado por ``_finalize_lock``.
-
-        Base común de ``move_job_file`` y ``_move_incognito``: adquiere el lock,
-        valida ``dest_dir``, deduplica el nombre y mueve. NO toca DB ni el modelo
-        ``Job`` — eso queda en cada caller. Conserva el nombre de ``src`` (no
-        aplica ``name_template``). Idempotente si ``src`` ya está en ``dest_dir``.
-
-        Lanza:
-            NotADirectoryError: ``dest_dir`` existe pero no es un directorio.
-            OSError: falló la creación del directorio o el movimiento.
-        """
-        with self._finalize_lock:
-            dest_dir = dest_dir.expanduser()
-            if dest_dir.exists() and not dest_dir.is_dir():
-                raise NotADirectoryError(t("error.dest_not_dir"))
-            # Si ya está en la carpeta pedida, no hacemos nada (idempotente).
-            if src.resolve().parent == dest_dir.resolve():
-                return src
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            target = self._deduplicate(dest_dir / src.name)
-            shutil.move(str(src), str(target))
-            return target
+        return self.library._move_file_locked(src, dest_dir)
 
     def move_job_file(self, job_id: str, dest_dir: Path) -> Path:
-        """Mueve el archivo final de un job ``done`` a ``dest_dir`` (server-side).
-
-        Pensado para el botón "Guardar en…": el archivo ya está descargado en
-        el FS del servidor (out_dir/library_dir) y el usuario elige otra
-        carpeta destino. Delega el movimiento en ``_move_file_locked`` y luego
-        actualiza ``job.filepath`` en RAM y en la fila de historial (DB) para
-        que la API siga sirviendo desde la ruta nueva.
-
-        Devuelve la ruta destino final.
-
-        Lanza:
-            ValueError: el job no está ``done``.
-            FileNotFoundError: el job no tiene archivo o ya no existe en disco.
-            NotADirectoryError: ``dest_dir`` existe pero no es un directorio.
-            OSError: falló la creación del directorio o el movimiento.
-        """
-        job = self.jobs.get(job_id)
-        if job is None or not job.filepath:
-            raise FileNotFoundError(t("error.job_no_file"))
-        if job.status != "done":
-            raise ValueError(t("error.job_not_done"))
-        src = Path(job.filepath)
-        if not src.exists():
-            raise FileNotFoundError(t("error.file_not_on_disk"))
-
-        target = self._move_file_locked(src, dest_dir)
-        if target == src:
-            return target
-        log.info("move_job_file: %s -> %s", src.name, target)
-        job.filepath = str(target)
-        # El workdir pudo quedar registrado para limpieza apuntando al
-        # padre anterior; lo dejamos como está — schedule_workdir_if_external
-        # ya corrió en el finalize original. Solo persistimos la ruta nueva.
-        try:
-            self.db.update_job(job_id, filepath=str(target))
-        except sqlite3.Error:
-            log.warning("move_job_file: no se pudo persistir filepath en DB",
-                        exc_info=True)
-        return target
+        return self.library.move_job_file(job_id, dest_dir)
 
     def _move_incognito(self, src: Path, dest_dir: Path) -> Path:
-        """Mueve ``src`` a ``dest_dir`` para un job incógnito (sin tocar DB).
-
-        Variante de ``move_job_file`` para correr DENTRO de ``_run_download``:
-        el job todavía no está marcado ``done`` y su fila se va a borrar de la
-        DB de inmediato, así que NO persiste ``filepath`` ni valida
-        ``job.status``. Comparte el core ``_move_file_locked`` para no divergir.
-
-        Lanza ``NotADirectoryError`` si ``dest_dir`` existe pero no es carpeta,
-        u ``OSError`` si falla el mkdir/move.
-        """
-        target = self._move_file_locked(src, dest_dir)
-        log.info("incognito move: archivo entregado a carpeta destino")
-        return target
+        return self.library._move_incognito(src, dest_dir)

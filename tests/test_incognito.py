@@ -279,10 +279,11 @@ def test_run_download_incognito_move_failure_preserves_file(dl_state, tmp_path):
 def test_incognito_and_savefile_share_move_core(dl_state):
     """_move_incognito y move_job_file delegan en el mismo core _move_file_locked."""
     import inspect
+    from library_path_resolver import LibraryPathResolver
 
-    src = inspect.getsource(dl_state._move_incognito.__func__)
+    src = inspect.getsource(LibraryPathResolver._move_incognito)
     assert "_move_file_locked" in src
-    src2 = inspect.getsource(dl_state.move_job_file.__func__)
+    src2 = inspect.getsource(LibraryPathResolver.move_job_file)
     assert "_move_file_locked" in src2
 
 
