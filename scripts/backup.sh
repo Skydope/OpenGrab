@@ -56,9 +56,7 @@ BACKUP_DB="$BACKUP_DIR/opengrab_${DATE}.db"
 
 echo "[opengrab] backup: DB → $BACKUP_DB"
 
-sqlite3 "$DB_FILE" ".backup $BACKUP_DB"
-
-if [ $? -ne 0 ]; then
+if ! sqlite3 "$DB_FILE" ".backup $BACKUP_DB"; then
     echo "ERROR: backup failed" >&2
     exit 1
 fi
@@ -80,9 +78,8 @@ if [ "$INCLUDE_DOWNLOADS" -eq 1 ]; then
 fi
 
 # Retention: keep last 7 daily DB backups
-# shellcheck disable=SC2012
 KEEP=7
-ls -1 "$BACKUP_DIR"/opengrab_????????.db 2>/dev/null \
+find "$BACKUP_DIR" -maxdepth 1 -name "opengrab_????????.db" 2>/dev/null \
     | sort -r \
     | tail -n +$((KEEP + 1)) \
     | while read -r old; do
