@@ -1,4 +1,7 @@
+"""Storage management endpoints."""
 from __future__ import annotations
+
+import json
 
 from . import limiter, require_auth, get_state, log
 from state import AppState
@@ -29,7 +32,7 @@ async def api_storage_cleanup(
     body = {}
     try:
         body = await request.json()
-    except Exception:
+    except json.JSONDecodeError:
         pass
     max_age = max(1, int(body.get("max_age_hours", 24)))
     result = await asyncio.to_thread(state.cleanup_storage, max_age)

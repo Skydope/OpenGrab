@@ -59,7 +59,8 @@ async def api_info(
         raise HTTPException(400, _t(reason))
     try:
         info = await asyncio.to_thread(_fetch_info, url)
-    except Exception as exc:
+    except Exception as exc:  # yt-dlp: superficie amplia de fallas (1800+ extractors)
+        log.exception("api_system: yt-dlp falló al resolver %s", url)
         raise HTTPException(502, _t("error.info_failed", exc=exc))
 
     dur = info.get("duration") or 0

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from i18n import t as _t
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -309,7 +310,7 @@ async def api_update_settings(
     """Actualiza settings (PUT o PATCH). Keys con origin=env retornan 400."""
     try:
         body = await request.json()
-    except Exception:
+    except json.JSONDecodeError:
         raise HTTPException(400, _t("error.json_invalid"))
     if not isinstance(body, dict):
         raise HTTPException(400, _t("error.settings_body_dict"))

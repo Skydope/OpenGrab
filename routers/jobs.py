@@ -376,7 +376,7 @@ async def api_move_job_file(
     """
     try:
         body = await request.json()
-    except Exception:
+    except _json.JSONDecodeError:
         raise HTTPException(400, _t("error.json_invalid"))
     dest = body.get("dest", "") if isinstance(body, dict) else ""
     if not isinstance(dest, str) or not dest.strip():

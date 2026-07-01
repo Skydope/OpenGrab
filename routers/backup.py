@@ -1,6 +1,8 @@
 """Export e import de backup JSON (settings, history, channels)."""
 from __future__ import annotations
 
+import json
+import sqlite3
 from datetime import datetime, UTC
 from typing import Any
 
@@ -46,7 +48,7 @@ async def api_backup_import(
     Inserta history como done. Canales disabled por seguridad."""
     try:
         body: dict[str, Any] = await request.json()
-    except Exception:
+    except json.JSONDecodeError:
         raise HTTPException(400, _t("error.json_invalid"))
 
     if not isinstance(body, dict) or body.get("version") != 1:
@@ -103,7 +105,7 @@ async def api_backup_import(
                 completed=entry.get("completed", 0),
             )
             imported["history"] += 1
-        except Exception:
+        except (sqlite3.Error, ValueError):
             errors.append(str(entry.get("title") or entry.get("url") or eid)[:80])
 
     # Channels: insertar disabled (seguridad: no arrancar watch auto).
@@ -117,7 +119,7 @@ async def api_backup_import(
                 ch.get("interval_minutes", 60),
             )
             imported["channels"] += 1
-        except Exception:
+        except sqlite3.Error:
             errors.append(str(ch.get("url", ""))[:80])
 
     return JSONResponse({

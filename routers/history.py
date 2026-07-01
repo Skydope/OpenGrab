@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 from . import limiter, require_auth, get_state, log
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -24,7 +26,7 @@ async def api_history(
             entries,
             headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
         )
-    except Exception as exc:
+    except (sqlite3.Error, TypeError) as exc:
         log.exception("api_history: error al leer historial")
         raise HTTPException(500, _t("error.history_read_failed", exc=exc))
 
