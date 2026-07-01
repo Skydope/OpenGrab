@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.12.0] — 2026-07-01
 
 ### Added
 
@@ -23,10 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   creaba `library_dir` y no `target.parent` — un `name_template` con
   subcarpetas (p.ej. `{channel}/{title}`) rompía el `shutil.move` con
   `FileNotFoundError`.
-
-## [1.12.0] — 2026-06-30
-
-### Added
 
 - **Modo incógnito de descarga.** Nuevo toggle 🕶️ (single downloads) que corre
   la descarga sin dejar rastro persistente: no escribe en historial ni en la
@@ -60,10 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **User-Agent de incógnito centralizado.** Movido a la constante de módulo
   `_INCOGNITO_USER_AGENT` con nota de mantenimiento (la versión de Chrome
   envejece; sincronizar con el bump de yt-dlp), en vez de hardcodeado en las opts.
-- **Schema DB v2 → v3.** Nueva columna `jobs.incognito INTEGER NOT NULL DEFAULT 0`.
-  Primera migración incremental real del proyecto: `_migrate()` corre
-  `ALTER TABLE` guardado por `PRAGMA table_info` (idempotente) sobre DBs
-  preexistentes, que antes solo recibían `CREATE TABLE IF NOT EXISTS`.
+- **Schema DB v2 → v4.** Nuevas columnas `jobs.incognito` (v3) y
+  `jobs.playlist_subdir` (v4). `_migrate()` corre `ALTER TABLE` guardado por
+  `PRAGMA table_info` (idempotente) sobre DBs preexistentes, que antes solo
+  recibían `CREATE TABLE IF NOT EXISTS`.
 - **`reconcile_startup` no reanuda incógnito.** Los jobs `incognito=1` que
   sobreviven a un reinicio se borran (no se requeue ni se marcan `interrupted`)
   y se devuelve su `workdir` para secure-wipe en el arranque — no se persiste
