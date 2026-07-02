@@ -30,11 +30,31 @@ def test_free_port_varies():
 
 
 # ------------------------------ _setup_env ------------------------------- #
+@pytest.fixture(autouse=True)
+def _isolate_setup_env_keys():
+    """Aisla las env keys que ``_setup_env`` escribe DIRECTO en os.environ.
+
+    ``_setup_env`` usa ``os.environ.setdefault`` (no monkeypatch), asi que lo
+    que setee sobrevive al teardown del test y se filtra al resto de la
+    sesion. El caso concreto que motivo esto: ``OPENGRAB_NO_AUTH=1`` filtrado
+    dejaba SIN AUTH a todo cliente construido por tests posteriores — y como
+    casi ningun test posterior asertaba 401, el leak paso inadvertido hasta
+    que test_middleware lo hizo. Snapshot antes / restore despues, siempre.
+    """
+    keys = ("OPENGRAB_HOST", "OPENGRAB_PORT", "OPENGRAB_NO_AUTH", "OPENGRAB_DIR")
+    saved = {k: os.environ.get(k) for k in keys}
+    yield
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
 def test_setup_env_sets_desktop_defaults(monkeypatch):
     for k in ("OPENGRAB_HOST", "OPENGRAB_PORT", "OPENGRAB_NO_AUTH", "OPENGRAB_DIR"):
         monkeypatch.delenv(k, raising=False)
     desktop._setup_env(12345)
-    import os
 
     assert os.environ["OPENGRAB_NO_AUTH"] == "1"
     assert os.environ["OPENGRAB_HOST"] == "127.0.0.1"
@@ -45,7 +65,6 @@ def test_setup_env_sets_desktop_defaults(monkeypatch):
 def test_setup_env_respects_overrides(monkeypatch):
     monkeypatch.setenv("OPENGRAB_DIR", "/custom/path")
     desktop._setup_env(9999)
-    import os
 
     assert os.environ["OPENGRAB_DIR"] == "/custom/path"
 
