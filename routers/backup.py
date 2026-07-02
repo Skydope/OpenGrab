@@ -1,6 +1,7 @@
 """Export e import de backup JSON (settings, history, channels)."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from datetime import datetime, UTC
@@ -24,10 +25,20 @@ async def api_backup_export(
     _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> JSONResponse:
-    """Exporta settings, history y channels como JSON."""
-    settings = state.db.get_all_settings()
-    history = state.db.get_history(limit=10000)
-    channels = state.db.list_channels()
+    """Exporta settings, history y channels como JSON.
+
+    Las lecturas van por to_thread: get_history(limit=10000) sobre una DB
+    grande son cientos de ms de SQLite sync bajo el lock — bloquear el event
+    loop ese tiempo congela SSE y el resto de la API.
+    """
+    def _read_all() -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+        return (
+            state.db.get_all_settings(),
+            state.db.get_history(limit=10000),
+            state.db.list_channels(),
+        )
+
+    settings, history, channels = await asyncio.to_thread(_read_all)
     return JSONResponse({
         "version": 1,
         "exported_at": datetime.now(UTC).isoformat(),
@@ -54,6 +65,17 @@ async def api_backup_import(
     if not isinstance(body, dict) or body.get("version") != 1:
         raise HTTPException(400, _t("error.backup_version_unsupported"))
 
+    # El merge son decenas/miles de escrituras SQLite sync bajo el lock:
+    # se corre entero en un worker thread para no bloquear el event loop.
+    imported, errors = await asyncio.to_thread(_apply_import, state, body)
+
+    return JSONResponse({"ok": True, "imported": imported, "errors": errors})
+
+
+def _apply_import(
+    state: AppState, body: dict[str, Any],
+) -> tuple[dict[str, int], list[str]]:
+    """Aplica el merge del backup (sync, pensado para to_thread)."""
     imported: dict[str, int] = {"settings": 0, "history": 0, "channels": 0}
     errors: list[str] = []
 
@@ -125,8 +147,4 @@ async def api_backup_import(
         except sqlite3.Error:
             errors.append(str(ch.get("url", ""))[:80])
 
-    return JSONResponse({
-        "ok": True,
-        "imported": imported,
-        "errors": errors if errors else None,
-    })
+    return imported, errors
