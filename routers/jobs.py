@@ -121,6 +121,14 @@ async def api_create_job(
         raw = (req.incognito_dir or "").strip()
         if not raw:
             raise HTTPException(400, _t("error.incognito_dir_required"))
+        # En modo desktop el server ES el cliente y elegir cualquier carpeta
+        # local es la feature. En modo server (Docker/LAN), un path arbitrario
+        # seria una primitiva de escritura remota en el FS del servidor: se
+        # exige que el destino resuelva dentro de out_dir.
+        if not IS_DESKTOP:
+            resolved = Path(raw).resolve()
+            if not resolved.is_relative_to(state.out_dir.resolve()):
+                raise HTTPException(400, _t("error.incognito_dir_outside"))
         incognito_dir = raw
     max_jobs = state.resolve("max_jobs", 2, int)[0]
     if state.count_active_jobs() >= max_jobs:
@@ -252,6 +260,7 @@ async def api_job_extras(
 async def api_job_file_specific(
     job_id: str,
     filename: str,
+    _: None = Depends(require_auth),
     state: AppState = Depends(get_state),
 ) -> FileResponse:
     """Sirve un archivo extra específico del workdir del job (subs, thumb, info json)."""
@@ -373,7 +382,14 @@ async def api_move_job_file(
     el archivo ya vive en el FS del servidor y el usuario elige otra carpeta.
     Pensado para modo desktop (server == cliente). El directorio se crea si no
     existe. Devuelve la ruta destino final.
+
+    Gate: solo desktop. En modo server, ``dest`` seria un path arbitrario del
+    FS del servidor elegido por un cliente remoto — una primitiva de escritura
+    fuera de out_dir que no tiene caso de uso legitimo (el cliente ya descarga
+    via GET /file). Mismo criterio que open-folder.
     """
+    if not IS_DESKTOP:
+        raise HTTPException(409, _t("error.desktop_only"))
     try:
         body = await request.json()
     except _json.JSONDecodeError:
