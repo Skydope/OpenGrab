@@ -267,5 +267,8 @@ class AppState:
                 self.db.update_job(job_id, status="starting")
                 self._spawn_download(
                     job_id, job_dict["url"], job_dict["quality"],
+                    subs=bool(job_dict.get("subs")),
+                    thumb=bool(job_dict.get("thumb")),
+                    infojson=bool(job_dict.get("infojson")),
                     playlist_subdir=job_dict.get("playlist_subdir"),
                 )

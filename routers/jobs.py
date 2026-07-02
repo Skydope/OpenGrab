@@ -144,7 +144,8 @@ async def api_create_job(
         )
 
     job_id = uuid.uuid4().hex[:12]
-    state.db.insert_job(job_id, url, req.quality, incognito=req.incognito)
+    state.db.insert_job(job_id, url, req.quality, incognito=req.incognito,
+                        subs=req.subs, thumb=req.thumb, infojson=req.infojson)
     if req.incognito:
         log.info("job %s: creado (incógnito, %s)", job_id, req.quality)
     else:

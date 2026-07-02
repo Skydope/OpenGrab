@@ -609,3 +609,62 @@ def test_resolve_casts_to_requested_type(monkeypatch, tmp_path):
     assert val == 7
     assert origin == "table"
     assert isinstance(val, int)
+
+
+# --------------------------------------------------------------------------- #
+# v5: persistencia de sidecars (subs/thumb/infojson)
+# --------------------------------------------------------------------------- #
+
+def test_migration_v4_to_v5_adds_sidecar_columns(tmp_path):
+    """Una DB v4 preexistente gana las columnas subs/thumb/infojson en 0."""
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(str(path))
+    con.executescript(
+        """
+        CREATE TABLE jobs (
+            id TEXT PRIMARY KEY, url TEXT NOT NULL, quality TEXT NOT NULL,
+            status TEXT NOT NULL, title TEXT, filename TEXT, filepath TEXT,
+            mime TEXT, size INTEGER, thumbnail TEXT, error TEXT,
+            video_id TEXT, extractor TEXT, workdir TEXT,
+            created REAL NOT NULL, completed INTEGER,
+            incognito INTEGER NOT NULL DEFAULT 0,
+            playlist_subdir TEXT
+        );
+        PRAGMA user_version=4;
+        """
+    )
+    con.execute(
+        "INSERT INTO jobs (id, url, quality, status, created) "
+        "VALUES ('viejo1', 'https://x', 'best', 'queued', 1.0)"
+    )
+    con.commit()
+    con.close()
+
+    d = Database(path)
+    assert d.schema_version() == SCHEMA_VERSION
+    row = d.get_job("viejo1")
+    assert row is not None
+    assert (row["subs"], row["thumb"], row["infojson"]) == (0, 0, 0)
+    d.close()
+
+
+def test_insert_job_persists_sidecars(tmp_path):
+    d = Database(tmp_path / "t.db")
+    d.insert_job("j1", "https://x", "best", subs=True, infojson=True)
+    row = d.get_job("j1")
+    assert row is not None
+    assert (row["subs"], row["thumb"], row["infojson"]) == (1, 0, 1)
+    d.close()
+
+
+def test_get_queued_includes_sidecars(tmp_path):
+    """dispatch_loop lee los sidecars de la fila para no perderlos al
+    re-despachar un job 'queued' que sobrevivió a un restart."""
+    d = Database(tmp_path / "t.db")
+    d.insert_job("j1", "https://x", "best", subs=True, thumb=True)
+    rows = d.get_queued(limit=5)
+    assert len(rows) == 1
+    assert (rows[0]["subs"], rows[0]["thumb"], rows[0]["infojson"]) == (1, 1, 0)
+    d.close()

@@ -371,3 +371,42 @@ class TestDispatchLoopLifespan:
         # We can't directly check cancellation, but the fact that TestClient
         # exits without error means cleanup completed properly
         # If dispatch_task.cancel() wasn't called, we'd see warnings or errors
+
+
+class TestDispatchSidecars:
+    """v5: dispatch_loop no debe perder subs/thumb/infojson al re-despachar."""
+
+    @pytest.mark.asyncio
+    async def test_dispatch_propagates_sidecar_flags(self, dispatch_state, monkeypatch):
+        """Un job 'queued' con sidecars persistidos (p.ej. sobreviviente de un
+        restart) llega a _spawn_download con esos flags, no con los defaults."""
+        dispatch_state.db.insert_job(
+            "sc-001", "https://example.com/v", "best",
+            subs=True, thumb=False, infojson=True,
+        )
+        monkeypatch.setattr(type(dispatch_state), "resolve", _resolve_for(2))
+
+        seen: dict = {}
+
+        def fake_spawn(job_id, url, quality, **kw):
+            seen[job_id] = kw
+
+        monkeypatch.setattr(dispatch_state, "_spawn_download", fake_spawn)
+
+        call_count = 0
+
+        async def fake_sleep(delay):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                raise asyncio.CancelledError("stop after one tick")
+
+        with patch("asyncio.sleep", fake_sleep):
+            with pytest.raises(asyncio.CancelledError):
+                await dispatch_state.dispatch_loop()
+
+        assert "sc-001" in seen
+        kw = seen["sc-001"]
+        assert kw["subs"] is True
+        assert kw["thumb"] is False
+        assert kw["infojson"] is True

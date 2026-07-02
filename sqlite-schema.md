@@ -35,9 +35,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     created     REAL NOT NULL,          -- timestamp UNIX de creación
     completed   INTEGER,                -- timestamp UNIX de finalización
     incognito   INTEGER NOT NULL DEFAULT 0,  -- 1 = descarga incógnito (v3); la fila se borra al terminar
-    playlist_subdir TEXT                -- v4: nombre de subcarpeta (sanitizado) si el job
+    playlist_subdir TEXT,               -- v4: nombre de subcarpeta (sanitizado) si el job
                                          -- vino de una descarga de playlist con "guardar en
                                          -- subcarpeta" activado; NULL = comportamiento normal
+    subs        INTEGER NOT NULL DEFAULT 0,  -- v5: sidecars pedidos al crear el job.
+    thumb       INTEGER NOT NULL DEFAULT 0,  -- Persistidos para que dispatch_loop no los
+    infojson    INTEGER NOT NULL DEFAULT 0   -- pierda al re-despachar un 'queued' tras restart.
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
@@ -48,7 +51,8 @@ CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created);
 > columnas a una tabla `jobs` que ya existía en disco de una versión previa.
 > `_migrate(from_version)` corre `ALTER TABLE jobs ADD COLUMN` guardado por
 > `PRAGMA table_info(jobs)` (idempotente) para cada columna agregada
-> post-lanzamiento — `incognito` en v3, `playlist_subdir` en v4. Cualquier
+> post-lanzamiento — `incognito` en v3, `playlist_subdir` en v4,
+> `subs`/`thumb`/`infojson` en v5. Cualquier
 > columna nueva futura debe seguir el mismo patrón: un bloque
 > `if from_version < N and "col" not in cols: ALTER TABLE ...` en `_migrate`.
 

@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Estados que cuentan como "en curso" (concurrencia, dedup, conteos).
 ACTIVE_STATUSES = ("queued", "starting", "downloading", "processing")
@@ -52,7 +52,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     created     REAL NOT NULL,
     completed   INTEGER,
     incognito   INTEGER NOT NULL DEFAULT 0,
-    playlist_subdir TEXT
+    playlist_subdir TEXT,
+    subs        INTEGER NOT NULL DEFAULT 0,
+    thumb       INTEGER NOT NULL DEFAULT 0,
+    infojson    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created);
@@ -142,6 +145,16 @@ class Database:
             self._conn.execute(
                 "ALTER TABLE jobs ADD COLUMN playlist_subdir TEXT"
             )
+        # v5: persistir opciones de sidecars (subs/thumb/infojson). Antes solo
+        # vivian en el DownloadContext en memoria: un job 'queued' que
+        # sobrevivia a un restart era re-despachado por dispatch_loop sin
+        # ellas y las perdia en silencio.
+        if from_version < 5:
+            for col in ("subs", "thumb", "infojson"):
+                if col not in cols:
+                    self._conn.execute(
+                        f"ALTER TABLE jobs ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"
+                    )
 
     def schema_version(self) -> int:
         with self._lock:
@@ -159,13 +172,16 @@ class Database:
         status: str = "queued", created: float | None = None,
         workdir: str | None = None, incognito: bool = False,
         playlist_subdir: str | None = None,
+        subs: bool = False, thumb: bool = False, infojson: bool = False,
     ) -> None:
         created = time.time() if created is None else created
         with self._lock:
             self._conn.execute(
-                "INSERT INTO jobs (id, url, quality, status, created, workdir, incognito, playlist_subdir) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (job_id, url, quality, status, created, workdir, int(incognito), playlist_subdir),
+                "INSERT INTO jobs (id, url, quality, status, created, workdir, "
+                "incognito, playlist_subdir, subs, thumb, infojson) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (job_id, url, quality, status, created, workdir, int(incognito),
+                 playlist_subdir, int(subs), int(thumb), int(infojson)),
             )
             self._conn.commit()
 
@@ -179,7 +195,8 @@ class Database:
         cols = ", ".join(f"{k}=?" for k in fields)
         with self._lock:
             self._conn.execute(
-                f"UPDATE jobs SET {cols} WHERE id=?",
+                # cols viene de _UPDATABLE (whitelist), valores parametrizados
+                f"UPDATE jobs SET {cols} WHERE id=?",  # nosec B608
                 (*fields.values(), job_id),
             )
             self._conn.commit()
@@ -198,7 +215,8 @@ class Database:
         placeholders = ", ".join("?" * len(job_ids))
         with self._lock:
             rows = self._conn.execute(
-                f"SELECT * FROM jobs WHERE id IN ({placeholders})",
+                # placeholders = '?,...' generado, ids parametrizados
+                f"SELECT * FROM jobs WHERE id IN ({placeholders})",  # nosec B608
                 job_ids,
             ).fetchall()
         return [dict(r) for r in rows]
@@ -207,7 +225,8 @@ class Database:
         placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)
         with self._lock:
             rows = self._conn.execute(
-                f"SELECT * FROM jobs WHERE status IN ({placeholders}) ORDER BY created",
+                # placeholders de constante ACTIVE_STATUSES
+                f"SELECT * FROM jobs WHERE status IN ({placeholders}) ORDER BY created",  # nosec B608
                 ACTIVE_STATUSES,
             ).fetchall()
         return [dict(r) for r in rows]
@@ -255,9 +274,11 @@ class Database:
                 ids = [r["id"] for r in incognito_dropped]
                 ph = ", ".join("?" for _ in ids)
                 self._conn.execute(
-                    f"DELETE FROM downloaded_urls WHERE job_id IN ({ph})", ids
+                    # ph = '?,...' generado, ids parametrizados
+                    f"DELETE FROM downloaded_urls WHERE job_id IN ({ph})", ids  # nosec B608
                 )
-                self._conn.execute(f"DELETE FROM jobs WHERE id IN ({ph})", ids)
+                # ph = '?,...' generado, ids parametrizados
+                self._conn.execute(f"DELETE FROM jobs WHERE id IN ({ph})", ids)  # nosec B608
             requeued = [
                 r["id"]
                 for r in self._conn.execute(
@@ -265,13 +286,15 @@ class Database:
                 ).fetchall()
             ]
             orphan_rows = self._conn.execute(
-                f"SELECT id, workdir FROM jobs WHERE status IN ({orphan_ph})",
+                # orphan_ph de constante ORPHAN_STATUSES
+                f"SELECT id, workdir FROM jobs WHERE status IN ({orphan_ph})",  # nosec B608
                 ORPHAN_STATUSES,
             ).fetchall()
             interrupted = [dict(r) for r in orphan_rows]
             if interrupted:
                 self._conn.execute(
-                    f"UPDATE jobs SET status='interrupted' "
+                    # orphan_ph de constante ORPHAN_STATUSES
+                    f"UPDATE jobs SET status='interrupted' "  # nosec B608
                     f"WHERE status IN ({orphan_ph})",
                     ORPHAN_STATUSES,
                 )
@@ -290,12 +313,14 @@ class Database:
             sub = ("SELECT id FROM jobs WHERE status='done' "
                    "ORDER BY completed DESC LIMIT ?")
             self._conn.execute(
-                f"DELETE FROM downloaded_urls WHERE job_id IN "
+                # subquery construida solo con literales internos
+                f"DELETE FROM downloaded_urls WHERE job_id IN "  # nosec B608
                 f"(SELECT id FROM jobs WHERE status='done' AND id NOT IN ({sub}))",
                 (keep,),
             )
             cur = self._conn.execute(
-                f"DELETE FROM jobs WHERE status='done' AND id NOT IN ({sub})",
+                # sub construida solo con literales internos
+                f"DELETE FROM jobs WHERE status='done' AND id NOT IN ({sub})",  # nosec B608
                 (keep,),
             )
             self._conn.commit()
@@ -375,7 +400,8 @@ class Database:
         placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)
         with self._lock:
             row = self._conn.execute(
-                f"SELECT 1 FROM jobs WHERE extractor=? AND video_id=? "
+                # f-string sin interpolacion de input (solo formato multilinea)
+                f"SELECT 1 FROM jobs WHERE extractor=? AND video_id=? "  # nosec B608
                 f"AND status IN ({placeholders}) LIMIT 1",
                 (extractor, video_id, *ACTIVE_STATUSES),
             ).fetchone()
@@ -409,7 +435,8 @@ class Database:
         cols = ", ".join(f"{k}=?" for k in fields)
         with self._lock:
             self._conn.execute(
-                f"UPDATE channels SET {cols} WHERE id=?",
+                # cols de whitelist interna de update_channel, valores parametrizados
+                f"UPDATE channels SET {cols} WHERE id=?",  # nosec B608
                 (*fields.values(), channel_id),
             )
             self._conn.commit()
