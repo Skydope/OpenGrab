@@ -87,7 +87,7 @@ def test_run_download_cancel_via_hook(st):
     assert job.workdir == ""                       # husk desreferenciado
     assert jid not in st.cancel_requests           # bandera limpiada en finally
     assert st.db.get_job(jid)["status"] == "cancelled"
-    assert any("opengrab_" in p for p in st.storage._pending_cleanups)  # husk a limpiar
+    assert any("opengrab_" in p for p in st.storage.pending_cleanups)  # husk a limpiar
 
 
 def test_run_download_cancel_temprano_no_arranca_ydl(st):

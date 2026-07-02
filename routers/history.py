@@ -43,7 +43,7 @@ async def api_delete_history_entry(
     filepath, workdir = result
     if filepath or workdir:
         task = asyncio.create_task(
-            asyncio.to_thread(state.history._secure_delete_files, filepath, workdir)
+            asyncio.to_thread(state.history.secure_delete_files, filepath, workdir)
         )
         state._track_task(task)
     return JSONResponse({"ok": True})

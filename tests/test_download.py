@@ -761,7 +761,7 @@ def test_resolve_template_date_format(tmp_path):
     assert result.stem == "2025-06-23"
 
 
-# ------------------------- _deduplicate (3.8) ------------------------------- #
+# ------------------------- deduplicate (3.8) ------------------------------- #
 def test_deduplicate_no_collision_returns_same(tmp_path):
     """Sin colisión, devuelve el mismo path."""
     from state import AppState
@@ -770,7 +770,7 @@ def test_deduplicate_no_collision_returns_same(tmp_path):
     db = Database(":memory:")
     state = AppState(db, tmp_path)
     target = tmp_path / "video.mp4"
-    result = state.library._deduplicate(target)
+    result = state.library.deduplicate(target)
     assert result == target
 
 
@@ -782,7 +782,7 @@ def test_deduplicate_one_collision_adds_1(tmp_path):
     db = Database(":memory:")
     state = AppState(db, tmp_path)
     (tmp_path / "video.mp4").write_bytes(b"existing")
-    result = state.library._deduplicate(tmp_path / "video.mp4")
+    result = state.library.deduplicate(tmp_path / "video.mp4")
     assert result.name == "video (1).mp4"
 
 
@@ -796,5 +796,5 @@ def test_deduplicate_multiple_collisions_sequential(tmp_path):
     base = tmp_path / "video.mp4"
     base.write_bytes(b"0")
     (tmp_path / "video (1).mp4").write_bytes(b"1")
-    result = state.library._deduplicate(base)
+    result = state.library.deduplicate(base)
     assert result.name == "video (2).mp4"

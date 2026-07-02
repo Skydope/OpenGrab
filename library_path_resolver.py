@@ -97,7 +97,7 @@ class LibraryPathResolver:
     # ------------------------------------------------------------------ #
     # Deduplication
     # ------------------------------------------------------------------ #
-    def _deduplicate(self, path: Path) -> Path:
+    def deduplicate(self, path: Path) -> Path:
         if not path.exists():
             return path
         stem = path.stem
@@ -121,7 +121,7 @@ class LibraryPathResolver:
             if src.resolve().parent == dest_dir.resolve():
                 return src
             dest_dir.mkdir(parents=True, exist_ok=True)
-            target = self._deduplicate(dest_dir / src.name)
+            target = self.deduplicate(dest_dir / src.name)
             shutil.move(str(src), str(target))
             return target
 
@@ -151,7 +151,7 @@ class LibraryPathResolver:
                         exc_info=True)
         return target
 
-    def _move_incognito(self, src: Path, dest_dir: Path) -> Path:
+    def move_incognito(self, src: Path, dest_dir: Path) -> Path:
         target = self._move_file_locked(src, dest_dir)
         log.info("incognito move: archivo entregado a carpeta destino")
         return target
@@ -159,7 +159,7 @@ class LibraryPathResolver:
     # ------------------------------------------------------------------ #
     # Desktop finalize
     # ------------------------------------------------------------------ #
-    def _finalize_desktop(
+    def finalize_desktop(
         self,
         job_id: str,
         workdir: Path,
@@ -179,7 +179,7 @@ class LibraryPathResolver:
             ext = final.suffix.lstrip(".") or ("mp3" if quality == "audio" else "mp4")
             relative = self._resolve_template(template, info, ext)
             target = library_dir / relative
-            target = self._deduplicate(target)
+            target = self.deduplicate(target)
 
             if target.exists() and target.samefile(final):
                 return

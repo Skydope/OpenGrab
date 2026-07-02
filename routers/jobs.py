@@ -150,7 +150,7 @@ async def api_create_job(
         log.info("job %s: creado (incógnito, %s)", job_id, req.quality)
     else:
         log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
-    state._spawn_download(job_id, url, req.quality,
+    state.spawn_download(job_id, url, req.quality,
                           subs=req.subs, thumb=req.thumb,
                           infojson=req.infojson, incognito=req.incognito,
                           incognito_dir=incognito_dir)

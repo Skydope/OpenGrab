@@ -314,7 +314,7 @@ def _handle_incognito_completion(
     """Post-descarga incógnito: move + wipe + delete DB row."""
     assert ctx.incognito_dir, "incognito_dir requerido en modo incógnito"
     try:
-        delivered = state.library._move_incognito(final, Path(ctx.incognito_dir))
+        delivered = state.library.move_incognito(final, Path(ctx.incognito_dir))
     except OSError as move_exc:
         from i18n import t
         job.status = "error"
@@ -360,15 +360,15 @@ def _finalize_download(
     t_start: float = 0.0,
 ) -> None:
     """Post-descarga normal: desktop finalize + server move + DB persist."""
-    state.library._finalize_desktop(ctx.job_id, workdir, final, info, ctx.quality, ctx.playlist_subdir)
+    state.library.finalize_desktop(ctx.job_id, workdir, final, info, ctx.quality, ctx.playlist_subdir)
 
     if not IS_DESKTOP and final.parent == workdir:
         dest_dir = state.out_dir / ctx.playlist_subdir if ctx.playlist_subdir else state.out_dir
         dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = state.library._deduplicate(dest_dir / final.name)
+        dest = state.library.deduplicate(dest_dir / final.name)
         shutil.move(str(final), str(dest))
         final = dest
-        state.storage._schedule_tempdir_cleanup(str(workdir))
+        state.storage.schedule_tempdir_cleanup(str(workdir))
         job.workdir = ""
 
     job.status = "done"
@@ -437,7 +437,7 @@ def _handle_termination(
                 log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
             log.info("job %s: cancelado (incógnito)", ctx.job_id)
         else:
-            state.storage._schedule_tempdir_cleanup(str(workdir))
+            state.storage.schedule_tempdir_cleanup(str(workdir))
             job.workdir = ""
             try:
                 state.db.update_job(ctx.job_id, status="cancelled")

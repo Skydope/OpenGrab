@@ -359,7 +359,7 @@ class TestWatchLoop:
 
 
 # --------------------------------------------------------------------------- #
-# _track_task + _spawn_download — consolidated spawn helpers
+# _track_task + spawn_download — consolidated spawn helpers
 # --------------------------------------------------------------------------- #
 
 
@@ -389,14 +389,14 @@ class TestTrackTask:
 
 
 class TestSpawnDownload:
-    """Verifica que _spawn_download crea el Job en memoria, asigna un Event
+    """Verifica que spawn_download crea el Job en memoria, asigna un Event
     y lanza la descarga sin tocar la DB."""
 
     @pytest.mark.asyncio
     async def test_creates_job_and_event(self, loop_state, monkeypatch):
         monkeypatch.setattr("download._run_download", lambda *a, **kw: None)
 
-        loop_state._spawn_download("test-spawn-1", "http://x.com/v", "best")
+        loop_state.spawn_download("test-spawn-1", "http://x.com/v", "best")
 
         assert "test-spawn-1" in loop_state.jobs
         job = loop_state.jobs["test-spawn-1"]

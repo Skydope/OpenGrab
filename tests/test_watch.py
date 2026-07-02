@@ -49,7 +49,7 @@ async def test_watch_loop_actualiza_latest_watch_ts_global(watch_state, monkeypa
         lambda st, ch: [{"url": "https://example.com/v1", "extractor": "Generic",
                          "video_id": "v1", "title": "Nuevo"}],
     )
-    monkeypatch.setattr(type(watch_state), "_spawn_download", lambda *a, **kw: None)
+    monkeypatch.setattr(type(watch_state), "spawn_download", lambda *a, **kw: None)
 
     # Reset del global a un centinela conocido para detectar la escritura real.
     monkeypatch.setattr(state_mod, "_latest_watch_ts", 0.0, raising=False)
@@ -71,7 +71,7 @@ async def test_watch_loop_no_despacha_si_no_hay_videos(watch_state, monkeypatch)
     """Sin videos nuevos, el global no se toca (no hay falso positivo)."""
     watch_state.db.insert_channel("https://example.com/canal", quality="best", interval_minutes=60)
     monkeypatch.setattr("download._check_channel_watch", lambda st, ch: [])
-    monkeypatch.setattr(type(watch_state), "_spawn_download", lambda *a, **kw: None)
+    monkeypatch.setattr(type(watch_state), "spawn_download", lambda *a, **kw: None)
     monkeypatch.setattr(state_mod, "_latest_watch_ts", 0.0, raising=False)
 
     with patch("asyncio.sleep", side_effect=_stop_after_one_tick()):

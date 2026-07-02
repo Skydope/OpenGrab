@@ -379,7 +379,7 @@ class TestDispatchSidecars:
     @pytest.mark.asyncio
     async def test_dispatch_propagates_sidecar_flags(self, dispatch_state, monkeypatch):
         """Un job 'queued' con sidecars persistidos (p.ej. sobreviviente de un
-        restart) llega a _spawn_download con esos flags, no con los defaults."""
+        restart) llega a spawn_download con esos flags, no con los defaults."""
         dispatch_state.db.insert_job(
             "sc-001", "https://example.com/v", "best",
             subs=True, thumb=False, infojson=True,
@@ -391,7 +391,7 @@ class TestDispatchSidecars:
         def fake_spawn(job_id, url, quality, **kw):
             seen[job_id] = kw
 
-        monkeypatch.setattr(dispatch_state, "_spawn_download", fake_spawn)
+        monkeypatch.setattr(dispatch_state, "spawn_download", fake_spawn)
 
         call_count = 0
 

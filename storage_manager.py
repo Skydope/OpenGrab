@@ -38,7 +38,7 @@ class StorageManager:
         self._usage_lock = threading.Lock()
         self._usage_cache: int | None = None
         self._usage_cache_ts = 0.0
-        self._pending_cleanups: set[str] = set()
+        self.pending_cleanups: set[str] = set()
 
     # ------------------------------------------------------------------ #
     # Storage accounting
@@ -88,8 +88,8 @@ class StorageManager:
         if count:
             log.info("limpiados %d workdirs viejos o vacios", count)
 
-    def _schedule_tempdir_cleanup(self, workdir: str) -> None:
-        self._pending_cleanups.add(workdir)
+    def schedule_tempdir_cleanup(self, workdir: str) -> None:
+        self.pending_cleanups.add(workdir)
 
     def schedule_workdir_if_external(self, job: Any) -> bool:
         if not job.workdir or not job.filepath:
@@ -97,19 +97,19 @@ class StorageManager:
         wd = Path(job.workdir).resolve()
         if Path(job.filepath).resolve().is_relative_to(wd):
             return False
-        self._schedule_tempdir_cleanup(job.workdir)
+        self.schedule_tempdir_cleanup(job.workdir)
         job.workdir = ""
         return True
 
     def flush_pending_cleanups(self) -> int:
         removed = 0
-        for dirpath in list(self._pending_cleanups):
+        for dirpath in list(self.pending_cleanups):
             try:
                 wipe_workdir(dirpath)
             except OSError:
                 log.exception("flush_pending_cleanups: no se pudo borrar %s", dirpath)
             if not os.path.exists(dirpath):
-                self._pending_cleanups.discard(dirpath)
+                self.pending_cleanups.discard(dirpath)
                 removed += 1
         if removed:
             with self._usage_lock:

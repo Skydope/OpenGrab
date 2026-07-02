@@ -39,7 +39,7 @@ class HistoryStore:
         log.info("delete_history_entry: borrado job %s de la DB", job_id)
         return job.get("filepath"), job.get("workdir")
 
-    def _secure_delete_files(self, filepath: str | None, workdir: str | None) -> None:
+    def secure_delete_files(self, filepath: str | None, workdir: str | None) -> None:
         try:
             if filepath:
                 wipe_file(str(filepath))

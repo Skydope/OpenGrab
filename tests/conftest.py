@@ -39,7 +39,7 @@ def _reset_settings_table():
     La DB de tests vive en disco (``_test_downloads/opengrab.db``) y se
     comparte entre tests de la sesión. Sin esto, un ``set_setting()`` en un
     test se filtra a los siguientes (p.ej. ``library_dir`` filtrado al
-    ``_finalize_desktop`` del test siguiente, que resolvía a un tempdir ya
+    ``finalize_desktop`` del test siguiente, que resolvía a un tempdir ya
     borrado en vez de caer al fallback).
 
     Setup-clearing (antes del yield): protege tanto leaks cross-test como

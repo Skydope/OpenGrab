@@ -82,7 +82,7 @@ class AppState:
         return default, "default"
 
     def resolve_library_dir(self) -> Path:
-        """Resuelve library_dir — fuente unica para _finalize_desktop y api_job_file."""
+        """Resuelve library_dir — fuente unica para finalize_desktop y api_job_file."""
         raw, _ = self.resolve("library_dir", "", str)
         return Path(raw).resolve() if raw else self.out_dir.resolve()
 
@@ -154,7 +154,7 @@ class AppState:
             return "cancelled"
         return "noop"
 
-    def _spawn_download(self, job_id: str, url: str, quality: str,
+    def spawn_download(self, job_id: str, url: str, quality: str,
                         subs: bool = False, thumb: bool = False,
                         infojson: bool = False, incognito: bool = False,
                         incognito_dir: str | None = None,
@@ -224,7 +224,7 @@ class AppState:
                             log.info(
                                 "watch: nuevo video → job %s (%s)", job_id, v.get("title", "?"),
                             )
-                            self._spawn_download(job_id, v["url"], quality)
+                            self.spawn_download(job_id, v["url"], quality)
                             dispatched += 1
                         if dispatched:
                             self._last_watch_dispatch = time.time()
@@ -246,7 +246,7 @@ class AppState:
             # workdirs husk ya registrados. Corre en el event loop (no en el
             # worker thread), sin race sobre self.jobs y dándole a Windows un
             # margen para soltar handles antes del rmtree.
-            if self.storage._pending_cleanups and self.count_active_jobs() == 0:
+            if self.storage.pending_cleanups and self.count_active_jobs() == 0:
                 self.storage.flush_pending_cleanups()
             max_jobs = self.resolve("max_jobs", 2, int)[0]
             # MAX_JOBS es un techo de CONCURRENCIA, no de despachos-por-tick. Si ya
@@ -265,7 +265,7 @@ class AppState:
                     self.db.update_job(job_id, status="error", error=t("error.storage_full_short"))
                     continue
                 self.db.update_job(job_id, status="starting")
-                self._spawn_download(
+                self.spawn_download(
                     job_id, job_dict["url"], job_dict["quality"],
                     subs=bool(job_dict.get("subs")),
                     thumb=bool(job_dict.get("thumb")),
