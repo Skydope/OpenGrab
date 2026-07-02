@@ -127,8 +127,16 @@ class TestMoveJobFile:
 # Endpoint POST /api/jobs/{id}/move (integración)
 # --------------------------------------------------------------------------- #
 
+@pytest.fixture
+def _desktop_mode(client_no_auth, monkeypatch):
+    """El endpoint /move es desktop-only: los tests de camino feliz lo simulan."""
+    import routers.jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "IS_DESKTOP", True)
+
+
 class TestMoveEndpoint:
-    def test_move_ok(self, client_no_auth, tmp_path: Path) -> None:
+    def test_move_ok(self, client_no_auth, _desktop_mode, tmp_path: Path) -> None:
         state: AppState = client_no_auth.app.state.opengrab
         src = _done_job(state, "j1")
         dest = tmp_path / "elegida"
@@ -142,24 +150,38 @@ class TestMoveEndpoint:
         assert (dest / "video.mp4").exists()
         assert not src.exists()
 
-    def test_move_falta_dest(self, client_no_auth) -> None:
+    def test_move_falta_dest(self, client_no_auth, _desktop_mode) -> None:
         state: AppState = client_no_auth.app.state.opengrab
         _done_job(state, "j1")
         r = client_no_auth.post("/api/jobs/j1/move", json={})
         assert r.status_code == 400
 
-    def test_move_job_no_listo_409(self, client_no_auth, tmp_path: Path) -> None:
+    def test_move_job_no_listo_409(self, client_no_auth, _desktop_mode, tmp_path: Path) -> None:
         state: AppState = client_no_auth.app.state.opengrab
         _done_job(state, "j1")
         state.jobs["j1"].status = "downloading"
         r = client_no_auth.post("/api/jobs/j1/move", json={"dest": str(tmp_path / "d")})
         assert r.status_code == 409
 
-    def test_move_job_inexistente_410(self, client_no_auth, tmp_path: Path) -> None:
+    def test_move_job_inexistente_410(self, client_no_auth, _desktop_mode, tmp_path: Path) -> None:
         r = client_no_auth.post("/api/jobs/nope/move", json={"dest": str(tmp_path / "d")})
         assert r.status_code == 410
 
-    def test_move_destino_es_archivo_400(self, client_no_auth, tmp_path: Path) -> None:
+    def test_move_bloqueado_en_modo_server(self, client_no_auth, tmp_path: Path) -> None:
+        """Regresión: en modo server, /move seria una primitiva de escritura
+        en paths arbitrarios del FS del servidor elegidos por un cliente
+        remoto. Debe rechazarse con 409, igual que open-folder."""
+        state: AppState = client_no_auth.app.state.opengrab
+        src = _done_job(state, "j1")
+        dest = tmp_path / "no_deberia_crearse"
+
+        r = client_no_auth.post("/api/jobs/j1/move", json={"dest": str(dest)})
+
+        assert r.status_code == 409
+        assert src.exists()  # el archivo no se movió
+        assert not dest.exists()  # el directorio no se creó
+
+    def test_move_destino_es_archivo_400(self, client_no_auth, _desktop_mode, tmp_path: Path) -> None:
         state: AppState = client_no_auth.app.state.opengrab
         _done_job(state, "j1")
         bad = tmp_path / "archivo"

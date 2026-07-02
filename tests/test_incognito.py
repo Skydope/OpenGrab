@@ -350,3 +350,68 @@ def test_api_incognito_blank_dir_rejected(client):
         },
     )
     assert r.status_code == 400
+
+
+def test_api_incognito_dir_fuera_de_out_dir_rechazado_en_server(client):
+    """Regresión: en modo server, incognito_dir era un path arbitrario del FS
+    del servidor (primitiva de escritura remota). Debe acotarse a out_dir."""
+    r = client.post(
+        "/api/jobs",
+        json={
+            "url": "https://youtu.be/abc", "quality": "best",
+            "incognito": True, "incognito_dir": "/etc/cron.d",
+        },
+    )
+    assert r.status_code == 400
+
+
+def test_api_incognito_dir_traversal_rechazado_en_server(client):
+    """Un path que resuelve fuera de out_dir via '..' también se rechaza."""
+    state = client.app.state.opengrab
+    sneaky = str(state.out_dir / ".." / "afuera")
+    r = client.post(
+        "/api/jobs",
+        json={
+            "url": "https://youtu.be/abc", "quality": "best",
+            "incognito": True, "incognito_dir": sneaky,
+        },
+    )
+    assert r.status_code == 400
+
+
+def test_api_incognito_dir_dentro_de_out_dir_pasa_validacion(client, monkeypatch):
+    """Un destino dentro de out_dir pasa el gate (se mockea el spawn para no
+    lanzar una descarga real)."""
+    from state import AppState
+
+    monkeypatch.setattr(AppState, "_spawn_download",
+                        lambda self, *a, **kw: None)
+    state = client.app.state.opengrab
+    inside = str(state.out_dir / "privado")
+    r = client.post(
+        "/api/jobs",
+        json={
+            "url": "https://youtu.be/abc", "quality": "best",
+            "incognito": True, "incognito_dir": inside,
+        },
+    )
+    assert r.status_code == 200
+
+
+def test_api_incognito_dir_arbitrario_permitido_en_desktop(client, monkeypatch):
+    """En desktop (server == cliente) elegir cualquier carpeta ES la feature."""
+    import routers.jobs as jobs_mod
+    from state import AppState
+
+    monkeypatch.setattr(jobs_mod, "IS_DESKTOP", True)
+    monkeypatch.setattr(AppState, "_spawn_download",
+                        lambda self, *a, **kw: None)
+    with tempfile.TemporaryDirectory() as anywhere:
+        r = client.post(
+            "/api/jobs",
+            json={
+                "url": "https://youtu.be/abc", "quality": "best",
+                "incognito": True, "incognito_dir": anywhere,
+            },
+        )
+    assert r.status_code == 200
