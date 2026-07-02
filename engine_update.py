@@ -73,7 +73,8 @@ def prepend_to_path(engine_dir: Path) -> bool:
 
 def _latest_wheel_url() -> tuple[str, str]:
     """(version, url) del wheel más nuevo de yt-dlp en PyPI. Toca red."""
-    with urllib.request.urlopen(_PYPI_JSON, timeout=15) as r:
+    # URL constante https a PyPI
+    with urllib.request.urlopen(_PYPI_JSON, timeout=15) as r:  # nosec B310
         data = json.load(r)
     version = data["info"]["version"]
     for f in data["releases"].get(version, []):
@@ -86,7 +87,8 @@ def _install_wheel(url: str, engine_dir: Path) -> None:
     """Descarga el wheel (un zip) y extrae yt_dlp/ a engine_dir. Toca red."""
     engine_dir.mkdir(parents=True, exist_ok=True)
     tmp = engine_dir / "_yt_dlp.whl"
-    with urllib.request.urlopen(url, timeout=60) as r:
+    # URL de release de PyPI (https, derivada del JSON oficial)
+    with urllib.request.urlopen(url, timeout=60) as r:  # nosec B310
         tmp.write_bytes(r.read())
     with zipfile.ZipFile(tmp) as z:
         for name in z.namelist():

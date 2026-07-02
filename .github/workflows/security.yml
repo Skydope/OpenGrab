@@ -1,0 +1,43 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Semanal: las vulnerabilidades de deps aparecen sin que el repo cambie,
+    # asi que auditar solo en push dejaria ventanas ciegas largas.
+    - cron: "0 6 * * 1"
+
+jobs:
+  sast:
+    name: bandit (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install bandit
+      # Politica: falla en MEDIUM o superior (-ll). Los falsos positivos se
+      # suprimen con "# nosec BXXX" puntual + comentario justificando en la
+      # linea anterior — nunca con skips globales. Los LOW (subprocess de
+      # open-folder, asserts) se revisan a mano en el reporte, no bloquean.
+      - run: bandit -ll -r . -x ./tests,./vendor,./dist,./build
+
+  deps-audit:
+    name: pip-audit (dependencias)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      # Audita las dependencias declaradas en pyproject.toml (runtime + dev)
+      # contra las bases de vulnerabilidades PyPI/OSV. Complementa al Trivy
+      # de la imagen Docker: aca se cubre el arbol Python puro, incluidas
+      # las builds de escritorio que no pasan por la imagen.
+      - run: pip install pip-audit
+      - run: pip install -e ".[dev,desktop]"
+      - run: pip-audit --skip-editable

@@ -116,10 +116,12 @@ _no_auth_env = os.environ.get("OPENGRAB_NO_AUTH", "").strip()
 _ini_no_auth = _ini.get("no_auth", "").strip().lower()
 
 if _no_auth_env == "1":
-    TOKEN = ""
+    # no es una password: string vacio = auth deshabilitada explicitamente
+    TOKEN = ""  # nosec B105
     TOKEN_WAS_GENERATED = False
 elif _ini_no_auth in ("true", "1", "yes"):
-    TOKEN = ""
+    # idem: opt-out explicito de auth via ini
+    TOKEN = ""  # nosec B105
     TOKEN_WAS_GENERATED = False
 elif not _raw_token:
     TOKEN = secrets.token_urlsafe(16)

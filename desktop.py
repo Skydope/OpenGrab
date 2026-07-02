@@ -227,7 +227,8 @@ def _wait_healthy(port: int, timeout: float = _HEALTH_TIMEOUT) -> bool:
     url = f"http://127.0.0.1:{port}/health"
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=1) as r:
+            # healthcheck a localhost propio (http://127.0.0.1)
+            with urllib.request.urlopen(url, timeout=1) as r:  # nosec B310
                 if r.status == 200:
                     return True
         except (OSError, ValueError):
@@ -440,7 +441,8 @@ def _poll_tray_status(port: int) -> None:
     last_active: bool | None = None
     while not _tray_stop.wait(1.5):
         try:
-            with urllib.request.urlopen(url, timeout=2) as r:
+            # request al propio server local con token propio
+            with urllib.request.urlopen(url, timeout=2) as r:  # nosec B310
                 payload = json.loads(r.read().decode("utf-8"))
             jobs = payload if isinstance(payload, list) else []
         except (OSError, ValueError):  # urlopen (network) + json.loads (parse); falla → sin jobs

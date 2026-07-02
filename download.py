@@ -35,7 +35,8 @@ log = logging.getLogger("opengrab")
 # hosts que sean IP interna (privada/loopback/link-local/reservada) o el endpoint de
 # metadata cloud (169.254.169.254, que cae en link-local).
 
-_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+# es la BLOCKLIST anti-SSRF, no un bind
+_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}  # nosec B104
 
 # User-Agent genérico de navegador para modo incógnito. El default de yt-dlp es
 # reconocible como herramienta; este lo enmascara como Chrome. NOTA DE
