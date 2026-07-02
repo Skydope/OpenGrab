@@ -308,7 +308,7 @@ class DownloadContext:
 
 def _handle_incognito_completion(
     state: AppState, ctx: DownloadContext,
-    loop: asyncio.AbstractEventLoop, evt: asyncio.Event,
+    loop: asyncio.AbstractEventLoop,
     job: Any, workdir: Path, final: Path, title: str, mime: str,
 ) -> None:
     """Post-descarga incógnito: move + wipe + delete DB row."""
@@ -330,7 +330,7 @@ def _handle_incognito_completion(
             "archivo preservado para recuperación manual en %s (%s)",
             ctx.job_id, final, move_exc,
         )
-        loop.call_soon_threadsafe(evt.set)
+        loop.call_soon_threadsafe(state.notify_job, ctx.job_id)
         return
     job.status = "done"
     job.finished = time.time()
@@ -349,12 +349,12 @@ def _handle_incognito_completion(
     except sqlite3.DatabaseError:
         log.exception("job %s: no se pudo borrar fila incógnito de DB", ctx.job_id)
     log.info("job %s: completado (incógnito, sin historial)", ctx.job_id)
-    loop.call_soon_threadsafe(evt.set)
+    loop.call_soon_threadsafe(state.notify_job, ctx.job_id)
 
 
 def _finalize_download(
     state: AppState, ctx: DownloadContext,
-    loop: asyncio.AbstractEventLoop, evt: asyncio.Event,
+    loop: asyncio.AbstractEventLoop,
     job: Any, workdir: Path, final: Path, info: dict[str, Any],
     title: str, ext: str, mime: str,
     t_start: float = 0.0,
@@ -410,12 +410,12 @@ def _finalize_download(
         except OSError:
             pass
 
-    loop.call_soon_threadsafe(evt.set)
+    loop.call_soon_threadsafe(state.notify_job, ctx.job_id)
 
 
 def _handle_termination(
     state: AppState, ctx: DownloadContext,
-    loop: asyncio.AbstractEventLoop, evt: asyncio.Event,
+    loop: asyncio.AbstractEventLoop,
     job: Any, workdir: Path,
     t_start: float = 0.0,
     is_cancelled: bool = False, exc: Exception | None = None,
@@ -475,7 +475,7 @@ def _handle_termination(
             time.monotonic() - t_start
         )
 
-    loop.call_soon_threadsafe(evt.set)
+    loop.call_soon_threadsafe(state.notify_job, ctx.job_id)
 
 
 def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
@@ -571,7 +571,7 @@ def _run_download(state: AppState, ctx: DownloadContext,
             job.eta = d.get("_eta_str", "").strip()
             job.downloaded = done
             job.total = total
-            loop.call_soon_threadsafe(evt.set)
+            loop.call_soon_threadsafe(state.notify_job, ctx.job_id)
         elif status == "finished":
             job.status = "processing"
             job.percent = 100.0
@@ -581,7 +581,7 @@ def _run_download(state: AppState, ctx: DownloadContext,
                 if ctx.quality == "audio"
                 else _t("download.muxing")
             )
-            loop.call_soon_threadsafe(evt.set)
+            loop.call_soon_threadsafe(state.notify_job, ctx.job_id)
 
     opts = _build_ydl_opts(ctx, workdir, max_size_mb, hook)
 
@@ -637,15 +637,15 @@ def _run_download(state: AppState, ctx: DownloadContext,
             mime = "audio/mpeg" if is_audio else "video/mp4"
 
             if ctx.incognito:
-                _handle_incognito_completion(state, ctx, loop, evt, job, workdir, final, title, mime)
+                _handle_incognito_completion(state, ctx, loop, job, workdir, final, title, mime)
                 return
 
             # Desktop finalize + server move + DB persist
-            _finalize_download(state, ctx, loop, evt, job, workdir, final, info, title, ext, mime, t_start)
+            _finalize_download(state, ctx, loop, job, workdir, final, info, title, ext, mime, t_start)
         except DownloadCancelled:
-            _handle_termination(state, ctx, loop, evt, job, workdir, t_start, is_cancelled=True)
+            _handle_termination(state, ctx, loop, job, workdir, t_start, is_cancelled=True)
         except (DownloadError, OSError, RuntimeError) as exc:  # fallas esperables de yt-dlp + filesystem
-            _handle_termination(state, ctx, loop, evt, job, workdir, t_start, is_cancelled=False, exc=exc)
+            _handle_termination(state, ctx, loop, job, workdir, t_start, is_cancelled=False, exc=exc)
         finally:
             state.cancel_requests.discard(ctx.job_id)
-            loop.call_soon_threadsafe(evt.set)
+            loop.call_soon_threadsafe(state.notify_job, ctx.job_id)

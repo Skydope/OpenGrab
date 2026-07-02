@@ -980,3 +980,35 @@ def test_metrics_channels_watched(client, app_state):
     after = client.get("/api/metrics").json()["channels_watched"]
     assert after - before >= 1
 
+
+
+# --------------------------------------------------------------------------- #
+# notify_job: multi-suscriptor sin clear() compartido
+# --------------------------------------------------------------------------- #
+
+def test_notify_job_wakes_all_subscribers(client):
+    """Regresión: con Event compartido + clear() por suscriptor, el clear de
+    un stream consumía la señal del otro. notify_job (replace-then-set) debe
+    despertar a todos: ambos Events tomados ANTES de la señal quedan seteados
+    y el dict apunta a un Event fresco."""
+    import asyncio as aio
+
+    state = client.app.state.opengrab
+    state.jobs["ntf1"] = __import__("models").Job(id="ntf1", created=1.0)
+    state.job_events["ntf1"] = aio.Event()
+
+    # Dos suscriptores toman el Event vigente (misma referencia).
+    sub_a = state.job_events["ntf1"]
+    sub_b = state.job_events["ntf1"]
+
+    state.notify_job("ntf1")
+
+    assert sub_a.is_set() and sub_b.is_set()  # nadie se roba la señal
+    fresh = state.job_events["ntf1"]
+    assert fresh is not sub_a and not fresh.is_set()  # próximo ciclo, limpio
+
+    # Señal sobre job inexistente: no-op, no explota.
+    state.notify_job("no-existe")
+
+    state.jobs.pop("ntf1", None)
+    state.job_events.pop("ntf1", None)

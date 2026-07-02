@@ -107,6 +107,27 @@ class AppState:
             if j.status in ("queued", "starting", "downloading", "processing")
         )
 
+    def notify_job(self, job_id: str) -> None:
+        """Despierta a TODOS los suscriptores SSE de un job (replace-then-set).
+
+        Con un Event compartido y ``clear()`` en cada suscriptor, dos streams
+        del mismo job se pisan las señales: el clear de uno puede consumir el
+        set que el otro todavía no vio (se autocuraba por el timeout de 2s,
+        pero con hasta 2s de latencia espuria). Acá el Event nunca se clearea:
+        se REEMPLAZA por uno fresco y se setea el viejo. Cada suscriptor toma
+        el Event vigente en cada iteración, así una señal despierta a todos y
+        ninguno puede robársela a otro.
+
+        Debe llamarse desde el event loop (los worker threads la agendan con
+        ``loop.call_soon_threadsafe``): el swap del dict no necesita lock
+        porque corre siempre en el mismo thread.
+        """
+        old = self.job_events.get(job_id)
+        if old is None:
+            return  # job descartado/terminado: no queda nadie que despertar
+        self.job_events[job_id] = asyncio.Event()
+        old.set()
+
     def dismiss_job_from_view(self, job_id: str) -> bool:
         """Remueve un job terminado de la vista de sesion sin tocar DB ni archivos.
 

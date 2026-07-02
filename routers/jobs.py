@@ -190,6 +190,9 @@ async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str
         job = state.jobs.get(job_id)
         if job is None:
             break
+        # Tomar el Event VIGENTE en cada iteración: notify_job lo reemplaza en
+        # cada señal (replace-then-set), así múltiples suscriptores del mismo
+        # job despiertan todos sin pisarse (acá no hay clear() compartido).
         event = state.job_events.get(job_id)
         if event is None:
             break
@@ -197,7 +200,6 @@ async def _job_events_stream(state: AppState, job_id: str) -> AsyncGenerator[str
             await asyncio.wait_for(event.wait(), timeout=2.0)
         except TimeoutError:
             pass
-        event.clear()
         snapshot = {
             "status": job.status,
             "percent": job.percent,
