@@ -87,6 +87,10 @@ async def api_backup_import(
                 eid,
                 entry.get("url", ""),
                 entry.get("quality", "best"),
+                # created NO es columna actualizable (whitelist _UPDATABLE):
+                # se fija en el INSERT. Pasarla a update_job lanzaba ValueError
+                # y hacia fallar la importacion de CADA entrada de history.
+                created=entry.get("created") or None,
             )
             state.db.update_job(
                 eid,
@@ -101,7 +105,6 @@ async def api_backup_import(
                 extractor=entry.get("extractor", ""),
                 video_id=entry.get("video_id", ""),
                 workdir=entry.get("workdir", ""),
-                created=entry.get("created", 0),
                 completed=entry.get("completed", 0),
             )
             imported["history"] += 1
