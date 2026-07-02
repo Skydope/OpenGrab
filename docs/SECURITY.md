@@ -1,5 +1,52 @@
 # Security Policy
 
+## Threat Model
+
+OpenGrab runs in two deployment modes with different trust boundaries. Everything
+else in this document hangs off this distinction.
+
+**Desktop mode** (`OPENGRAB_DESKTOP=1`): server and client are the same person on
+the same machine. The web UI is a local window (pywebview) talking to
+`127.0.0.1`. Filesystem-touching features (pick any folder for incognito
+delivery, "Save to…" move, open-folder) are legitimate here because the "remote
+client" is the machine's owner.
+
+**Server mode** (Docker/LAN): the auth token is the trust boundary. Anyone
+holding the token is trusted to *download media and read their results* — and
+nothing more. Token holders must NOT gain: arbitrary filesystem writes outside
+`OPENGRAB_DIR` (hence incognito destinations are confined and `/move` is
+desktop-only), arbitrary reads (file-serving endpoints validate paths against
+allowed roots), or the ability to make the server contact internal networks
+(SSRF gate + optional egress firewall).
+
+### In scope (what OpenGrab defends against)
+
+| Threat | Control |
+|---|---|
+| SSRF via user-supplied URLs (yt-dlp requests from the server) | Two-layer defense: app-level gate (`_is_safe_url`, full DNS validation) + host-level egress firewall (see below) |
+| Unauthenticated access to jobs, files, settings | Token auth on every route, enforced by a contract test that enumerates all routes (`tests/test_auth_contract.py`) |
+| Path traversal on file-serving endpoints | `resolve()` + `is_relative_to()` against allowed roots |
+| SQL injection | Parameterized queries everywhere; dynamic column names only from internal whitelists (`_UPDATABLE`) |
+| Rate-based abuse of expensive endpoints | slowapi limits on write/expensive routes |
+| Supply chain (yt-dlp, deps, images) | Exact yt-dlp pin, runtime auto-update off by default, Trivy on the Docker image, pip-audit + bandit in CI, SBOM/attestations on multi-arch builds, VirusTotal gate on release binaries |
+| Filename/header injection when serving downloads | Filename sanitization (`_safe_name`) + RFC 5987 Content-Disposition encoding |
+
+### Out of scope (explicitly NOT defended)
+
+- **Malicious token holders in server mode beyond the boundary above.** A token
+  holder can fill the disk up to `max_total_mb`, enumerate history, and delete
+  entries. OpenGrab is single-tenant by design; don't share tokens with people
+  you don't trust with your download library.
+- **Forensic-grade deletion.** See the incognito section: 3-pass overwrite helps
+  on magnetic HDDs only. Use full-disk encryption for real guarantees.
+- **Network-level privacy.** DNS lookups and TLS SNI reveal destination hosts to
+  the network. Incognito mode does not add proxy/DoH.
+- **A compromised yt-dlp or extractor ecosystem.** OpenGrab executes yt-dlp
+  in-process; the exact-version pin plus disabled auto-update is the mitigation,
+  not a sandbox. Host egress filtering limits blast radius.
+- **Physical access to the machine.** DB, config, and downloads are unencrypted
+  at rest.
+
 ## SSRF Defense (Defense in Depth)
 
 OpenGrab acts as a proxy — yt-dlp makes HTTP requests from your server to arbitrary URLs. A two-layer defense prevents Server-Side Request Forgery.
@@ -87,11 +134,13 @@ generic User-Agent), and drop the DB row on every terminal state. What it does
   `getaddrinfo()` through the system resolver **before** yt-dlp touches the URL,
   on every download, incognito or not. The destination host is visible to your
   DNS provider. Incognito does not add DoH/proxy (explicitly out of MVP scope).
-- **`incognito_dir` is not allowlisted in server mode.** As with the existing
-  "Save to…" flow, an authenticated client picks an arbitrary server-side path to
-  write to. This is fine for desktop (server == client) but in a multi-user server
-  deployment it lets a client write outside the default output dir. Treat the auth
-  token as the trust boundary; do not expose incognito to untrusted clients.
+- **`incognito_dir` is confined to the output dir in server mode.** In desktop
+  mode (server == client) the user picks any local folder — that is the feature.
+  In server mode (Docker/LAN), the destination must resolve inside `OPENGRAB_DIR`;
+  arbitrary server-side paths are rejected with 400 (an authenticated remote
+  client must not gain a write primitive outside the downloads volume). The
+  related "Save to…" endpoint (`/api/jobs/{id}/move`) is desktop-only for the
+  same reason.
 - **In-memory job cards remain for the session.** The DB row is gone, but the
   live card (title, delivered path) stays in `AppState.jobs` until evicted or the
   app restarts. It is not written to disk.
@@ -108,6 +157,39 @@ Do not open public issues until a fix is released.
 ---
 
 ## Español
+
+### Modelo de Amenazas
+
+OpenGrab corre en dos modos con límites de confianza distintos; todo lo demás de
+este documento cuelga de esa distinción.
+
+**Modo escritorio** (`OPENGRAB_DESKTOP=1`): servidor y cliente son la misma
+persona en la misma máquina. Las features que tocan el filesystem (carpeta libre
+para incógnito, "Guardar en…", abrir carpeta) son legítimas porque el "cliente
+remoto" es el dueño de la máquina.
+
+**Modo servidor** (Docker/LAN): el token de auth es el límite de confianza.
+Quien tiene el token puede *descargar y leer sus resultados* — y nada más. Un
+portador del token NO debe ganar: escrituras arbitrarias fuera de
+`OPENGRAB_DIR` (por eso incógnito queda acotado y `/move` es solo-escritorio),
+lecturas arbitrarias (los endpoints de archivos validan contra raíces
+permitidas), ni la capacidad de hacer que el servidor contacte redes internas
+(gate SSRF + firewall de egreso opcional).
+
+**Dentro del alcance:** SSRF vía URLs de usuario (defensa en dos capas), acceso
+no autenticado (auth en toda ruta, verificado por un test de contrato que
+enumera todas las rutas), path traversal en endpoints de archivos, inyección
+SQL (queries parametrizadas, columnas dinámicas solo de whitelists internas),
+abuso de endpoints costosos (rate limiting), y supply chain (pin exacto de
+yt-dlp, auto-update off por default, Trivy en la imagen, bandit + pip-audit en
+CI, SBOM/attestations, gate de VirusTotal en binarios de release).
+
+**Fuera del alcance (explícitamente NO se defiende):** portadores maliciosos
+del token más allá del límite descripto (OpenGrab es single-tenant por diseño),
+borrado con garantías forenses (ver sección incógnito), privacidad a nivel de
+red (DNS/SNI revelan el destino), un yt-dlp comprometido (el pin es la
+mitigación, no un sandbox; el egress filtering limita el radio de daño), y
+acceso físico a la máquina (DB y descargas sin cifrar en reposo).
 
 ### Defensa SSRF (Defensa en Profundidad)
 
@@ -140,11 +222,13 @@ genérico) y borran la fila de DB en todo estado terminal. Lo que **no** garanti
   con el resolver del sistema **antes** de que yt-dlp toque la URL, en toda
   descarga. El host destino es visible para tu proveedor DNS. Incógnito no agrega
   DoH/proxy (fuera del alcance del MVP).
-- **`incognito_dir` no tiene allowlist en modo servidor.** Igual que el flujo
-  "Guardar en…", un cliente autenticado elige una ruta arbitraria del servidor.
-  Está bien en escritorio (servidor == cliente); en un deploy multiusuario el
-  token de auth es el límite de confianza — no expongas incógnito a clientes no
-  confiables.
+- **`incognito_dir` queda acotado al directorio de salida en modo servidor.**
+  En escritorio (servidor == cliente) el usuario elige cualquier carpeta local —
+  esa es la feature. En modo servidor (Docker/LAN), el destino debe resolver
+  dentro de `OPENGRAB_DIR`; rutas arbitrarias del servidor se rechazan con 400
+  (un cliente remoto autenticado no debe ganar una primitiva de escritura fuera
+  del volumen de descargas). El endpoint "Guardar en…" (`/api/jobs/{id}/move`)
+  es solo-escritorio por el mismo motivo.
 
 ### Reportar Vulnerabilidades
 
