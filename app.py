@@ -24,7 +24,6 @@ import shutil
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
 
 from secure_delete import wipe_workdir
 
@@ -40,8 +39,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from config import (
     DB_PATH,
@@ -143,73 +142,135 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="OpenGrab", lifespan=_lifespan)
 
 
-class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
-        response = cast(Response, await call_next(request))
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        response.headers.setdefault(
-            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
-        )
-        return response
+# --------------------------------------------------------------------------- #
+# Middleware (ASGI puro)
+# --------------------------------------------------------------------------- #
+# Migrados desde BaseHTTPMiddleware deliberadamente:
+# - BaseHTTPMiddleware envuelve cada request en una task extra + streams
+#   memory, con overhead por-request y problemas conocidos con
+#   StreamingResponse (nuestro SSE de larga vida) ante desconexión del cliente.
+# - Los ContextVar seteados en ASGI puro corren en la MISMA task que el
+#   endpoint (propagación garantizada); BaseHTTPMiddleware dependía de que la
+#   task hija heredara el contexto.
+# Contrato ASGI: solo tocamos scope/mensajes, sin materializar Request/Response
+# salvo helpers baratos que no consumen el body.
 
 
-app.add_middleware(_SecurityHeadersMiddleware)
+class _SecurityHeadersMiddleware:
+    _HEADERS: tuple[tuple[str, str], ...] = (
+        ("X-Content-Type-Options", "nosniff"),
+        ("X-Frame-Options", "SAMEORIGIN"),
+        ("Referrer-Policy", "strict-origin-when-cross-origin"),
+        ("Permissions-Policy", "camera=(), microphone=(), geolocation=()"),
+    )
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in self._HEADERS:
+                    if name not in headers:  # setdefault: respetar overrides del endpoint
+                        headers.append(name, value)
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
-class _LanguageMiddleware(BaseHTTPMiddleware):
+class _LanguageMiddleware:
     """Resuelve el idioma del request: cookie > Accept-Language > default 'es'.
 
     El frontend persiste la preferencia en la cookie ``opengrab_lang``.
     Para desktop mode (pywebview), el tray lee el setting ``lang`` del ini.
+    ``set_lang`` usa ContextVar: en ASGI puro corre en la misma task que el
+    endpoint, así la propagación del contexto está garantizada.
     """
 
-    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
         from i18n import set_lang, detect_lang
 
+        # Request(scope) es un wrapper barato: leer cookies/headers no toca
+        # el body ni consume receive.
+        request = Request(scope)
         cookie_lang = request.cookies.get("opengrab_lang", "").strip()
         if cookie_lang in ("es", "en"):
             set_lang(cookie_lang)
         else:
-            accept = request.headers.get("accept-language", "")
-            set_lang(detect_lang(accept))
-        return cast(Response, await call_next(request))
+            set_lang(detect_lang(request.headers.get("accept-language", "")))
+        await self.app(scope, receive, send)
 
 
-app.add_middleware(_LanguageMiddleware)
+class _RequestLoggingMiddleware:
+    """Log estructurado + métrica Prometheus por request.
 
+    Captura el status en ``http.response.start`` y emite al completar la
+    respuesta. Para SSE, esto significa loguear al CERRAR el stream (no al
+    abrirlo), con la duración total de la conexión — coherente con lo que
+    medía la versión BaseHTTPMiddleware.
+    """
 
-class _RequestLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
         t0 = time.monotonic()
-        response = cast(Response, await call_next(request))
-        if request.url.path != "/health":
-            dur_ms = (time.monotonic() - t0) * 1000
-            log.info(
-                "%s %s %d %.0fms",
-                request.method, request.url.path,
-                response.status_code,
-                dur_ms,
-                extra={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status": response.status_code,
-                    "duration_ms": round(dur_ms, 1),
-                },
-            )
-        from metrics import http_requests
+        status_code = 500  # si la app explota antes de response.start
 
-        route = request.scope.get("route")
-        endpoint = route.path if route else request.url.path
-        http_requests.labels(
-            endpoint=endpoint,
-            method=request.method,
-            status_code=str(response.status_code),
-        ).inc()
-        return response
+        async def send_and_capture(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = int(message["status"])
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_and_capture)
+        finally:
+            method = scope.get("method", "?")
+            path = scope.get("path", "?")
+            if path != "/health":
+                dur_ms = (time.monotonic() - t0) * 1000
+                log.info(
+                    "%s %s %d %.0fms",
+                    method, path, status_code, dur_ms,
+                    extra={
+                        "method": method,
+                        "path": path,
+                        "status": status_code,
+                        "duration_ms": round(dur_ms, 1),
+                    },
+                )
+            from metrics import http_requests
+
+            # El router setea scope["route"] al matchear: para cuando la
+            # respuesta terminó, ya está disponible (mismo dict de scope).
+            route = scope.get("route")
+            endpoint = route.path if route else path
+            http_requests.labels(
+                endpoint=endpoint,
+                method=method,
+                status_code=str(status_code),
+            ).inc()
 
 
+# Orden de add_middleware: el último agregado queda más AFUERA. Se preserva el
+# orden original: logging (externo) → language → security headers (interno).
+app.add_middleware(_SecurityHeadersMiddleware)
+app.add_middleware(_LanguageMiddleware)
 app.add_middleware(_RequestLoggingMiddleware)
 
 
