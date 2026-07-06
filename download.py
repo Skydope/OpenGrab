@@ -573,6 +573,7 @@ def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
     _ffmpeg = resource_path("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
     if _ffmpeg.exists():
         opts["ffmpeg_location"] = str(_ffmpeg)
+        opts["ffprobe_location"] = str(_ffmpeg)
 
     return opts
 

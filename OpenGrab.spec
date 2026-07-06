@@ -71,7 +71,7 @@ datas += [("pyproject.toml", ".")]
 # ffmpeg bundleado. El nombre depende de la plataforma (.exe en Windows).
 _ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
 if os.path.exists(f"vendor/{_ffmpeg_name}"):
-    binaries += [(f"vendor/{_ffmpeg_name}", ".")]
+    datas += [(f"vendor/{_ffmpeg_name}", ".")]
 
 # Icono: ICO en Windows, ICNS en macOS. Linux no tiene icono de binario nativo.
 _icon = None
