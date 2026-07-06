@@ -21,6 +21,9 @@ class JobReq(BaseModel):
     # validación de consistencia vive en api_create_job.
     clip_start: float | None = None
     clip_end: float | None = None
+    # True = corte exacto (re-encode); False = corte al keyframe (-c copy).
+    # Solo tiene efecto si hay clip. Para audio se ignora (ver download.py).
+    clip_precise: bool = True
 
 
 class ChannelReq(BaseModel):
@@ -49,6 +52,7 @@ class Job(BaseModel):
     incognito: bool = False
     clip_start: float | None = None
     clip_end: float | None = None
+    clip_precise: bool = True
 
 
 class BatchReq(BaseModel):
