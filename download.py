@@ -18,7 +18,11 @@ from urllib.parse import urlparse
 from secure_delete import wipe_workdir
 
 import yt_dlp  # type: ignore[import-untyped]
-from yt_dlp.utils import DownloadCancelled, DownloadError  # type: ignore[import-untyped]
+from yt_dlp.utils import (  # type: ignore[import-untyped]
+    DownloadCancelled,
+    DownloadError,
+    download_range_func,
+)
 
 from config import FORMATS, IS_DESKTOP, resource_path
 from state import AppState
@@ -304,6 +308,13 @@ class DownloadContext:
     incognito: bool = False
     incognito_dir: str | None = None
     playlist_subdir: str | None = None
+    # Feature Clips: rango en segundos. Ambos None = descarga completa.
+    clip_start: float | None = None
+    clip_end: float | None = None
+
+    @property
+    def is_clip(self) -> bool:
+        return self.clip_start is not None and self.clip_end is not None
 
 
 def _handle_incognito_completion(
@@ -499,6 +510,19 @@ def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
         "fragment_retries": 5,
         "retries": 5,
     }
+    # Feature Clips: descargar solo el rango pedido. En extractores HLS/DASH
+    # yt-dlp baja únicamente los fragmentos del rango; en archivo único baja y
+    # corta con ffmpeg. force_keyframes_at_cuts re-encodea el segmento para un
+    # corte exacto (sin él cae al keyframe más cercano, error de hasta varios
+    # segundos); el costo de CPU es proporcional al clip, no al video.
+    # Va ANTES del postprocessor de audio: el corte ocurre en descarga, así que
+    # FFmpegExtractAudio recibe el segmento ya recortado.
+    if ctx.is_clip:
+        opts["download_ranges"] = download_range_func(
+            None, [(ctx.clip_start, ctx.clip_end)]
+        )
+        opts["force_keyframes_at_cuts"] = True
+
     if is_audio:
         opts["postprocessors"] = [
             {
