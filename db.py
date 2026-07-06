@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Estados que cuentan como "en curso" (concurrencia, dedup, conteos).
 ACTIVE_STATUSES = ("queued", "starting", "downloading", "processing")
@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     playlist_subdir TEXT,
     subs        INTEGER NOT NULL DEFAULT 0,
     thumb       INTEGER NOT NULL DEFAULT 0,
-    infojson    INTEGER NOT NULL DEFAULT 0
+    infojson    INTEGER NOT NULL DEFAULT 0,
+    clip_start  REAL,
+    clip_end    REAL
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created);
@@ -155,6 +157,14 @@ class Database:
                     self._conn.execute(
                         f"ALTER TABLE jobs ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"
                     )
+        # v6: rango de clip (feature Clips). NULL = descarga completa. Persistir
+        # es obligatorio: un job 'queued' con clip que sobrevive a un restart es
+        # re-despachado por dispatch_loop desde la fila; sin estas columnas se
+        # re-lanzaria como descarga completa en silencio.
+        if from_version < 6:
+            for col in ("clip_start", "clip_end"):
+                if col not in cols:
+                    self._conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} REAL")
 
     def schema_version(self) -> int:
         with self._lock:
@@ -173,15 +183,18 @@ class Database:
         workdir: str | None = None, incognito: bool = False,
         playlist_subdir: str | None = None,
         subs: bool = False, thumb: bool = False, infojson: bool = False,
+        clip_start: float | None = None, clip_end: float | None = None,
     ) -> None:
         created = time.time() if created is None else created
         with self._lock:
             self._conn.execute(
                 "INSERT INTO jobs (id, url, quality, status, created, workdir, "
-                "incognito, playlist_subdir, subs, thumb, infojson) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "incognito, playlist_subdir, subs, thumb, infojson, "
+                "clip_start, clip_end) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (job_id, url, quality, status, created, workdir, int(incognito),
-                 playlist_subdir, int(subs), int(thumb), int(infojson)),
+                 playlist_subdir, int(subs), int(thumb), int(infojson),
+                 clip_start, clip_end),
             )
             self._conn.commit()
 
