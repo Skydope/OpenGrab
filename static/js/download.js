@@ -43,7 +43,8 @@ window.og.download = async function() {
     return;
   }
   const clip = this.clipEnabled
-    ? { clip_start: this.clipStart, clip_end: this.clipEnd }
+    ? { clip_start: this.clipStart, clip_end: this.clipEnd,
+        clip_precise: this.clipPrecise }
     : {};
   // Reset solo de la vista enfocada (no toca otras tarjetas en curso).
   this.resetFocusView();

@@ -12,6 +12,9 @@ window.og.clipStartText = "0:00";
 window.og.clipEndText = "0:00";
 window.og.clipStartInvalid = false;
 window.og.clipEndInvalid = false;
+// true = corte exacto (re-encode), false = corte al keyframe (-c copy).
+// Solo aplica a video; en audio el backend ya corta rápido y exacto.
+window.og.clipPrecise = true;
 
 const CLIP_MIN_GAP = 1; // segundos
 
@@ -45,6 +48,7 @@ window.og.clipReset = function(duration) {
   this.clipEnd = this.clipDuration;
   this.clipStartInvalid = false;
   this.clipEndInvalid = false;
+  this.clipPrecise = true;
   this.clipRefreshText();
 };
 

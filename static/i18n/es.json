@@ -303,5 +303,7 @@
   "ui.clip_end": "Hasta",
   "ui.clip_invalid": "Rango de clip inválido.",
   "ui.clip_downloading": "Descargando clip…",
-  "ui.clip_length": "Duración del clip"
+  "ui.clip_length": "Duración del clip",
+  "ui.clip_precise": "Corte exacto",
+  "ui.clip_precise_hint": "Apagado: el corte cae al keyframe más cercano (±5 s) pero es casi instantáneo. Para audio el corte ya es exacto y rápido."
 }

@@ -182,6 +182,14 @@
           <span class="clip-length"
                 x-text="t('ui.clip_length') + ': ' + clipLength()"></span>
         </div>
+        <div class="clip-precise-row" x-show="quality !== 'audio'">
+          <label class="extra-toggle">
+            <input type="checkbox" x-model="clipPrecise">
+            <span x-text="t('ui.clip_precise')"></span>
+          </label>
+          <p class="clip-hint" x-show="!clipPrecise"
+             x-text="t('ui.clip_precise_hint')"></p>
+        </div>
       </div>
     </div>
 

@@ -303,5 +303,7 @@
   "ui.clip_end": "To",
   "ui.clip_invalid": "Invalid clip range.",
   "ui.clip_downloading": "Downloading clip…",
-  "ui.clip_length": "Clip length"
+  "ui.clip_length": "Clip length",
+  "ui.clip_precise": "Exact cut",
+  "ui.clip_precise_hint": "Off: the cut snaps to the nearest keyframe (±5 s) but is nearly instant. For audio the cut is already exact and fast."
 }
