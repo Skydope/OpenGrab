@@ -179,14 +179,17 @@ class AppState:
                         subs: bool = False, thumb: bool = False,
                         infojson: bool = False, incognito: bool = False,
                         incognito_dir: str | None = None,
-                        playlist_subdir: str | None = None) -> None:
+                        playlist_subdir: str | None = None,
+                        clip_start: float | None = None,
+                        clip_end: float | None = None) -> None:
         """Crea Job en memoria + Event y lanza _run_download en thread.
 
         Precondicion: la fila en DB ya existe en el estado correcto.
         """
         from download import _run_download, DownloadContext  # local: evita el ciclo state<->download
 
-        self.jobs[job_id] = Job(id=job_id, created=time.time(), incognito=incognito)
+        self.jobs[job_id] = Job(id=job_id, created=time.time(), incognito=incognito,
+                                clip_start=clip_start, clip_end=clip_end)
         self.job_events[job_id] = asyncio.Event()
         loop = asyncio.get_running_loop()
         ctx = DownloadContext(
@@ -199,6 +202,8 @@ class AppState:
             incognito=incognito,
             incognito_dir=incognito_dir,
             playlist_subdir=playlist_subdir,
+            clip_start=clip_start,
+            clip_end=clip_end,
         )
         task = asyncio.create_task(
             asyncio.to_thread(_run_download, self, ctx, loop)
@@ -292,4 +297,6 @@ class AppState:
                     thumb=bool(job_dict.get("thumb")),
                     infojson=bool(job_dict.get("infojson")),
                     playlist_subdir=job_dict.get("playlist_subdir"),
+                    clip_start=job_dict.get("clip_start"),
+                    clip_end=job_dict.get("clip_end"),
                 )

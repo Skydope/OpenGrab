@@ -50,6 +50,8 @@ def _serialize_job(job: Job) -> dict[str, Any]:
         "downloaded": job.downloaded,
         "total": job.total,
         "incognito": job.incognito,
+        "clip_start": job.clip_start,
+        "clip_end": job.clip_end,
     }
 
 
@@ -114,6 +116,16 @@ async def api_create_job(
         raise HTTPException(400, _t(reason))
     if req.quality not in FORMATS:
         raise HTTPException(400, _t("error.quality_invalid"))
+    # Feature Clips: consistencia interna del rango. La validación contra la
+    # duración real es del frontend (que ya la tiene del inspector); acá no se
+    # hace un _fetch_info extra — si el fin excede la duración, yt-dlp clampa.
+    if (req.clip_start is None) != (req.clip_end is None):
+        raise HTTPException(400, _t("error.clip_incomplete"))
+    if req.clip_start is not None and req.clip_end is not None:
+        if req.clip_start < 0 or req.clip_end <= req.clip_start:
+            raise HTTPException(400, _t("error.clip_invalid_range"))
+        if req.clip_end - req.clip_start < 1.0:
+            raise HTTPException(400, _t("error.clip_too_short"))
     incognito_dir: str | None = None
     if req.incognito:
         # En incógnito el archivo NO va a out_dir/library_dir ni al historial:
@@ -145,15 +157,21 @@ async def api_create_job(
 
     job_id = uuid.uuid4().hex[:12]
     state.db.insert_job(job_id, url, req.quality, incognito=req.incognito,
-                        subs=req.subs, thumb=req.thumb, infojson=req.infojson)
+                        subs=req.subs, thumb=req.thumb, infojson=req.infojson,
+                        clip_start=req.clip_start, clip_end=req.clip_end)
+    clip_note = ""
+    if req.clip_start is not None and req.clip_end is not None:
+        clip_note = f", clip {req.clip_start:.1f}-{req.clip_end:.1f}s"
     if req.incognito:
-        log.info("job %s: creado (incógnito, %s)", job_id, req.quality)
+        log.info("job %s: creado (incógnito, %s%s)", job_id, req.quality, clip_note)
     else:
-        log.info("job %s: creado (%s, %s)", job_id, req.quality, _sanitize_url(req.url))
+        log.info("job %s: creado (%s, %s%s)", job_id, req.quality,
+                 _sanitize_url(req.url), clip_note)
     state.spawn_download(job_id, url, req.quality,
                           subs=req.subs, thumb=req.thumb,
                           infojson=req.infojson, incognito=req.incognito,
-                          incognito_dir=incognito_dir)
+                          incognito_dir=incognito_dir,
+                          clip_start=req.clip_start, clip_end=req.clip_end)
     return {"job_id": job_id}
 
 
