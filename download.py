@@ -149,6 +149,19 @@ def _enforce_size(path: Path, max_mb: int) -> None:
         )
 
 
+def _fmt_ts(seconds: float) -> str:
+    """Segundos -> 'MM.SS' o 'H.MM.SS' para el sufijo de filename de clips.
+
+    Puntos en lugar de ':' a propósito: ':' es inválido en filenames de
+    Windows y _safe_name lo eliminaría, dejando números ambiguos."""
+    total = int(seconds)
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}.{m:02d}.{s:02d}"
+    return f"{m:02d}.{s:02d}"
+
+
 def _safe_name(name: str) -> str:
     name = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", name)
     name = re.sub(r"[^\w \t.\-()\[\]]", "", name, flags=re.UNICODE).strip()
@@ -657,6 +670,11 @@ def _run_download(state: AppState, ctx: DownloadContext,
 
             is_audio = ctx.quality == "audio"
             title = _safe_name(info.get("title", "video"))
+            if ctx.clip_start is not None and ctx.clip_end is not None:
+                # Desambiguar en historial y filesystem: dos clips del mismo
+                # video no deben pisarse ni verse idénticos. Post-_safe_name
+                # (el sufijo ya es filename-safe) y con techo propio de largo.
+                title = f"{title[:100]} [{_fmt_ts(ctx.clip_start)}-{_fmt_ts(ctx.clip_end)}]"
             ext = final.suffix.lstrip(".") or ("mp3" if is_audio else "mp4")
             mime = "audio/mpeg" if is_audio else "video/mp4"
 
