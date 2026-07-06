@@ -17,6 +17,10 @@ class JobReq(BaseModel):
     infojson: bool = False
     incognito: bool = False
     incognito_dir: str | None = None
+    # Rango de clip en segundos (feature Clips). Ambos o ninguno; la
+    # validación de consistencia vive en api_create_job.
+    clip_start: float | None = None
+    clip_end: float | None = None
 
 
 class ChannelReq(BaseModel):
@@ -43,6 +47,8 @@ class Job(BaseModel):
     total: int = 0
     title: str = ""
     incognito: bool = False
+    clip_start: float | None = None
+    clip_end: float | None = None
 
 
 class BatchReq(BaseModel):
