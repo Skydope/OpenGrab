@@ -7,7 +7,7 @@ spawn_download y requeue, y serialización para la UI.
 import sqlite3
 from unittest.mock import patch
 
-from db import Database
+from db import SCHEMA_VERSION, Database
 from download import DownloadContext, _build_ydl_opts, _fmt_ts
 
 
@@ -146,7 +146,7 @@ def test_migracion_v5_a_v6(tmp_path):
 
     db = Database(path)
     try:
-        assert db.schema_version() == 6
+        assert db.schema_version() == SCHEMA_VERSION
         row = db.get_job("old1")
         assert row["clip_start"] is None
         assert row["clip_end"] is None

@@ -42,8 +42,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     thumb       INTEGER NOT NULL DEFAULT 0,  -- Persistidos para que dispatch_loop no los
     infojson    INTEGER NOT NULL DEFAULT 0,  -- pierda al re-despachar un 'queued' tras restart.
     clip_start  REAL,                   -- v6: rango de clip en segundos (feature Clips).
-    clip_end    REAL                    -- NULL en ambos = descarga completa. Persistidos por
+    clip_end    REAL,                   -- NULL en ambos = descarga completa. Persistidos por
                                          -- la misma razón que los sidecars v5: el requeue.
+    clip_precise INTEGER NOT NULL DEFAULT 1  -- v7: 1 = corte exacto (re-encode),
+                                             -- 0 = corte al keyframe (-c copy).
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
@@ -55,7 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created);
 > `_migrate(from_version)` corre `ALTER TABLE jobs ADD COLUMN` guardado por
 > `PRAGMA table_info(jobs)` (idempotente) para cada columna agregada
 > post-lanzamiento — `incognito` en v3, `playlist_subdir` en v4,
-> `subs`/`thumb`/`infojson` en v5, `clip_start`/`clip_end` en v6. Cualquier
+> `subs`/`thumb`/`infojson` en v5, `clip_start`/`clip_end` en v6, `clip_precise` en v7. Cualquier
 > columna nueva futura debe seguir el mismo patrón: un bloque
 > `if from_version < N and "col" not in cols: ALTER TABLE ...` en `_migrate`.
 
