@@ -31,13 +31,25 @@ Authentication is required on all `/api/*` endpoints unless `OPENGRAB_NO_AUTH=1`
   "thumb": false,
   "infojson": false,
   "incognito": false,
-  "incognito_dir": null
+  "incognito_dir": null,
+  "clip_start": null,
+  "clip_end": null
 }
 ```
 
 `quality` must be one of: `best`, `1080p`, `720p`, `480p`, `audio`.
 
 Optional flags: `subs`, `thumb`, `infojson` write the matching sidecar files.
+
+`clip_start` / `clip_end` (float, seconds) download only that time range
+("Clips" feature). Both must be provided or both omitted (`400` otherwise);
+the range must satisfy `0 <= start < end` with a minimum length of 1 second.
+Cutting uses yt-dlp's native `download_ranges` — on HLS/DASH extractors only
+the fragments inside the range are fetched — with `force_keyframes_at_cuts`
+for an exact cut (the segment is re-encoded, cost proportional to the clip).
+Works with `quality=audio` (the mp3 contains only the range). The filename
+gets a `[MM.SS-MM.SS]` suffix so two clips of the same video never collide.
+If `clip_end` exceeds the real duration yt-dlp clamps to the end.
 
 `incognito` (bool) runs the download without touching history or dedup: the file
 is delivered to `incognito_dir` (an absolute folder path, **required** when

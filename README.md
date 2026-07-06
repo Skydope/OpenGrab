@@ -109,6 +109,7 @@ Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (engine that supports
 - Video downloads as **MP4** (best, 1080p, 720p, 480p) or **MP3** (audio-only)
 - **Universal support** — works with any site yt-dlp can handle (1800+), not just YouTube
 - **Playlist support** — browse all videos in a playlist and download selected ones in batch
+- **Clips** — download just a time range: pick start/end on a dual-handle timeline or type `MM:SS`; works for video and mp3, fetching only the needed fragments on HLS/DASH
 - Real-time progress via **Server-Sent Events** (SSE), no WebSocket complexity
 - **Download history** persisted to SQLite (WAL mode), with crash recovery
 - Optional **token authentication** to restrict access (`OPENGRAB_TOKEN`)
