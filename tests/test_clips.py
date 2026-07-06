@@ -190,3 +190,35 @@ def test_serialize_job_expone_clip():
     data = _serialize_job(Job(id="s2"))
     assert data["clip_start"] is None
     assert data["clip_end"] is None
+
+
+# ------------------------------------------------------------------ #
+# Bug del build desktop: FFmpegFD.available() ignora ffmpeg_location
+# ------------------------------------------------------------------ #
+def test_ensure_ffmpeg_on_path_prependea(tmp_path, monkeypatch):
+    from download import _ensure_ffmpeg_on_path
+
+    fake = tmp_path / "bundle" / "ffmpeg"
+    fake.parent.mkdir()
+    fake.write_bytes(b"")
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    _ensure_ffmpeg_on_path(fake)
+    import os
+    parts = os.environ["PATH"].split(os.pathsep)
+    assert parts[0] == str(fake.parent)
+    assert "/usr/bin" in parts
+
+    # Idempotente: segunda llamada no duplica
+    _ensure_ffmpeg_on_path(fake)
+    parts = os.environ["PATH"].split(os.pathsep)
+    assert parts.count(str(fake.parent)) == 1
+
+
+def test_ensure_ffmpeg_on_path_noop_sin_binario(tmp_path, monkeypatch):
+    from download import _ensure_ffmpeg_on_path
+
+    monkeypatch.setenv("PATH", "/usr/bin")
+    _ensure_ffmpeg_on_path(tmp_path / "no-existe" / "ffmpeg")
+    import os
+    assert os.environ["PATH"] == "/usr/bin"

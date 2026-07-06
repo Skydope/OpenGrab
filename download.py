@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import ipaddress
 import logging
 import re
@@ -147,6 +148,32 @@ def _enforce_size(path: Path, max_mb: int) -> None:
         raise RuntimeError(
             t("error.size_exceeded", max_mb=max_mb)
         )
+
+
+def _ensure_ffmpeg_on_path(ffmpeg: Path) -> None:
+    """Prependea el dir del ffmpeg bundleado al PATH del proceso (una vez).
+
+    ``ffmpeg_location`` NO alcanza para las descargas de secciones (Clips):
+    yt-dlp fuerza ``FFmpegFD`` como downloader cuando hay ``section_start``,
+    y ``FFmpegFD.available()`` construye un ``FFmpegPostProcessor()`` SIN
+    downloader, así que no ve ``ffmpeg_location`` y busca solo en el PATH
+    (limitación reconocida en su propia fuente: "Fixme: This may be wrong
+    when --ffmpeg-location is used"). En el build desktop, donde ffmpeg viaja
+    junto al binario y no está en el PATH, el gate abortaba todo clip con
+    "ffmpeg is not installed". Repro y verificación A/B en el hilo de Clips.
+
+    Idempotente y no-op fuera del build desktop (el binario no existe).
+    """
+    if not ffmpeg.exists():
+        return
+    ffdir = str(ffmpeg.parent)
+    path = os.environ.get("PATH", "")
+    if ffdir not in path.split(os.pathsep):
+        os.environ["PATH"] = ffdir + os.pathsep + path
+
+
+_BUNDLED_FFMPEG = resource_path("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+_ensure_ffmpeg_on_path(_BUNDLED_FFMPEG)
 
 
 def _fmt_ts(seconds: float) -> str:
@@ -568,12 +595,14 @@ def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
         opts["http_headers"] = {"User-Agent": _INCOGNITO_USER_AGENT}
 
     # En el binario de escritorio, ffmpeg viaja bundleado y no está en el PATH.
-    # Guard: solo seteamos ffmpeg_location si el binario existe junto al recurso;
-    # en Docker/dev no existe y yt-dlp usa el ffmpeg del PATH como siempre.
-    _ffmpeg = resource_path("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
-    if _ffmpeg.exists():
-        opts["ffmpeg_location"] = str(_ffmpeg)
-        opts["ffprobe_location"] = str(_ffmpeg)
+    # Doble vía a propósito: ffmpeg_location cubre los postprocessors (que
+    # reciben el ydl y la leen), y _ensure_ffmpeg_on_path (al importar este
+    # módulo) cubre FFmpegFD.available(), que ignora ffmpeg_location y solo
+    # mira el PATH — sin eso, los clips abortan en el build desktop.
+    # En Docker/dev el binario bundleado no existe y ambas vías son no-op.
+    if _BUNDLED_FFMPEG.exists():
+        opts["ffmpeg_location"] = str(_BUNDLED_FFMPEG)
+        opts["ffprobe_location"] = str(_BUNDLED_FFMPEG)
 
     return opts
 
