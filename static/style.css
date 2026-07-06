@@ -307,6 +307,68 @@ button.btn-secondary:hover:not(:disabled){background:var(--chip-active-bg); bord
   line-height:1.45; margin:0; max-width:62ch;
   border-left:2px solid var(--amber); padding-left:8px;
 }
+/* ---- Clips: slider doble handle + inputs MM:SS -------------------------- */
+.clip-row{margin-top:10px; display:flex; flex-direction:column; gap:8px}
+.clip-toggle{font-weight:600}
+.clip-editor{display:flex; flex-direction:column; gap:10px; padding:2px 2px 0}
+.clip-slider{position:relative; height:28px}
+.clip-track{
+  position:absolute; top:50%; left:0; right:0; height:4px;
+  transform:translateY(-50%); border-radius:2px; background:var(--line-2);
+}
+/* Dos ranges nativos superpuestos: el track no captura eventos, solo los
+   thumbs (pointer-events). Área táctil de 28px con thumb visual de 16px. */
+.clip-slider input[type=range]{
+  -webkit-appearance:none; appearance:none;
+  position:absolute; inset:0; width:100%; height:28px; margin:0;
+  background:none; pointer-events:none; z-index:3;
+}
+.clip-slider input[type=range]:focus{outline:none}
+.clip-slider input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none; pointer-events:auto;
+  width:16px; height:16px; border-radius:50%; cursor:grab;
+  background:var(--amber); border:2px solid var(--ink);
+  box-shadow:0 0 0 1px var(--line-2);
+}
+.clip-slider input[type=range]::-moz-range-thumb{
+  pointer-events:auto;
+  width:16px; height:16px; border-radius:50%; cursor:grab;
+  background:var(--amber); border:2px solid var(--ink);
+  box-shadow:0 0 0 1px var(--line-2);
+}
+.clip-slider input[type=range]:focus-visible::-webkit-slider-thumb{
+  box-shadow:0 0 0 3px var(--focus-ring);
+}
+.clip-slider input[type=range]:focus-visible::-moz-range-thumb{
+  box-shadow:0 0 0 3px var(--focus-ring);
+}
+.clip-inputs{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.clip-inputs label{
+  display:flex; align-items:center; gap:6px;
+  font-size:12px; color:var(--muted); font-family:var(--sans);
+}
+.clip-inputs input[type=text]{
+  width:76px; padding:5px 8px; text-align:center;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+  color:var(--text); font-family:var(--mono); font-size:13px;
+}
+.clip-inputs input[type=text]:focus{
+  outline:none; border-color:var(--amber);
+  box-shadow:0 0 0 3px var(--focus-ring);
+}
+.clip-inputs input[type=text].invalid{
+  border-color:var(--danger); box-shadow:0 0 0 3px var(--danger-soft);
+}
+.clip-length{
+  font-size:12px; color:var(--muted); font-family:var(--mono);
+  margin-left:auto;
+}
+.clip-badge{
+  font-size:11px; color:var(--amber); font-family:var(--mono);
+  padding:1px 6px; border:1px solid var(--line); border-radius:6px;
+  white-space:nowrap;
+}
+
 .incognito-badge{
   font-size:11px; color:var(--amber); font-family:var(--mono);
   padding:1px 6px; border:1px solid var(--line); border-radius:6px;

@@ -145,6 +145,46 @@
       <p class="incognito-hint" x-show="incognitoEnabled" x-text="t('ui.incognito_hint')"></p>
     </div>
 
+    <!-- Clips: descargar solo un rango [desde, hasta] del video/audio.
+         Solo con duración conocida (livestreams y extractores sin duration
+         quedan afuera: sin techo no hay slider ni validación posible). -->
+    <div class="clip-row" x-show="meta && !isPlaylist && !downloading && clipDuration > 0">
+      <label class="extra-toggle clip-toggle">
+        <input type="checkbox" x-model="clipEnabled">
+        <span>✂️ <span x-text="t('ui.clip_toggle')"></span></span>
+      </label>
+      <div class="clip-editor" x-show="clipEnabled" x-transition.duration.200ms>
+        <div class="clip-slider">
+          <div class="clip-track" :style="clipTrackStyle()"></div>
+          <input type="range" min="0" :max="clipDuration" step="1"
+                 x-model.number="clipStart" @input="clipSyncFromSlider('start')"
+                 :style="'z-index:' + clipStartZ()"
+                 :aria-label="t('ui.clip_start')">
+          <input type="range" min="0" :max="clipDuration" step="1"
+                 x-model.number="clipEnd" @input="clipSyncFromSlider('end')"
+                 :aria-label="t('ui.clip_end')">
+        </div>
+        <div class="clip-inputs">
+          <label>
+            <span x-text="t('ui.clip_start')"></span>
+            <input type="text" inputmode="numeric" x-model="clipStartText"
+                   :class="{invalid: clipStartInvalid}"
+                   @change="clipSyncFromText('start')"
+                   @keydown.enter.prevent="clipSyncFromText('start')">
+          </label>
+          <label>
+            <span x-text="t('ui.clip_end')"></span>
+            <input type="text" inputmode="numeric" x-model="clipEndText"
+                   :class="{invalid: clipEndInvalid}"
+                   @change="clipSyncFromText('end')"
+                   @keydown.enter.prevent="clipSyncFromText('end')">
+          </label>
+          <span class="clip-length"
+                x-text="t('ui.clip_length') + ': ' + clipLength()"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- Format preview -->
     <div x-show="formats.length" class="mt-14 fmt-wrap">
       <div class="toggle-label"
@@ -623,6 +663,7 @@ window.og.isDesktop = "__IS_DESKTOP__" === "true";
 <script src="/static/js/theme.js?v=__VERSION__"></script>
 <script src="/static/js/notifications.js?v=__VERSION__"></script>
 <script src="/static/js/inspector.js?v=__VERSION__"></script>
+<script src="/static/js/clips.js?v=__VERSION__"></script>
 <script src="/static/js/download.js?v=__VERSION__"></script>
 <script src="/static/js/jobs.js?v=__VERSION__"></script>
 <script src="/static/js/playlist.js?v=__VERSION__"></script>

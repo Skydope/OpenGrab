@@ -220,6 +220,7 @@ window.og.resetUI = function() {
   this.playlistVideos = [];
   this.formats = [];
   this.showFormats = false;
+  this.clipReset(0);
   // Clear batch state
   if (this.batchPollTimer) {
     clearInterval(this.batchPollTimer);

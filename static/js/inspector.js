@@ -66,6 +66,7 @@ window.og.inspect = async function() {
     this.subtitle = (data.channel || "") + " · " + (data.duration_str || "") + views;
     this.formats = data.formats || [];
     this.showFormats = false;
+    this.clipReset(data.duration || 0);
 
     this.playlistAvailable = kind === "video+list";
     this.isPlaylist = false;
