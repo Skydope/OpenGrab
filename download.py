@@ -351,6 +351,7 @@ class DownloadContext:
     # Feature Clips: rango en segundos. Ambos None = descarga completa.
     clip_start: float | None = None
     clip_end: float | None = None
+    clip_precise: bool = True
 
     @property
     def is_clip(self) -> bool:
@@ -550,18 +551,29 @@ def _build_ydl_opts(ctx: DownloadContext, workdir: Path,
         "fragment_retries": 5,
         "retries": 5,
     }
-    # Feature Clips: descargar solo el rango pedido. En extractores HLS/DASH
-    # yt-dlp baja únicamente los fragmentos del rango; en archivo único baja y
-    # corta con ffmpeg. force_keyframes_at_cuts re-encodea el segmento para un
-    # corte exacto (sin él cae al keyframe más cercano, error de hasta varios
-    # segundos); el costo de CPU es proporcional al clip, no al video.
-    # Va ANTES del postprocessor de audio: el corte ocurre en descarga, así que
+    # Feature Clips: descargar solo el rango pedido. Va ANTES del
+    # postprocessor de audio: el corte ocurre en descarga, así que
     # FFmpegExtractAudio recibe el segmento ya recortado.
+    #
+    # Estrategia de corte (benchmarks en el hilo de Clips; clip de 60s/1080p):
+    # - audio: SIN force_keyframes siempre. El stream solo-audio se corta con
+    #   -c copy y ya es casi exacto (frames de ~23ms, no hay keyframes de
+    #   video); re-encodear acá es puro costo, el extract a mp3 re-encodea
+    #   después de todas formas. ~0.2s vs ~97s.
+    # - video + clip_precise: force_keyframes re-encodea para corte exacto,
+    #   con -preset veryfast inyectado en los args de salida de FFmpegFD
+    #   (verificado en metadatos x264: ref=1/subme=2): ~2x más rápido que el
+    #   preset default y archivos más chicos.
+    # - video sin clip_precise: FFmpegFD usa -c copy (confirmado en su fuente:
+    #   sin force_keyframes agrega ['-c', 'copy']). Corte al keyframe más
+    #   cercano (±2-5s en YouTube), casi instantáneo.
     if ctx.is_clip:
         opts["download_ranges"] = download_range_func(
             None, [(ctx.clip_start, ctx.clip_end)]
         )
-        opts["force_keyframes_at_cuts"] = True
+        if not is_audio and ctx.clip_precise:
+            opts["force_keyframes_at_cuts"] = True
+            opts["external_downloader_args"] = {"ffmpeg": ["-preset", "veryfast"]}
 
     if is_audio:
         opts["postprocessors"] = [
