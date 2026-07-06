@@ -52,6 +52,7 @@ def _serialize_job(job: Job) -> dict[str, Any]:
         "incognito": job.incognito,
         "clip_start": job.clip_start,
         "clip_end": job.clip_end,
+        "clip_precise": job.clip_precise,
     }
 
 
@@ -158,7 +159,8 @@ async def api_create_job(
     job_id = uuid.uuid4().hex[:12]
     state.db.insert_job(job_id, url, req.quality, incognito=req.incognito,
                         subs=req.subs, thumb=req.thumb, infojson=req.infojson,
-                        clip_start=req.clip_start, clip_end=req.clip_end)
+                        clip_start=req.clip_start, clip_end=req.clip_end,
+                        clip_precise=req.clip_precise)
     clip_note = ""
     if req.clip_start is not None and req.clip_end is not None:
         clip_note = f", clip {req.clip_start:.1f}-{req.clip_end:.1f}s"
@@ -171,7 +173,8 @@ async def api_create_job(
                           subs=req.subs, thumb=req.thumb,
                           infojson=req.infojson, incognito=req.incognito,
                           incognito_dir=incognito_dir,
-                          clip_start=req.clip_start, clip_end=req.clip_end)
+                          clip_start=req.clip_start, clip_end=req.clip_end,
+                        clip_precise=req.clip_precise)
     return {"job_id": job_id}
 
 
