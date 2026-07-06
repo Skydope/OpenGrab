@@ -294,5 +294,14 @@
   "ui.incognito_pick_dir": "Destination folder (incognito)",
   "ui.incognito_badge": "Incognito",
   "ui.incognito_delivered": "Delivered to the chosen folder (no history).",
-  "error.incognito_move_failed": "Download finished but moving the file to the chosen folder failed. It was kept at: {path}"
+  "error.incognito_move_failed": "Download finished but moving the file to the chosen folder failed. It was kept at: {path}",
+  "error.clip_incomplete": "A clip needs both start and end (or neither).",
+  "error.clip_invalid_range": "Invalid clip range: start must be ≥ 0 and before the end.",
+  "error.clip_too_short": "The clip must be at least 1 second long.",
+  "ui.clip_toggle": "Clip",
+  "ui.clip_start": "From",
+  "ui.clip_end": "To",
+  "ui.clip_invalid": "Invalid clip range.",
+  "ui.clip_downloading": "Downloading clip…",
+  "ui.clip_length": "Clip length"
 }

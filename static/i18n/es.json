@@ -294,5 +294,14 @@
   "ui.incognito_pick_dir": "Carpeta de destino (incógnito)",
   "ui.incognito_badge": "Incógnito",
   "ui.incognito_delivered": "Entregado a la carpeta elegida (sin historial).",
-  "error.incognito_move_failed": "La descarga se completó pero falló mover el archivo a la carpeta elegida. Quedó guardado en: {path}"
+  "error.incognito_move_failed": "La descarga se completó pero falló mover el archivo a la carpeta elegida. Quedó guardado en: {path}",
+  "error.clip_incomplete": "El clip necesita inicio y fin (o ninguno de los dos).",
+  "error.clip_invalid_range": "Rango de clip inválido: el inicio debe ser ≥ 0 y menor que el fin.",
+  "error.clip_too_short": "El clip debe durar al menos 1 segundo.",
+  "ui.clip_toggle": "Clip",
+  "ui.clip_start": "Desde",
+  "ui.clip_end": "Hasta",
+  "ui.clip_invalid": "Rango de clip inválido.",
+  "ui.clip_downloading": "Descargando clip…",
+  "ui.clip_length": "Duración del clip"
 }
