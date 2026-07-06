@@ -222,3 +222,89 @@ def test_ensure_ffmpeg_on_path_noop_sin_binario(tmp_path, monkeypatch):
     _ensure_ffmpeg_on_path(tmp_path / "no-existe" / "ffmpeg")
     import os
     assert os.environ["PATH"] == "/usr/bin"
+
+
+# ------------------------------------------------------------------ #
+# Estrategia de corte: clip_precise / audio / copy
+# ------------------------------------------------------------------ #
+def test_opts_clip_audio_nunca_reencodea(tmp_path):
+    # Audio: -c copy ya es casi exacto (frames ~23ms); force_keyframes es
+    # puro costo porque el extract a mp3 re-encodea después igual.
+    ctx = _ctx(quality="audio", clip_start=10.0, clip_end=20.0,
+               clip_precise=True)
+    opts = _build_ydl_opts(ctx, tmp_path, 0, lambda d: None)
+    assert "download_ranges" in opts
+    assert "force_keyframes_at_cuts" not in opts
+    assert "external_downloader_args" not in opts
+
+
+def test_opts_clip_video_preciso_inyecta_preset(tmp_path):
+    ctx = _ctx(clip_start=10.0, clip_end=20.0, clip_precise=True)
+    opts = _build_ydl_opts(ctx, tmp_path, 0, lambda d: None)
+    assert opts["force_keyframes_at_cuts"] is True
+    assert opts["external_downloader_args"] == {"ffmpeg": ["-preset", "veryfast"]}
+
+
+def test_opts_clip_video_rapido_usa_copy(tmp_path):
+    # Sin precise, no seteamos force_keyframes: FFmpegFD cae a -c copy.
+    ctx = _ctx(clip_start=10.0, clip_end=20.0, clip_precise=False)
+    opts = _build_ydl_opts(ctx, tmp_path, 0, lambda d: None)
+    assert "download_ranges" in opts
+    assert "force_keyframes_at_cuts" not in opts
+    assert "external_downloader_args" not in opts
+
+
+# ------------------------------------------------------------------ #
+# clip_precise: persistencia, migración y propagación
+# ------------------------------------------------------------------ #
+def test_migracion_v6_a_v7(tmp_path):
+    path = tmp_path / "v6.db"
+    con = sqlite3.connect(str(path))
+    con.execute(
+        "CREATE TABLE jobs (id TEXT PRIMARY KEY, url TEXT NOT NULL, "
+        "quality TEXT NOT NULL, status TEXT NOT NULL, created REAL NOT NULL, "
+        "workdir TEXT, incognito INTEGER NOT NULL DEFAULT 0, "
+        "playlist_subdir TEXT, subs INTEGER NOT NULL DEFAULT 0, "
+        "thumb INTEGER NOT NULL DEFAULT 0, infojson INTEGER NOT NULL DEFAULT 0, "
+        "clip_start REAL, clip_end REAL)"
+    )
+    con.execute(
+        "INSERT INTO jobs (id, url, quality, status, created, clip_start, clip_end) "
+        "VALUES ('c6', 'https://youtu.be/x', 'best', 'queued', 1.0, 5.0, 15.0)"
+    )
+    con.execute("PRAGMA user_version=6")
+    con.commit()
+    con.close()
+
+    db = Database(path)
+    try:
+        assert db.schema_version() == SCHEMA_VERSION
+        # Fila vieja: default 1 = corte exacto (comportamiento previo al toggle)
+        row = db.get_job("c6")
+        assert row["clip_precise"] == 1
+        db.insert_job("c7", "https://youtu.be/y", "best",
+                      clip_start=1.0, clip_end=9.0, clip_precise=False)
+        assert db.get_job("c7")["clip_precise"] == 0
+    finally:
+        db.close()
+
+
+def test_api_clip_precise_persiste_y_propaga(client, app_state):
+    with patch.object(app_state, "spawn_download") as spawn:
+        r = _post_job(client, clip_start=5.0, clip_end=15.0, clip_precise=False)
+        assert r.status_code == 200
+        row = app_state.db.get_job(r.json()["job_id"])
+        assert row["clip_precise"] == 0
+        _, kwargs = spawn.call_args
+        assert kwargs["clip_precise"] is False
+
+
+def test_get_queued_incluye_clip_precise(tmp_path):
+    db = Database(tmp_path / "q7.db")
+    try:
+        db.insert_job("p1", "https://youtu.be/x", "best",
+                      clip_start=1.0, clip_end=9.0, clip_precise=False)
+        rows = db.get_queued(limit=5)
+        assert rows and rows[0]["clip_precise"] == 0
+    finally:
+        db.close()
