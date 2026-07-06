@@ -363,6 +363,23 @@ button.btn-secondary:hover:not(:disabled){background:var(--chip-active-bg); bord
   font-size:12px; color:var(--muted); font-family:var(--mono);
   margin-left:auto;
 }
+.clip-indet-note{font-size:14px}
+.progress.indet > i{
+  background:repeating-linear-gradient(
+    -45deg,
+    var(--amber-soft) 0 10px,
+    var(--amber) 10px 20px
+  );
+  background-size:28px 28px;
+  animation:clip-indet 0.9s linear infinite;
+}
+@keyframes clip-indet{
+  from{background-position:0 0}
+  to{background-position:28px 0}
+}
+@media (prefers-reduced-motion: reduce){
+  .progress.indet > i{animation:none}
+}
 .clip-badge{
   font-size:11px; color:var(--amber); font-family:var(--mono);
   padding:1px 6px; border:1px solid var(--line); border-radius:6px;

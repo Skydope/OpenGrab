@@ -284,16 +284,18 @@
       </div>
       <!-- Lectura limpia: % grande + velocidad · ETA -->
       <div class="dl-stats">
-        <span class="dl-pct" :class="{done: progressDone}"
+        <span class="dl-pct" :class="{done: progressDone}" x-show="!progressIndet"
               x-text="(progressDone ? 100 : Math.round(progress)) + '%'"></span>
+        <span class="dl-pct clip-indet-note" x-show="progressIndet"
+              x-text="t('ui.clip_downloading')"></span>
         <span class="dl-meta" x-show="downloading && (dlSpeed || dlEta)">
           <span x-show="dlSpeed" x-text="dlSpeed"></span>
           <span x-show="dlEta" x-text="'· ETA ' + dlEta"></span>
         </span>
         <span class="dl-meta dl-done" x-show="progressDone">listo</span>
       </div>
-      <div class="progress" :class="{done: progressDone}">
-        <i :style="'width:' + progress + '%'"></i>
+      <div class="progress" :class="{done: progressDone, indet: progressIndet}">
+        <i :style="'width:' + (progressIndet ? 100 : progress) + '%'"></i>
       </div>
       <div class="lines" x-show="showTerminal" x-ref="lines"
            x-effect="if($refs.lines && terminal.length) $refs.lines.scrollTop = $refs.lines.scrollHeight">
@@ -331,6 +333,8 @@
           <span class="batch-error" x-show="j.status === 'cancelled'">cancelado</span>
           <span class="incognito-badge" x-show="j.incognito" :title="t('ui.incognito_delivered')"
                 x-text="'🕶️ ' + t('ui.incognito_badge')"></span>
+          <span class="clip-badge" x-show="j.clip_start != null"
+                x-text="'✂️ ' + clipBadge(j)"></span>
           <span class="job-actions">
             <a class="job-act" x-show="j.status === 'done' && !j.incognito" :href="'/api/jobs/' + j.id + '/file'"
                :download="j.filename || ''" @click.stop :title="t('ui.save_file')">⬇</a>

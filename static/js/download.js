@@ -26,6 +26,7 @@ window.og.dlEta = "";
 window.og.showTerminal = false;
 window.og.progress = 0;
 window.og.progressDone = false;
+window.og.progressIndet = false;
 window.og.downloadUrl = "";
 window.og.downloadFilename = "";
 window.og.successPath = "";
@@ -36,6 +37,14 @@ window.og.lastSaveDir = "";
 // ── Download function ─────────────────────
 window.og.download = async function() {
   if (!this.url.trim()) return;
+  // Clips: validar ANTES de crear el job (mismo contrato que el backend).
+  if (this.clipEnabled && !this.clipValid()) {
+    this.errorMsg = this.t('ui.clip_invalid');
+    return;
+  }
+  const clip = this.clipEnabled
+    ? { clip_start: this.clipStart, clip_end: this.clipEnd }
+    : {};
   // Reset solo de la vista enfocada (no toca otras tarjetas en curso).
   this.resetFocusView();
 
@@ -68,6 +77,7 @@ window.og.download = async function() {
         infojson: this.infojsonEnabled,
         incognito: this.incognitoEnabled,
         incognito_dir: incognitoDir,
+        ...clip,
       }),
     });
     if (!r.ok) throw new Error(((await r.json()).detail || this.t('ui.error_create_job')) + " (HTTP " + r.status + ")");
@@ -86,6 +96,8 @@ window.og.download = async function() {
     note: "", title, filename: "", filepath: "", error: "",
     created: Date.now() / 1000, finished: 0,
     incognito: this.incognitoEnabled,
+    clip_start: this.clipEnabled ? this.clipStart : null,
+    clip_end: this.clipEnabled ? this.clipEnd : null,
   });
   this.focusJob(jobId);
   this.jobLine(jobId, "$", "yt-dlp -f " + this.quality + " " + this.url.trim());
@@ -150,6 +162,9 @@ window.og.mirrorToTerminal = function(jobId) {
   const active = ["queued", "starting", "downloading", "processing"].includes(j.status);
   this.downloading = active;
   this.progress = j.percent || 0;
+  this.progressIndet = j.clip_start != null && active
+    && ["downloading", "processing"].includes(j.status)
+    && !(j.percent > 0);
   this.dlSpeed = j.status === "downloading" ? (j.speed || "") : "";
   this.dlEta   = j.status === "downloading" ? (j.eta || "")   : "";
   this.progressDone = j.status === "done";
