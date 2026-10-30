@@ -16,7 +16,7 @@
   [![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker)](https://github.com/Skydope/OpenGrab/pkgs/container/opengrab)
   [![Stars](https://img.shields.io/github/stars/Skydope/OpenGrab?style=social)](https://github.com/Skydope/OpenGrab/stargazers)
 
-  [**English**](#) · [**Español**](#español)
+  **EN** · [ES](README.es.md)
 
 </div>
 
@@ -26,15 +26,6 @@
 > with the Terms of Service of the platforms you interact with and applicable
 > copyright laws. Use only with content you own, is licensed for reuse, or
 > under fair use provisions.
-
-<details>
-<summary>Ver en Español</summary>
-
-> **OpenGrab** — Descargador de YouTube auto-alojado. Pegás una URL, te llevás un MP4 (o MP3). Envoltorio web de yt-dlp + ffmpeg.
->
-> Instalación rápida, ejemplos y guía de contribución disponibles más abajo en inglés. Podés abrir issues en español sin problema.
-
-</details>
 
 ## Highlights
 
@@ -98,7 +89,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for all options.
 
 ## Overview
 
-OpenGrab is a self-hosted video & audio downloader for your homelab or LAN. Paste a URL from practically any site — YouTube, Vimeo, TikTok, Instagram, X/Twitter, Bandcamp, SoundCloud, and thousands more — choose a quality preset, and get back an MP4 or MP3 file. No browser extensions, no shady websites. Just your own server — or a [Windows desktop app](#desktop-app-windows) if you prefer.
+OpenGrab is a self-hosted video & audio downloader for your homelab or LAN. Paste a URL from practically any site — YouTube, Vimeo, TikTok, Instagram, X/Twitter, Bandcamp, SoundCloud, and thousands more — choose a quality preset, and get back an MP4 or MP3 file. No browser extensions, no shady websites. Just your own server — or a [Windows desktop app](#desktop-app) if you prefer.
 
 Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (engine that supports 1800+ sites) and [ffmpeg](https://ffmpeg.org/) for muxing. The entire backend is a single FastAPI app with an inline vanilla frontend — zero npm, zero bundlers, zero CDN calls.
 
@@ -476,57 +467,3 @@ Contributions are welcome. Please follow these steps:
 ## License
 
 Distributed under the [MIT License](LICENSE). See `LICENSE` for details.
-
----
-
-## Español
-
-> **OpenGrab** — Descargador universal autoalojado de video y audio. Soporta más de 1800 sitios mediante yt-dlp. Pegás una URL, te llevás un MP4 (o MP3).
-
-### Características
-
-- Soporte universal (>1800 sitios vía yt-dlp)
-- Calidades: **best**, 1080p, 720p, 480p, MP3
-- Playlists completas y **Watch mode** (canales con deduplicación)
-- Progreso en tiempo real con SSE
-- Persistencia en SQLite (WAL) + recuperación de crashes
-- **Protección SSRF en 2 capas** (aplicación + firewall)
-- App de escritorio (Windows, Linux, macOS)
-- nginx + TLS listo para producción
-
-### Instalación
-
-**Docker (recomendado)**
-```bash
-git clone https://github.com/Skydope/OpenGrab.git && cd OpenGrab
-cp .env.example .env
-docker compose up -d
-```
-
-Abrí `http://localhost:8800`
-
-Ver [docs/INSTALL.md](docs/INSTALL.md) para app de escritorio, bare metal y todas las opciones.
-
-### Documentación
-
-- [Instalación](docs/INSTALL.md)
-- [Despliegue en Producción](docs/DEPLOY.md)
-- [Referencia API](docs/API.md)
-- [Seguridad](docs/SECURITY.md)
-- [Cómo Contribuir](docs/CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-
-### Contribuir
-
-Las contribuciones son bienvenidas. Podés abrir issues o PRs en español. Seguí los pasos en [CONTRIBUTING.md](docs/CONTRIBUTING.md).
-
-### Licencia
-
-Distribuido bajo la [Licencia MIT](LICENSE).
-
-> [!CAUTION]
-> **OpenGrab es una herramienta auto-alojada para uso personal.** Los autores
-> no se hacen responsables del uso que le des. Es tu responsabilidad cumplir
-> con los Términos de Servicio de las plataformas y las leyes de copyright
-> aplicables. Usalo solo con contenido propio, con licencia que lo permita,
-> o bajo fair use.
