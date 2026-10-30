@@ -118,7 +118,7 @@ Built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp) (engine that supports
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
-| Runtime | Python 3.11+ | — |
+| Runtime | Python 3.12+ | — |
 | Web framework | FastAPI + uvicorn | Async, type-driven |
 | Download engine | yt-dlp | Runs in thread pool (blocking I/O) |
 | Video processing | ffmpeg | System binary, muxing to MP4 |
@@ -139,7 +139,7 @@ Prefer to configure things yourself? Here's the direct approach.
 **Prerequisites**
 
 - **Docker** >= 24.x (recommended) — or —
-- **Python** 3.11+ with `pip`
+- **Python** 3.12+ with `pip`
 - **ffmpeg** on PATH (included in the Docker image; on bare metal: `apt install ffmpeg`, `brew install ffmpeg`, or `pacman -S ffmpeg`)
 
 ```bash
@@ -204,33 +204,56 @@ For playlists, step 3 will detect the URL and show the playlist panel. Select th
 
 ```
 opengrab/
-├── app.py              # Entrypoint (~120 lines)
-├── config.py           # Environment + config.ini
-├── state.py            # AppState — runtime jobs, events, eviction
-├── db.py               # SQLite data layer (WAL, crash recovery)
-├── models.py           # Pydantic models
-├── download.py         # yt-dlp wrappers + error mapping
-├── routes.py           # API endpoints (APIRouter, 26 endpoints)
-├── desktop.py          # Windows desktop launcher (pywebview)
-├── engine_update.py    # yt-dlp hot-swap via PyPI wheel
+├── app.py                    # FastAPI entrypoint (uvicorn, middleware, routers)
+├── config.py                 # Settings: env > DB table > config.ini > defaults
+├── state.py                  # AppState — runtime jobs, events, eviction
+├── db.py                     # SQLite data layer (WAL, migrations, crash recovery)
+├── models.py                 # Pydantic models
+├── download.py               # yt-dlp wrappers, SSRF gate, error mapping
+├── history_store.py          # History queries, single delete, bulk clear
+├── storage_manager.py        # Disk usage, workdir cleanup, job eviction
+├── library_path_resolver.py  # Output path templates, dedup, file moves
+├── secure_delete.py          # 3-pass secure file wipe
+├── metrics.py                # Prometheus metrics
+├── i18n.py                   # Server-side translations (flat JSON)
+├── logging_setup.py          # Plain-text or structured JSON logging
+├── desktop.py                # Desktop launcher (pywebview + tray)
+├── engine_update.py          # yt-dlp hot-swap via PyPI wheel
+├── routers/                  # API endpoints, one module per domain
+│   ├── jobs.py               #   downloads, SSE progress, files
+│   ├── playlist.py           #   playlist listing + batch enqueue
+│   ├── channels.py           #   Watch mode
+│   ├── history.py
+│   ├── storage.py
+│   ├── settings.py
+│   ├── backup.py             #   JSON export/import
+│   ├── engine.py             #   yt-dlp update
+│   └── system.py             #   auth, health, metrics, UI
 ├── static/
-│   ├── index.html      # Alpine.js SPA
-│   ├── style.css       # Dark/light theme, WCAG AA
-│   └── alpine.min.js   # Embedded (~43KB), no CDN
-├── tests/              # pytest tests (~111 tests)
-├── vendor/             # Bundled ffmpeg + app icon
-├── nginx/              # Reverse proxy TLS config
-├── Dockerfile          # Non-root user, healthcheck
+│   ├── index.html            # Alpine.js SPA
+│   ├── style.css             # Dark/light theme, WCAG AA
+│   ├── alpine.min.js         # Embedded (~44KB), no CDN
+│   ├── js/                   # Frontend modules (no bundler)
+│   └── i18n/                 # UI translations (en, es)
+├── tests/                    # pytest suite
+├── scripts/                  # Checks, installers, egress firewall, backups
+├── docs/                     # Install, deploy, API, security, architecture
+├── docker/                   # Container entrypoint
+├── vendor/                   # App icon (ffmpeg is copied here at build time)
+├── nginx/                    # Reverse proxy TLS config
+├── Dockerfile                # Non-root user, healthcheck
 ├── docker-compose.yml
-├── OpenGrab.spec       # PyInstaller build spec
-└── opengrab.iss        # Inno Setup installer wizard
+├── OpenGrab.spec             # PyInstaller build spec
+└── opengrab.iss              # Inno Setup installer wizard
 ```
+
+More design detail and trade-offs in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **Key design decisions:**
 - **Async backend + thread pool.** FastAPI handles HTTP, yt-dlp runs in `asyncio.to_thread()` to avoid blocking the event loop.
 - **SSE over WebSockets.** Progress updates use `asyncio.Event` with a 2-second timeout polling loop. Simpler than WebSockets, zero extra dependencies.
 - **RAM + SQLite state.** Job state (progress, speed, ETA) lives in-memory for real-time SSE delivery. State transitions (queued → downloading → done) are persisted to SQLite (WAL mode). History reads come from the database. Old in-memory jobs are evicted after 1 hour.
-- **Offline-first frontend.** Alpine.js is embedded (~43KB), CSS uses variables for theming. No CDN calls, works entirely on LAN.
+- **Offline-first frontend.** Alpine.js is embedded (~44KB), CSS uses variables for theming. No CDN calls, works entirely on LAN.
 
 ---
 
@@ -353,61 +376,7 @@ All `/api/*` endpoints require authentication unless `OPENGRAB_NO_AUTH=1`. If `O
 - `?token=<token>` query parameter
 - `opengrab_token` HTTP-only cookie (set by `POST /api/auth`, 30-day expiry)
 
-### Core
-
-| Method | Path | Rate Limit | Description |
-|--------|------|------------|-------------|
-| `GET` | `/` | — | Web UI |
-| `GET` | `/health` | — | Health check (returns `{"status":"ok"}`) |
-| `POST` | `/api/auth` | — | Authenticate and receive cookie — body: `{"token":"..."}` |
-| `POST` | `/api/logout` | — | Clear auth cookie |
-| `GET` | `/api/info?url=...` | 10/min | Fetch video metadata + available formats |
-| `POST` | `/api/jobs` | 5/min | Create download job — body: `{"url":"...", "quality":"best"}` |
-| `GET` | `/api/jobs/{id}/events` | — | SSE progress stream for a job |
-| `GET` | `/api/jobs/{id}/file` | — | Download the completed file |
-| `POST` | `/api/jobs/{id}/open-folder` | — | Open file explorer to downloaded file |
-| `POST` | `/api/engine/update` | 2/min | Force yt-dlp hot-swap |
-
-### Playlist & Batch
-
-| Method | Path | Rate Limit | Description |
-|--------|------|------------|-------------|
-| `GET` | `/api/playlist?url=...` | 10/min | Fetch playlist entries |
-| `POST` | `/api/playlist/download` | 2/min | Enqueue up to 100 playlist URLs — body: `{"urls":[...], "quality":"best"}` |
-| `GET` | `/api/jobs/batch-status?ids=...` | — | Status for multiple batch jobs (comma-separated IDs) |
-
-### History
-
-| Method | Path | Rate Limit | Description |
-|--------|------|------------|-------------|
-| `GET` | `/api/history?limit=20` | — | Download history as JSON |
-| `DELETE` | `/api/history/{job_id}` | — | Delete single history entry (file + workdir securely wiped in background) |
-| `DELETE` | `/api/history` | 5/min | Clear all history (deletes files from disk) |
-
-### Storage
-
-| Method | Path | Rate Limit | Description |
-|--------|------|------------|-------------|
-| `GET` | `/api/storage` | — | Total usage, workdir breakdown, loose files, DB size |
-| `POST` | `/api/storage/cleanup` | 5/min | Delete old workdirs — body: `{"max_age_hours":24}` |
-| `POST` | `/api/storage/cleanup-all` | 3/min | Delete all workdirs |
-
-### Settings
-
-| Method | Path | Rate Limit | Description |
-|--------|------|------------|-------------|
-| `GET` | `/api/settings` | — | Catalog of all settings with current values and metadata |
-| `PUT` | `/api/settings` | 10/min | Update settings — body: `{"max_jobs":3, ...}` |
-
-### Channels (Watch Mode)
-
-| Method | Path | Rate Limit | Description |
-|--------|------|------------|-------------|
-| `GET` | `/api/channels` | — | List all channels (enabled and disabled) |
-| `POST` | `/api/channels` | 10/min | Add channel — body: `{"url":"...", "quality":"best", "interval_minutes":60}` |
-| `PUT` | `/api/channels/{id}` | 10/min | Update channel fields (title, quality, interval, enabled) |
-| `DELETE` | `/api/channels/{id}` | 10/min | Delete channel |
-| `POST` | `/api/channels/{id}/check` | 5/min | Force a manual check for new videos |
+The full endpoint list (jobs, playlists, history, storage, settings, channels, backup and system), with rate limits and request bodies, is in [docs/API.md](docs/API.md). The two endpoints you will use most:
 
 ### `POST /api/jobs`
 
@@ -419,7 +388,7 @@ All `/api/*` endpoints require authentication unless `OPENGRAB_NO_AUTH=1`. If `O
 }
 ```
 
-`quality` must be one of: `best`, `1080p`, `720p`, `480p`, `audio`.
+`quality` must be one of: `best`, `1080p`, `720p`, `480p`, `audio` (`worst` is also accepted).
 
 **Response:**
 ```json
