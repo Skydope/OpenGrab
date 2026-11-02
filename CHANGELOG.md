@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Bare metal ignoraba `.env`.** Al correr `python app.py` sin Docker nadie
+  cargaba `.env` (solo Docker Compose lo interpola), así que `OPENGRAB_TOKEN`
+  quedaba vacío, se autogeneraba un token en cada arranque y el login con el
+  token configurado daba 401. Nuevo `config._load_dotenv()` (solo stdlib, sin
+  `python-dotenv`): carga el `.env` junto a `config.py` (o `OPENGRAB_ENV_FILE`)
+  con `setdefault`, así que el entorno real siempre gana. No-op en desktop /
+  binario congelado y si el archivo falta. El log de arranque ahora sugiere
+  dónde fijar el token cuando se autogenera.
+
 ## [1.12.0] — 2026-07-01
 
 ### Added

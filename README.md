@@ -156,7 +156,7 @@ docker compose up -d
 ```
 
 > [!TIP]
-> For bare-metal usage (no Docker), run `pip install -r requirements.txt` and then `python app.py`. Make sure ffmpeg is on your PATH.
+> For bare-metal usage (no Docker), run `pip install .` and then `python app.py`. Make sure ffmpeg is on your PATH. The `.env` file is loaded automatically in this mode too (real environment variables take precedence).
 
 ---
 

@@ -6,7 +6,7 @@ Paste a URL, get an MP4 (or MP3). Backend is FastAPI + yt-dlp + ffmpeg.
 Frontend is vanilla HTML/CSS/JS served from static/. Designed for homelab/LAN.
 
 Usage:
-    pip install -r requirements.txt
+    pip install .
     python app.py
     # -> http://127.0.0.1:8800
 
@@ -303,7 +303,11 @@ def main() -> None:
     configure_logging(LOG_FORMAT, LOG_LEVEL)
     log.info("OpenGrab -> http://%s:%d (salida: %s)", HOST, PORT, OUT_DIR)
     if TOKEN_WAS_GENERATED:
-        log.info("Auth: token autogenerado = %s", TOKEN)
+        log.info(
+            "Auth: token autogenerado = %s "
+            "(definí OPENGRAB_TOKEN en .env o en el entorno para fijarlo)",
+            TOKEN,
+        )
     else:
         log.info("Auth: usando token de OPENGRAB_TOKEN")
     uvicorn.run(app, host=HOST, port=PORT, log_level="info", access_log=False)

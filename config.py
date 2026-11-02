@@ -56,6 +56,37 @@ def _load_ini() -> dict[str, str]:
         return {}
 
 
+def _load_dotenv() -> None:
+    """Carga ``.env`` en ``os.environ`` para el modo bare metal (``python app.py``).
+
+    Docker Compose interpola .env por su cuenta; sin Docker nadie lo leia y el
+    token configurado se ignoraba (se autogeneraba uno). Solo stdlib (sin
+    python-dotenv, por supply-chain). setdefault: el entorno real siempre gana.
+    Ruta: OPENGRAB_ENV_FILE o ``.env`` junto a este archivo. Se omite en
+    desktop / binario congelado. Archivo faltante o ilegible -> no-op.
+    """
+    if os.environ.get("OPENGRAB_DESKTOP", "").strip() == "1" or getattr(sys, "frozen", False):
+        return
+    path = Path(os.environ.get("OPENGRAB_ENV_FILE", str(Path(__file__).parent / ".env")))
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.removeprefix("export ").partition("=")
+        key, val = key.strip(), val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+            val = val[1:-1]
+        if key:
+            os.environ.setdefault(key, val)
+
+
+# Debe correr antes de _load_ini() y de cualquier constante: OPENGRAB_CONFIG,
+# OPENGRAB_TOKEN, etc. pueden venir del .env.
+_load_dotenv()
 _ini = _load_ini()
 
 # Mapeo de keys de settings a variables de entorno (para el resolver).

@@ -158,7 +158,7 @@ docker compose up -d
 ```
 
 > [!TIP]
-> Para usarlo sin Docker, ejecutá `pip install -r requirements.txt` y después `python app.py`. Asegurate de tener ffmpeg en el PATH.
+> Para usarlo sin Docker, ejecutá `pip install .` y después `python app.py`. Asegurate de tener ffmpeg en el PATH. El `.env` también se carga solo en este modo (las variables de entorno reales tienen prioridad).
 
 ---
 

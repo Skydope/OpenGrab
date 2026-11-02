@@ -27,6 +27,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # config.IS_DESKTOP/routers.system.IS_DESKTOP de forma explicita.
 os.environ.setdefault("OPENGRAB_DESKTOP", "")
 
+# Aisla los tests del .env real del repo: config._load_dotenv() lo cargaria al
+# importarse (token, puertos, dirs del usuario). Un path inexistente = no-op.
+os.environ["OPENGRAB_ENV_FILE"] = str(Path(tempfile.gettempdir()) / "opengrab-tests-no-such.env")
+
 _OPENGRAB_MODULES = ("app", "config", "db", "download", "library_path_resolver",
                      "models", "routes", "routers", "secure_delete", "state",
                      "storage_manager")
